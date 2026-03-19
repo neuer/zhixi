@@ -4,9 +4,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.accounts import router as accounts_router
@@ -17,6 +17,7 @@ from app.api.history import router as history_router
 from app.api.manual import router as manual_router
 from app.api.settings import router as settings_router
 from app.api.setup import router as setup_router
+from app.clients.x_client import XApiError
 from app.config import settings
 from app.database import engine
 from app.logging_config import setup_logging
@@ -55,6 +56,17 @@ app.include_router(manual_router, prefix="/api/manual", tags=["手动操作"])
 app.include_router(settings_router, prefix="/api/settings", tags=["设置"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["仪表盘"])
 app.include_router(history_router, prefix="/api/history", tags=["历史记录"])
+
+
+# 全局异常处理器
+@app.exception_handler(XApiError)
+async def handle_x_api_error(_request: Request, _exc: XApiError) -> JSONResponse:
+    """X API 调用失败 → 502 + allow_manual 标记。"""
+    return JSONResponse(
+        status_code=502,
+        content={"detail": "X API拉取失败", "allow_manual": True},
+    )
+
 
 # Vue SPA 静态文件（生产环境）
 ADMIN_DIST = Path("admin/dist")
