@@ -27,3 +27,6 @@ class BaseFetcher(ABC):
             RawTweet 列表，按 API 返回顺序排列
         """
         ...
+
+    async def close(self) -> None:  # noqa: B027
+        """释放连接资源。子类可覆盖，默认无操作。"""
