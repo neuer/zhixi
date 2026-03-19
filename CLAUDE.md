@@ -127,11 +127,43 @@ docker-compose up -d                       # 启动 3 容器
 ## 工作流规则
 
 **每轮循环**（详见 `docs/spec/git-ci.md` §9）：
-1. 读 user-stories.md + memory → 确定本轮 US 组
-2. 读 spec → 进入 plan 模式 → 写实施计划到 `docs/plans/us-xxx.md`
-3. TDD 实施：先写测试 → 再写实现
-4. 收尾：更新 user-stories.md 状态 + 写入 memory + push + PR + Merge
-5. `/clear` → 下一轮
+
+### 步骤 1: 预读（每轮必做，不可跳过）
+
+| 必读文件 | 目的 | 何时读 |
+|---------|------|--------|
+| `docs/spec/user-stories.md` | 确定本轮 US 组（状态追踪表） | 每轮开始 |
+| Memory 全部文件 | 回顾过往决策、反馈、踩坑经验 | 每轮开始 |
+| `docs/spec/git-ci.md` | 分支策略、PR 模板、CI 规则 | 每轮开始 |
+| `docs/plans/` 已有文件 | 确认命名规范和回填格式标准 | 写计划前 |
+| `docs/spec/architecture.md` | 模块边界、DI 模式、API 契约 | 涉及代码实现时 |
+| `docs/spec/data-model.md` | 表结构、Pydantic 类型、状态机 | 涉及数据操作时 |
+| `docs/spec/constraints.md` | 技术禁止项、安全约束 | 涉及代码实现时 |
+
+### 步骤 2: 创建分支
+
+**在写任何代码之前**，必须先创建 feature branch：
+```bash
+git checkout -b us-{编号}-{描述}
+```
+禁止直接在 main 上提交代码。
+
+### 步骤 3: 编写计划
+
+进入 plan 模式 → 写实施计划到 `docs/plans/us-{编号}-{描述性英文名}.md`
+
+### 步骤 4: TDD 实施
+
+先写测试 → 再写实现
+
+### 步骤 5: 收尾（四步缺一不可）
+
+1. **user-stories.md**: 更新状态为 ✅ 已完成
+2. **docs/plans/**: 回填执行结果（**必须包含完整五项**：交付物清单、偏离项表格、问题与修复、质量门禁详表、PR 链接）
+3. **memory**: 更新记忆（新决策、新踩坑）
+4. **push + PR + Merge**: 推送分支 → 创建 PR → Squash Merge 到 main
+
+### 步骤 6: `/clear` → 下一轮
 
 **通用规则**：
 - 每个 US 是独立可测试单元
