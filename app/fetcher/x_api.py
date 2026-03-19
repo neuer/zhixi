@@ -1,5 +1,6 @@
-"""XApiFetcher — X API 实现（US-011 实现）。"""
+"""XApiFetcher — X API 实现（US-011 + US-015 限流重试）。"""
 
+import asyncio
 import logging
 from datetime import datetime
 
@@ -61,11 +62,10 @@ class XApiFetcher(BaseFetcher):
             if next_token:
                 params["pagination_token"] = next_token
 
-            response = await self._client.get(
+            response = await self._request_with_retry(
                 f"/users/{user_id}/tweets",
-                params=params,
+                params,
             )
-            response.raise_for_status()
             payload = response.json()
 
             # 构建辅助索引：includes.tweets → author_id 映射
@@ -166,6 +166,23 @@ class XApiFetcher(BaseFetcher):
         except (KeyError, ValueError) as e:
             logger.warning("解析推文失败，跳过。原始数据: %s，错误: %s", raw, e)
             return None
+
+    async def _request_with_retry(
+        self,
+        url: str,
+        params: dict[str, str],
+    ) -> httpx.Response:
+        """发送 GET 请求，遇到 429 限流时指数退避重试（2s→4s→8s，最多 3 次）。"""
+        backoff_delays = [2, 4, 8]
+        response = await self._client.get(url, params=params)
+        for delay in backoff_delays:
+            if response.status_code != 429:
+                break
+            logger.warning("X API 429 限流，%ds 后重试", delay)
+            await asyncio.sleep(delay)
+            response = await self._client.get(url, params=params)
+        response.raise_for_status()
+        return response
 
     async def close(self) -> None:
         """关闭 httpx 客户端，释放连接资源。"""
