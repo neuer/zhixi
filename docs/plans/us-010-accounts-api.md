@@ -182,4 +182,4 @@ ruff check . && ruff format --check . && pyright && pytest
 | pytest | ✅ 63 passed in 0.61s |
 
 ### PR 链接
-> 待推送后填写
+https://github.com/neuer/zhixi/pull/3
