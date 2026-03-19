@@ -242,4 +242,4 @@ pyright
 
 ### PR 链接
 
-待创建
+https://github.com/neuer/zhixi/pull/4
