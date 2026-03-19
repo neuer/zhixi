@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -e
+
+# 检测是否有 Python 文件变更
+PY_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' | head -1)
+if [ -n "$PY_CHANGED" ]; then
+  echo "== ruff check =="
+  uv run ruff check .
+  echo "== ruff format --check =="
+  uv run ruff format --check .
+fi
+
+# 检测是否有前端文件变更（仅 admin/ 存在时）
+ADMIN_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR -- 'admin/' | head -1)
+if [ -n "$ADMIN_CHANGED" ] && [ -f admin/package.json ]; then
+  echo "== biome check =="
+  cd admin && bunx biome check .
+fi
+
+echo "Pre-commit checks passed."
