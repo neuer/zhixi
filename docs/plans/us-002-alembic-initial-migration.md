@@ -1,10 +1,6 @@
 # US-002: 数据库初始化与迁移 实施计划
 
-> **执行结果**: ✅ 全部完成（2026-03-19）
-> - Alembic 初始化 + 初始迁移（9 张表 + 种子数据）
-> - 8 个迁移测试全部通过
-> - 质量门禁全部绿灯（ruff, pyright, lint-imports）
-> - 注意：env.py 使用独立同步引擎（`create_engine`），而非 async engine 的 sync_engine
+> 状态: ✅ 已完成 | 分支: `us-002-alembic-migration` | PR: #2 (merged)
 
 **Goal:** 配置 Alembic，生成包含全部 9 张表和 system_config 种子数据的初始迁移脚本，确保 `alembic upgrade head` 从零创建完整数据库。
 
@@ -470,3 +466,39 @@ git push origin HEAD
 | 外键、索引与模型一致 | Task 3 tests |
 | digest_items.snapshot_source_tweets | 模型已有（TEXT, nullable） |
 | digest_items UNIQUE(digest_id, item_type, item_ref_id) | 模型已有 + Task 3 test |
+
+---
+
+## 实施结果
+
+### 交付物清单
+- `alembic.ini` — Alembic 主配置，sqlalchemy.url 留空由 env.py 注入
+- `alembic/env.py` — 迁移运行环境，使用独立同步引擎连接 DB
+- `alembic/script.py.mako` — 迁移脚本模板
+- `alembic/README` — Alembic 默认说明
+- `alembic/versions/0e411c078c0a_initial_schema.py` — 初始迁移：9 张表建表 + 10 条 system_config 种子数据 + downgrade 删表
+- `tests/test_migration.py` — 8 个迁移测试（表结构、外键、索引、唯一约束、种子数据）
+
+### 与计划的偏离项
+
+| 偏离点 | 计划 | 实际 | 原因 |
+|--------|------|------|------|
+| env.py 引擎方式 | 使用 `engine.sync_engine` | 使用独立 `create_engine` 同步引擎 | 避免 async engine 的 sync_engine 在 Alembic 上下文中的兼容性问题，独立同步引擎更可靠 |
+
+### 遇到的问题与修复
+- 无阻塞问题
+
+### 质量门禁结果
+
+| 检查项 | 结果 |
+|--------|------|
+| ruff check | ✅ 通过 |
+| ruff format | ✅ 通过 |
+| lint-imports | ✅ 4/4 contracts kept |
+| pyright | ✅ 0 errors |
+| pytest | ✅ 24 passed（含已有 16 + 新增 8） |
+| CI (GitHub Actions) | ✅ 通过 |
+
+### PR 链接
+- PR #2: https://github.com/neuer/zhixi/pull/2
+- Squash merged → main（2026-03-19）
