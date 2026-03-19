@@ -156,12 +156,13 @@ git checkout -b us-{编号}-{描述}
 
 先写测试 → 再写实现
 
-### 步骤 5: 收尾（四步缺一不可）
+### 步骤 5: 收尾（五步缺一不可）
 
 1. **user-stories.md**: 更新状态为 ✅ 已完成
-2. **docs/plans/**: 回填执行结果（**必须包含完整五项**：交付物清单、偏离项表格、问题与修复、质量门禁详表、PR 链接）
-3. **memory**: 更新记忆（新决策、新踩坑）
-4. **push + PR + Merge**: 推送分支 → 创建 PR → Squash Merge 到 main
+2. **提交 + push + 创建 PR**: 推送分支 → `gh pr create` 得到 PR URL
+3. **docs/plans/**: 一次性回填执行结果（**必须包含完整五项**：交付物清单、偏离项表格、问题与修复、质量门禁详表、PR 链接）。回填必须在 PR 创建之后，一次完成，禁止分多次回填
+4. **memory**: 更新记忆（新决策、新踩坑）
+5. **push 追加 + Merge**: 将回填 commit push 到 PR 分支 → CI 通过 → Squash Merge 到 main
 
 ### 步骤 6: `/clear` → 下一轮
 
