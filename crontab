@@ -1,0 +1,11 @@
+# 智曦定时任务调度（supercronic 执行）
+# 所有时间为 UTC，注释标注对应北京时间
+
+# UTC 20:00 = 北京 04:00 — 清理过期备份和日志
+0 20 * * * cd /app && python -m app.cli cleanup >> /app/data/logs/cron.log 2>&1
+
+# UTC 21:00 = 北京 05:00 — 数据库备份
+0 21 * * * cd /app && python -m app.cli backup >> /app/data/logs/cron.log 2>&1
+
+# UTC 22:00 = 北京 06:00 — 每日主流程（抓取 → AI 加工 → 草稿生成）
+0 22 * * * cd /app && python -m app.cli pipeline >> /app/data/logs/cron.log 2>&1
