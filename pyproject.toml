@@ -1,0 +1,86 @@
+[project]
+name = "zhixi"
+version = "0.1.0"
+description = "智曦 — AI 知识日报平台"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.32",
+    "sqlalchemy[asyncio]>=2.0,<3.0",
+    "aiosqlite>=0.20",
+    "alembic>=1.14",
+    "typer>=0.15",
+    "httpx>=0.28",
+    "anthropic>=0.49",
+    "pyjwt>=2.10",
+    "bcrypt>=4.2",
+    "python-dotenv>=1.0",
+    "pydantic>=2.0,<3.0",
+    "pydantic-settings>=2.0",
+    "google-generativeai>=0.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.22",
+    "freezegun>=1.4",
+    "ruff>=0.9",
+    "pyright>=1.1",
+    "import-linter>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "TCH"]
+ignore = ["E501"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.importlinter]
+root_packages = ["app"]
+
+[[tool.importlinter.contracts]]
+name = "fetcher 不能导入其他业务模块"
+type = "forbidden"
+source_modules = ["app.fetcher"]
+forbidden_modules = ["app.processor", "app.digest", "app.publisher"]
+
+[[tool.importlinter.contracts]]
+name = "processor 不能导入其他业务模块"
+type = "forbidden"
+source_modules = ["app.processor"]
+forbidden_modules = ["app.fetcher", "app.digest", "app.publisher"]
+
+[[tool.importlinter.contracts]]
+name = "digest 不能导入 fetcher 和 publisher"
+type = "forbidden"
+source_modules = ["app.digest"]
+forbidden_modules = ["app.fetcher", "app.publisher"]
+
+[[tool.importlinter.contracts]]
+name = "publisher 不能导入其他业务模块"
+type = "forbidden"
+source_modules = ["app.publisher"]
+forbidden_modules = ["app.fetcher", "app.processor"]
