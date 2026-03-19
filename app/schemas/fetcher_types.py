@@ -1,0 +1,57 @@
+"""数据采集相关类型。"""
+
+from datetime import datetime
+from enum import StrEnum
+
+from pydantic import BaseModel
+
+
+class TweetType(StrEnum):
+    """推文类型。"""
+
+    ORIGINAL = "original"
+    SELF_REPLY = "self_reply"
+    QUOTE = "quote"
+    RETWEET = "retweet"
+    REPLY = "reply"
+
+
+KEEP_TYPES = {TweetType.ORIGINAL, TweetType.SELF_REPLY, TweetType.QUOTE}
+
+
+class ReferencedTweet(BaseModel):
+    """被引用推文信息。"""
+
+    type: str
+    id: str
+    author_id: str
+
+
+class PublicMetrics(BaseModel):
+    """推文互动指标。"""
+
+    like_count: int = 0
+    retweet_count: int = 0
+    reply_count: int = 0
+
+
+class RawTweet(BaseModel):
+    """从 X API 获取的原始推文。"""
+
+    tweet_id: str
+    author_id: str
+    text: str
+    created_at: datetime
+    public_metrics: PublicMetrics
+    referenced_tweets: list[ReferencedTweet] = []
+    media_urls: list[str] = []
+    tweet_url: str = ""
+
+
+class FetchResult(BaseModel):
+    """抓取结果统计。"""
+
+    new_tweets_count: int
+    fail_count: int
+    total_accounts: int
+    skipped_count: int = 0
