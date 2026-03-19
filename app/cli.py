@@ -37,13 +37,41 @@ async def _run_pipeline() -> None:
 
 
 async def _run_backup() -> None:
-    # TODO: US-003 实现
-    typer.echo("Backup not implemented yet")
+    """执行 SQLite 备份并输出结果。"""
+    from app.database import async_session_factory
+    from app.services.backup_service import BackupService
+
+    async with async_session_factory() as db:
+        try:
+            svc = BackupService(db)
+            result = await svc.run_backup()
+            await db.commit()
+            if result.success:
+                typer.echo(f"Backup completed: {result.file_path}")
+            else:
+                typer.echo(f"Backup failed: {result.error}", err=True)
+                raise typer.Exit(code=1)
+        except typer.Exit:
+            raise
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def _run_cleanup() -> None:
-    # TODO: US-003 实现
-    typer.echo("Cleanup not implemented yet")
+    """清理过期备份和日志文件。"""
+    from app.database import async_session_factory
+    from app.services.backup_service import BackupService
+
+    async with async_session_factory() as db:
+        try:
+            svc = BackupService(db)
+            removed = await svc.run_cleanup()
+            await db.commit()
+            typer.echo(f"Cleanup completed: removed {removed} files")
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def _run_unlock() -> None:
