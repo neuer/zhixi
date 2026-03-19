@@ -12,7 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: uv sync --all-extras
@@ -40,11 +39,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - uses: oven-sh/setup-bun@v2
       - run: uv sync --all-extras
       - run: make gen
-      - name: 检查生成物一致性
+      - name: Check codegen consistency
         run: git diff --exit-code
