@@ -11,9 +11,31 @@ on:
 env:
   X_API_BEARER_TOKEN: test
   ANTHROPIC_API_KEY: test
-  JWT_SECRET_KEY: test_ci_secret
+  JWT_SECRET_KEY: test_ci_secret_minimum_32_chars!
 
 jobs:
+  # 检测哪些模块需要检查
+  changes:
+    name: Detect Scope
+    runs-on: ubuntu-latest
+    outputs:
+      run_frontend: ${{ steps.scope.outputs.run_frontend }}
+      run_codegen: ${{ steps.scope.outputs.run_codegen }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: scope
+        run: |
+          if [ -f admin/package.json ]; then
+            echo "run_frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f packages/openapi-client/package.json ]; then
+            echo "run_codegen=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_codegen=false" >> "$GITHUB_OUTPUT"
+          fi
+
   backend:
     runs-on: ubuntu-latest
     steps:
@@ -36,58 +58,29 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.run_frontend == 'true'
     steps:
       - uses: actions/checkout@v4
-      - name: Check if frontend exists
-        id: check
-        run: |
-          if [ -f admin/package.json ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "admin/package.json not found, skipping frontend checks"
-          fi
       - uses: oven-sh/setup-bun@v2
-        if: steps.check.outputs.exists == 'true'
-      - name: Install frontend dependencies
-        if: steps.check.outputs.exists == 'true'
-        run: cd admin && bun install --frozen-lockfile
-      - name: Biome check
-        if: steps.check.outputs.exists == 'true'
-        run: cd admin && bunx biome check .
-      - name: Type check
-        if: steps.check.outputs.exists == 'true'
-        run: cd admin && bunx vue-tsc --noEmit
-      - name: Build
-        if: steps.check.outputs.exists == 'true'
-        run: cd admin && bun run build
+      - run: cd admin && bun install --frozen-lockfile
+      - run: cd admin && bunx biome check .
+      - run: cd admin && bunx vue-tsc --noEmit
+      - run: cd admin && bun run build
 
   codegen:
     runs-on: ubuntu-latest
-    needs: [backend]
+    needs: [changes, backend]
+    if: needs.changes.outputs.run_codegen == 'true'
     steps:
       - uses: actions/checkout@v4
-      - name: Check if openapi-client exists
-        id: check
-        run: |
-          if [ -f packages/openapi-client/package.json ]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "packages/openapi-client/package.json not found, skipping codegen checks"
-          fi
       - uses: astral-sh/setup-uv@v7
-        if: steps.check.outputs.exists == 'true'
         with:
           python-version: "3.12"
       - uses: oven-sh/setup-bun@v2
-        if: steps.check.outputs.exists == 'true'
       - name: Install backend dependencies
-        if: steps.check.outputs.exists == 'true'
         run: uv sync --all-extras
       - name: Generate OpenAPI client
-        if: steps.check.outputs.exists == 'true'
         run: make gen
       - name: Check generated files are up to date
-        if: steps.check.outputs.exists == 'true'
         run: git diff --exit-code || (echo "生成物过期，请本地运行 make gen 并提交" && exit 1)
