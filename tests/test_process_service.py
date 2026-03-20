@@ -1,8 +1,8 @@
-"""ProcessService 集成测试（US-019 + US-021）。"""
+"""ProcessService 集成测试（US-019 + US-020 + US-021）。"""
 
 import json
 from datetime import UTC, date, datetime
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -497,3 +497,188 @@ class TestProcessServiceEmptyTopics:
         stmt = select(Tweet).where(Tweet.tweet_id == "solo_tweet")
         tweet = (await db.execute(stmt)).scalar_one()
         assert tweet.is_processed is True
+
+
+class TestBatchProcessing:
+    """分批处理策略（US-020）。"""
+
+    @pytest_asyncio.fixture
+    async def two_tweets(self, db: AsyncSession):
+        """预置 2 条推文，不同账号。"""
+        account1 = await _seed_account(db, twitter_handle="heavy", weight=3.0)
+        account2 = await _seed_account(
+            db,
+            twitter_handle="light",
+            display_name="Light User",
+            weight=1.0,
+        )
+        t1 = await _seed_tweet(db, account1, tweet_id="heavy_t1", text="Heavy tweet")
+        t2 = await _seed_tweet(db, account2, tweet_id="light_t1", text="Light tweet")
+        await db.commit()
+        return {"account1": account1, "account2": account2, "t1": t1, "t2": t2}
+
+    async def test_single_batch_no_dedup(
+        self,
+        db: AsyncSession,
+        two_tweets: dict,
+    ):
+        """单批时 Claude 只调全局分析 + 逐条加工，不调去重。"""
+        single_analysis = json.dumps(
+            {
+                "filtered_ids": [],
+                "filtered_count": 0,
+                "topics": [
+                    {"type": "single", "ai_importance_score": 60, "tweet_ids": ["heavy_t1"]},
+                    {"type": "single", "ai_importance_score": 50, "tweet_ids": ["light_t1"]},
+                ],
+            }
+        )
+
+        client = AsyncMock(spec=ClaudeClient)
+        client.complete = AsyncMock(
+            side_effect=[
+                _mock_claude_response(single_analysis),  # 全局分析
+                _mock_claude_response(SINGLE_FIXTURE),  # heavy_t1 加工
+                _mock_claude_response(SINGLE_FIXTURE),  # light_t1 加工
+            ]
+        )
+
+        # 默认 100K limit 不会触发分批
+        svc = ProcessService(db, claude_client=client)
+        result = await svc.run_daily_process(DIGEST_DATE)
+
+        # 全局分析 + 2 条 single 加工 = 3 次调用，无去重
+        assert client.complete.call_count == 3
+        assert result.processed_count == 2
+
+        # 确认没有 dedup_analysis 成本记录
+        stmt = select(ApiCostLog).where(ApiCostLog.call_type == "dedup_analysis")
+        dedup_logs = (await db.execute(stmt)).scalars().all()
+        assert len(dedup_logs) == 0
+
+    async def test_multi_batch_triggers_dedup(self, db: AsyncSession, two_tweets: dict):
+        """多批时触发去重 AI 调用。"""
+        # 每批各一条推文的分析结果
+        batch1_analysis = json.dumps(
+            {
+                "filtered_ids": [],
+                "filtered_count": 0,
+                "topics": [
+                    {"type": "single", "ai_importance_score": 70, "tweet_ids": ["heavy_t1"]},
+                ],
+            }
+        )
+        batch2_analysis = json.dumps(
+            {
+                "filtered_ids": [],
+                "filtered_count": 0,
+                "topics": [
+                    {"type": "single", "ai_importance_score": 60, "tweet_ids": ["light_t1"]},
+                ],
+            }
+        )
+        dedup_result = json.dumps(
+            {
+                "filtered_ids": [],
+                "filtered_count": 0,
+                "topics": [
+                    {"type": "single", "ai_importance_score": 70, "tweet_ids": ["heavy_t1"]},
+                    {"type": "single", "ai_importance_score": 60, "tweet_ids": ["light_t1"]},
+                ],
+            }
+        )
+
+        client = AsyncMock(spec=ClaudeClient)
+        client.complete = AsyncMock(
+            side_effect=[
+                _mock_claude_response(batch1_analysis),  # 第 1 批全局分析
+                _mock_claude_response(batch2_analysis),  # 第 2 批全局分析
+                _mock_claude_response(dedup_result),  # 去重
+                _mock_claude_response(SINGLE_FIXTURE),  # heavy_t1 加工
+                _mock_claude_response(SINGLE_FIXTURE),  # light_t1 加工
+            ]
+        )
+
+        svc = ProcessService(db, claude_client=client)
+
+        # 用极小 token_limit 强制分批
+        with patch(
+            "app.services.process_service.split_into_batches",
+            wraps=None,
+        ) as mock_split:
+            # 直接返回两个批次
+            from app.processor.batch_strategy import split_into_batches as real_split
+
+            mock_split.side_effect = lambda tweets, accts, **kw: real_split(
+                tweets,
+                accts,
+                token_limit=50,
+            )
+
+            result = await svc.run_daily_process(DIGEST_DATE)
+
+        # 2 批分析 + 1 去重 + 2 单条加工 = 5 次
+        assert client.complete.call_count == 5
+        assert result.processed_count == 2
+
+    async def test_dedup_cost_recorded(self, db: AsyncSession, two_tweets: dict):
+        """去重 API 调用成本记入 api_cost_log。"""
+        batch1 = json.dumps(
+            {
+                "filtered_ids": [],
+                "filtered_count": 0,
+                "topics": [
+                    {"type": "single", "ai_importance_score": 70, "tweet_ids": ["heavy_t1"]}
+                ],
+            }
+        )
+        batch2 = json.dumps(
+            {
+                "filtered_ids": [],
+                "filtered_count": 0,
+                "topics": [
+                    {"type": "single", "ai_importance_score": 60, "tweet_ids": ["light_t1"]}
+                ],
+            }
+        )
+        dedup = json.dumps(
+            {
+                "filtered_ids": [],
+                "filtered_count": 0,
+                "topics": [
+                    {"type": "single", "ai_importance_score": 70, "tweet_ids": ["heavy_t1"]},
+                    {"type": "single", "ai_importance_score": 60, "tweet_ids": ["light_t1"]},
+                ],
+            }
+        )
+
+        client = AsyncMock(spec=ClaudeClient)
+        client.complete = AsyncMock(
+            side_effect=[
+                _mock_claude_response(batch1),
+                _mock_claude_response(batch2),
+                _mock_claude_response(dedup),
+                _mock_claude_response(SINGLE_FIXTURE),
+                _mock_claude_response(SINGLE_FIXTURE),
+            ]
+        )
+
+        svc = ProcessService(db, claude_client=client)
+
+        with patch(
+            "app.services.process_service.split_into_batches",
+        ) as mock_split:
+            from app.processor.batch_strategy import split_into_batches as real_split
+
+            mock_split.side_effect = lambda tweets, accts, **kw: real_split(
+                tweets,
+                accts,
+                token_limit=50,
+            )
+            await svc.run_daily_process(DIGEST_DATE)
+
+        # 确认有 dedup_analysis 成本记录
+        stmt = select(ApiCostLog).where(ApiCostLog.call_type == "dedup_analysis")
+        dedup_logs = (await db.execute(stmt)).scalars().all()
+        assert len(dedup_logs) == 1
+        assert dedup_logs[0].success is True
