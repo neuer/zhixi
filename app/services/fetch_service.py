@@ -5,9 +5,11 @@ import json
 import logging
 from datetime import UTC, date, datetime
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.x_client import XApiError
 from app.config import get_fetch_window, get_today_digest_date, settings
 from app.fetcher import get_fetcher
 from app.fetcher.base import BaseFetcher
@@ -94,15 +96,25 @@ class FetchService:
                     )
                     new_tweets_total += new_count
                     success_count += 1
-                except Exception:
-                    logger.exception("抓取账号 %s 失败", account.twitter_handle)
+                except (httpx.HTTPError, XApiError) as e:
+                    logger.warning(
+                        "抓取账号 %s 失败（API 错误）: %s",
+                        account.twitter_handle,
+                        e,
+                    )
                     fail_count += 1
                     errors.append(
                         {
                             "handle": account.twitter_handle,
-                            "error": _safe_exc_message(),
+                            "error": str(e),
                         }
                     )
+                except Exception:
+                    logger.exception(
+                        "抓取账号 %s 发生不可恢复错误，终止批处理",
+                        account.twitter_handle,
+                    )
+                    raise
         finally:
             await fetcher.close()
 
@@ -139,7 +151,9 @@ class FetchService:
         seen_ids: set[str],
     ) -> int:
         """抓取单个账号并入库，返回新增推文数。"""
-        assert account.twitter_user_id is not None
+        if account.twitter_user_id is None:
+            msg = f"账号 {account.twitter_handle} 缺少 twitter_user_id"
+            raise ValueError(msg)
 
         start_ms = _now_ms()
         raw_tweets = await fetcher.fetch_user_tweets(account.twitter_user_id, since, until)
@@ -209,11 +223,3 @@ def _raw_to_model(
 def _now_ms() -> int:
     """返回当前时间戳（毫秒）。"""
     return int(datetime.now(UTC).timestamp() * 1000)
-
-
-def _safe_exc_message() -> str:
-    """从当前异常上下文安全获取错误消息。"""
-    import sys
-
-    exc = sys.exc_info()[1]
-    return str(exc) if exc else "unknown error"

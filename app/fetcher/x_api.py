@@ -98,7 +98,7 @@ class XApiFetcher(BaseFetcher):
 
     def _parse_tweet(
         self,
-        raw: dict,  # type: ignore[type-arg]
+        raw: dict[str, object],
         included_tweets: dict[str, str],
         media_url_map: dict[str, str],
     ) -> RawTweet | None:
@@ -110,62 +110,81 @@ class XApiFetcher(BaseFetcher):
             media_url_map: media_key -> url 映射（来自 includes.media）
 
         Returns:
-            RawTweet 或 None（解析失败时记录 warning 并跳过）
+            RawTweet 或 None（解析失败时记录日志并跳过）
         """
+        # 必需字段提取——缺失时提升为 ERROR（可能意味着 API schema 变更）
         try:
-            tweet_id = raw["id"]
-            author_id = raw["author_id"]
-            text = raw["text"]
-            created_at_str = raw["created_at"]
+            tweet_id = str(raw["id"])
+            author_id = str(raw["author_id"])
+            text = str(raw["text"])
+            created_at_str = str(raw["created_at"])
+        except KeyError as e:
+            logger.error(
+                "推文缺少必要字段 %s，可能 X API schema 已变更。keys=%s",
+                e,
+                list(raw.keys()),
+            )
+            return None
 
-            # 解析时间字符串（X API 返回 Z 结尾的 ISO 8601 字符串）
+        # 解析时间字符串（X API 返回 Z 结尾的 ISO 8601 字符串）
+        try:
             if created_at_str.endswith("Z"):
                 created_at_str = created_at_str[:-1] + "+00:00"
             created_at = datetime.fromisoformat(created_at_str)
+        except ValueError as e:
+            logger.warning("推文 %s 时间格式异常: %s", tweet_id, e)
+            return None
 
-            # 解析 public_metrics（忽略模型中不存在的字段，如 quote_count）
-            metrics_raw = raw.get("public_metrics", {})
-            public_metrics = PublicMetrics(
-                like_count=metrics_raw.get("like_count", 0),
-                retweet_count=metrics_raw.get("retweet_count", 0),
-                reply_count=metrics_raw.get("reply_count", 0),
-            )
+        # 解析 public_metrics（忽略模型中不存在的字段，如 quote_count）
+        metrics_raw = raw.get("public_metrics", {})
+        if not isinstance(metrics_raw, dict):
+            metrics_raw = {}
+        public_metrics = PublicMetrics(
+            like_count=metrics_raw.get("like_count", 0),
+            retweet_count=metrics_raw.get("retweet_count", 0),
+            reply_count=metrics_raw.get("reply_count", 0),
+        )
 
-            # 解析 referenced_tweets，author_id 从 includes.tweets 补全
-            referenced_tweets: list[ReferencedTweet] = []
-            for ref in raw.get("referenced_tweets", []):
-                ref_id = ref.get("id", "")
-                ref_type = ref.get("type", "")
-                ref_author_id = included_tweets.get(ref_id, "")
-                if ref_id and ref_type:
-                    referenced_tweets.append(
-                        ReferencedTweet(type=ref_type, id=ref_id, author_id=ref_author_id)
-                    )
+        # 解析 referenced_tweets，author_id 从 includes.tweets 补全
+        referenced_tweets: list[ReferencedTweet] = []
+        raw_refs = raw.get("referenced_tweets", [])
+        if isinstance(raw_refs, list):
+            for ref in raw_refs:
+                if isinstance(ref, dict):
+                    ref_id = ref.get("id", "")
+                    ref_type = ref.get("type", "")
+                    ref_author_id = included_tweets.get(str(ref_id), "")
+                    if ref_id and ref_type:
+                        referenced_tweets.append(
+                            ReferencedTweet(
+                                type=str(ref_type),
+                                id=str(ref_id),
+                                author_id=str(ref_author_id),
+                            )
+                        )
 
-            # 解析 media_urls：从 attachments.media_keys 查找
-            media_urls: list[str] = []
-            attachments = raw.get("attachments", {})
+        # 解析 media_urls：从 attachments.media_keys 查找
+        media_urls: list[str] = []
+        attachments = raw.get("attachments", {})
+        if isinstance(attachments, dict):
             for mk in attachments.get("media_keys", []):
-                url = media_url_map.get(mk)
+                url = media_url_map.get(str(mk))
                 if url:
                     media_urls.append(url)
 
-            # 构造推文 URL
-            tweet_url = f"https://x.com/{author_id}/status/{tweet_id}"
+        # 构造推文 URL（此处用 author_id，入库时 _raw_to_model 会用 handle 重新构造）
+        tweet_url = f"https://x.com/{author_id}/status/{tweet_id}"
 
-            return RawTweet(
-                tweet_id=tweet_id,
-                author_id=author_id,
-                text=text,
-                created_at=created_at,
-                public_metrics=public_metrics,
-                referenced_tweets=referenced_tweets,
-                media_urls=media_urls,
-                tweet_url=tweet_url,
-            )
-        except (KeyError, ValueError) as e:
-            logger.warning("解析推文失败，跳过。原始数据: %s，错误: %s", raw, e)
-            return None
+        return RawTweet(
+            tweet_id=tweet_id,
+            author_id=author_id,
+            text=text,
+            created_at=created_at,
+            public_metrics=public_metrics,
+            referenced_tweets=referenced_tweets,
+            media_urls=media_urls,
+            tweet_url=tweet_url,
+        )
 
     async def _request_with_retry(
         self,

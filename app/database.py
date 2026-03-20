@@ -1,5 +1,6 @@
 """数据库引擎 — 异步 SQLAlchemy + aiosqlite，WAL 模式。"""
 
+import logging
 from collections.abc import AsyncGenerator
 
 from sqlalchemy import event
@@ -33,6 +34,9 @@ def set_sqlite_pragma(dbapi_connection: object, connection_record: object) -> No
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
+_logger = logging.getLogger(__name__)
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """依赖注入 — 自动 commit/rollback。"""
     async with async_session_factory() as session:
@@ -40,5 +44,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             await session.commit()
         except Exception:
-            await session.rollback()
+            try:
+                await session.rollback()
+            except Exception:
+                _logger.error("事务回滚也失败", exc_info=True)
             raise
