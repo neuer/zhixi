@@ -11,3 +11,4 @@ class ClaudeResponse(BaseModel):
     output_tokens: int
     model: str
     duration_ms: int
+    estimated_cost: float = 0.0
