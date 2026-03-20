@@ -193,3 +193,48 @@ uv run ruff format --check .
 uv run lint-imports
 uv run pyright
 ```
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `app/schemas/pipeline_types.py` | 新增 | PipelineResult 类型定义 |
+| `app/services/pipeline_service.py` | 新增 | Pipeline 主流程编排（模块级函数） |
+| `app/cli.py` | 修改 | 实现 `_run_pipeline()` 调用 pipeline_service |
+| `app/api/manual.py` | 修改 | 添加 `POST /api/manual/fetch` 路由 |
+| `tests/test_pipeline_service.py` | 新增 | 8 个 pipeline 测试用例 |
+| `tests/test_manual_fetch_api.py` | 新增 | 5 个手动抓取 API 测试用例 |
+| `docs/spec/user-stories.md` | 修改 | US-027/027b 状态 → ✅ |
+| `docs/plans/us-027-027b-pipeline-manual-fetch.md` | 新增+回填 | 实施计划 + 执行结果 |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | 使用 `patch.multiple` mock | 改用 `ExitStack` + 独立 `patch` | pyright 无法推断 `patch.multiple(**dict)` 的类型参数 |
+| 2 | `freeze_time` 用 `tz_offset=8` | 改用 `+08:00` 时区字符串 | 项目已有 freeze_time 用法均使用显式时区字符串，`tz_offset` 导致 `get_today_digest_date()` 返回错误日期 |
+| 3 | 路由返回 `dict \| JSONResponse` | 添加 `response_model=None` | FastAPI 不支持 `Union[dict, Response]` 返回类型推断 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| `freeze_time("...", tz_offset=8)` 导致 `get_today_digest_date()` 返回 +1 天 | 改为 `freeze_time("2026-03-20 08:00:00+08:00")` 显式时区 |
+| `patch.multiple` 导致 24 个 pyright 错误 | 改用 `ExitStack` + 独立 `patch` 调用 |
+| FastAPI 路由 `Union[dict, JSONResponse]` 返回类型解析失败 | 添加 `response_model=None` 装饰器参数 |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format --check | ✅ 120 files already formatted |
+| lint-imports | ✅ 4 contracts kept, 0 broken |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 373 passed (含新增 13 个) |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/19
