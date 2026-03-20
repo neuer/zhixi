@@ -181,3 +181,64 @@ US-039 为基础设施初始化，测试覆盖方式：
 - **不创建 components/**：US-039 只建 views 占位，组件在对应 US 中创建
 - **axios 而非 fetch**：spec 指定 axios + 拦截器模式
 - **CI 自动激活**：admin/package.json 创建后，CI frontend job 自动启用
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `packages/openapi-client/package.json` | 新建 | @hey-api/openapi-ts 0.61 + TypeScript 5.7 |
+| `packages/openapi-client/openapi-ts.config.ts` | 新建 | 生成配置：input openapi.json → output src/gen/ |
+| `packages/openapi-client/tsconfig.json` | 新建 | TS 严格模式 |
+| `packages/openapi-client/bun.lock` | 自动生成 | 锁定文件 |
+| `packages/openapi-client/src/gen/types.gen.ts` | 自动生成 | 18 个 API 类型定义 |
+| `packages/openapi-client/src/gen/index.ts` | 自动生成 | 导出入口 |
+| `admin/package.json` | 新建 | Vue 3.5 + Vant 4.9 + vue-router 4.6 + axios 1.7 |
+| `admin/tsconfig.json` | 新建 | strict 模式 + references |
+| `admin/tsconfig.node.json` | 新建 | composite: true（vite/playwright 用） |
+| `admin/env.d.ts` | 新建 | Vite + Vue 类型声明 |
+| `admin/vite.config.ts` | 新建 | /api 代理 + @ 别名 |
+| `admin/biome.json` | 新建 | lint + 格式化规则 |
+| `admin/index.html` | 新建 | SPA 入口（移动端 viewport） |
+| `admin/playwright.config.ts` | 新建 | Mobile Chrome + webServer |
+| `admin/bun.lock` | 自动生成 | 锁定文件 |
+| `admin/src/main.ts` | 新建 | 应用入口 |
+| `admin/src/App.vue` | 新建 | 根组件 |
+| `admin/src/api/index.ts` | 新建 | axios + JWT 拦截器 + 401 重定向 |
+| `admin/src/router/index.ts` | 新建 | 10 条路由 + beforeEach 守卫 |
+| `admin/src/views/*.vue` (×10) | 新建 | 占位组件 |
+| `docs/spec/user-stories.md` | 修改 | US-039 状态 → ✅ |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | tsconfig.node.json 用 noEmit | 改为 composite: true | vue-tsc 要求 referenced project 必须 composite |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| biome 报 import 排序错误 | `biome check --fix --unsafe` 自动修复 |
+| tsconfig.node.json noEmit 与 references 冲突 | 改用 composite: true |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| biome check | ✅ 通过 |
+| vue-tsc --noEmit | ✅ 通过 |
+| bun run build | ✅ 通过（522ms） |
+| make gen 一致性 | ✅ 无 diff |
+| ruff check | ✅ 通过 |
+| ruff format --check | ✅ 通过 |
+| lint-imports | ✅ 4 contracts kept |
+| pyright | ✅ 0 errors |
+| pytest | ✅ 319 passed |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/16
