@@ -1,15 +1,11 @@
 """抓取日志模型。"""
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
+from app.database import Base, _utcnow
 
 
 class FetchLog(Base):

@@ -2,20 +2,30 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class AccountCreate(BaseModel):
-    """创建账号请求。
-
-    当 display_name 非空时跳过 X API，走手动模式。
-    """
+    """创建账号请求。"""
 
     twitter_handle: str
     weight: float = Field(default=1.0, ge=0.1, le=5.0)
     display_name: str | None = None
     bio: str | None = None
     avatar_url: str | None = None
+
+    @field_validator("twitter_handle")
+    @classmethod
+    def validate_handle(cls, v: str) -> str:
+        """校验 twitter_handle：不含 @、strip 后非空、长度合理。"""
+        v = v.strip().lstrip("@")
+        if not v:
+            msg = "twitter_handle 不能为空"
+            raise ValueError(msg)
+        if len(v) > 50:
+            msg = "twitter_handle 长度不能超过 50"
+            raise ValueError(msg)
+        return v
 
 
 class AccountUpdate(BaseModel):

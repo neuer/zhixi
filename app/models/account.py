@@ -1,15 +1,11 @@
 """大V账号模型。"""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
+from app.database import Base, _utcnow
 
 
 class TwitterAccount(Base):

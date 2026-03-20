@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TweetType(StrEnum):
@@ -30,9 +30,9 @@ class ReferencedTweet(BaseModel):
 class PublicMetrics(BaseModel):
     """推文互动指标。"""
 
-    like_count: int = 0
-    retweet_count: int = 0
-    reply_count: int = 0
+    like_count: int = Field(default=0, ge=0)
+    retweet_count: int = Field(default=0, ge=0)
+    reply_count: int = Field(default=0, ge=0)
 
 
 class RawTweet(BaseModel):
@@ -51,7 +51,7 @@ class RawTweet(BaseModel):
 class FetchResult(BaseModel):
     """抓取结果统计。"""
 
-    new_tweets_count: int
-    fail_count: int
-    total_accounts: int
-    skipped_count: int = 0
+    new_tweets_count: int = Field(ge=0)
+    fail_count: int = Field(ge=0)
+    total_accounts: int = Field(ge=0)
+    skipped_count: int = Field(default=0, ge=0)

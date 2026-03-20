@@ -2,11 +2,13 @@
 
 from pydantic import BaseModel
 
+from app.schemas.enums import TopicType
+
 
 class TopicResult(BaseModel):
     """全局分析输出的话题。"""
 
-    type: str
+    type: TopicType
     topic_label: str | None = None
     ai_importance_score: float
     tweet_ids: list[str]
