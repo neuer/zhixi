@@ -75,8 +75,24 @@ async def _run_cleanup() -> None:
 
 
 async def _run_unlock() -> None:
-    # TODO: US-028 实现
-    typer.echo("Unlock not implemented yet")
+    """解锁当日所有 running 状态的 job_runs。"""
+    from app.config import get_today_digest_date
+    from app.database import async_session_factory
+    from app.services.lock_service import unlock_all_running
+
+    digest_date = get_today_digest_date()
+
+    async with async_session_factory() as db:
+        try:
+            count = await unlock_all_running(db, digest_date)
+            await db.commit()
+            if count > 0:
+                typer.echo(f"已解锁 {count} 个卡住的任务（{digest_date}）")
+            else:
+                typer.echo(f"当日无 running 状态的任务（{digest_date}）")
+        except Exception:
+            await db.rollback()
+            raise
 
 
 if __name__ == "__main__":

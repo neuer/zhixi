@@ -5,10 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import InvalidTokenError, verify_jwt
 from app.clients.claude_client import get_claude_client
+from app.config import get_today_digest_date
 from app.database import get_db
 from app.services.account_service import AccountService
 from app.services.digest_service import DigestService
 from app.services.fetch_service import FetchService
+from app.services.lock_service import has_running_pipeline
 from app.services.process_service import ProcessService
 
 
@@ -52,3 +54,15 @@ async def get_digest_service(
 ) -> DigestService:
     """构造 DigestService 并注入 DB Session + ClaudeClient。"""
     return DigestService(db, claude_client=get_claude_client())
+
+
+async def require_no_pipeline_lock(
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """增强锁守卫 — 当日有 pipeline running 时返回 409。"""
+    today = get_today_digest_date()
+    if await has_running_pipeline(db, today):
+        raise HTTPException(
+            status_code=409,
+            detail="当前有任务在运行中，请稍后再试",
+        )
