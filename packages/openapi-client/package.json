@@ -1,0 +1,10 @@
+{
+  "name": "@zhixi/openapi-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.61",
+    "typescript": "^5.7"
+  }
+}
