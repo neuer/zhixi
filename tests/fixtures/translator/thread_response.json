@@ -1,0 +1,5 @@
+{
+  "title": "Karpathy解读AI安全现状",
+  "translation": "今天想聊聊 AI 安全（AI Safety）的现状。\n\n第一部分：当前 AI 系统面临的主要安全隐患包括提示注入（Prompt Injection）、幻觉（Hallucination）以及对齐失败（Alignment Failure）。\n\n第二部分：解决方案方面，我们需要从系统架构层面而非仅仅依赖后期微调来解决这些问题。形式化验证（Formal Verification）和红队测试（Red Teaming）是关键工具。",
+  "comment": "Karpathy 对 AI 安全的系统性分析非常有价值。他提出的\"架构级安全\"思路与当前主流的\"对齐微调\"路线形成互补，值得行业关注。"
+}

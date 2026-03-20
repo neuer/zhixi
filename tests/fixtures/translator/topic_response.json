@@ -1,0 +1,9 @@
+{
+  "title": "GPT-5引发行业热议",
+  "summary": "OpenAI 正式发布 GPT-5 模型，引发 AI 行业广泛讨论。多位大V从不同角度分析了这一事件的影响。Sam Altman 强调了模型在推理能力上的突破，Yann LeCun 则对其架构创新表示肯定但指出仍有局限性。",
+  "perspectives": [
+    {"author": "Sam Altman", "handle": "sama", "viewpoint": "GPT-5 在推理和多模态方面实现了重大突破，将推动 AI 在企业级场景的广泛应用。"},
+    {"author": "Yann LeCun", "handle": "ylecun", "viewpoint": "架构上有创新但离真正的 AGI 仍有距离，需要在世界模型方面继续突破。"}
+  ],
+  "comment": "GPT-5 的发布是 2026 年最重要的 AI 事件之一。行业内的分歧反映了当前 AI 发展路线之争——规模化 vs 新架构。值得关注的是，竞争对手如何应对。"
+}
