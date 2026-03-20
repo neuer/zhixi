@@ -32,8 +32,30 @@ def unlock() -> None:
 
 
 async def _run_pipeline() -> None:
-    # TODO: US-027 实现
-    typer.echo("Pipeline not implemented yet")
+    """执行每日主流程并根据结果输出状态。"""
+    from app.database import async_session_factory
+    from app.services.pipeline_service import run_pipeline
+
+    async with async_session_factory() as db:
+        try:
+            result = await run_pipeline(db, trigger_source="cron")
+            await db.commit()
+
+            if result.status == "skipped":
+                typer.echo(f"Pipeline skipped: {result.error_message or 'not a push day'}")
+            elif result.status == "completed":
+                typer.echo("Pipeline completed successfully")
+            elif result.status == "failed":
+                typer.echo(
+                    f"Pipeline failed at [{result.failed_step}]: {result.error_message}",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
+        except typer.Exit:
+            raise
+        except Exception:
+            await db.rollback()
+            raise
 
 
 async def _run_backup() -> None:
