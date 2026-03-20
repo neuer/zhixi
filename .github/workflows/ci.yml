@@ -36,7 +36,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
-    if: hashFiles('admin/package.json') != ''
+    if: ${{ hashFiles('admin/package.json') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -48,7 +48,7 @@ jobs:
   codegen:
     runs-on: ubuntu-latest
     needs: [backend]
-    if: hashFiles('packages/openapi-client/package.json') != ''
+    if: ${{ hashFiles('packages/openapi-client/package.json') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
