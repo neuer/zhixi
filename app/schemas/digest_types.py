@@ -65,3 +65,25 @@ class TodayResponse(BaseModel):
     digest: DigestBriefResponse | None
     items: list[DigestItemResponse]
     low_content_warning: bool
+
+
+class EditItemRequest(BaseModel):
+    """编辑单条内容请求（所有字段可选，partial update）。"""
+
+    title: str | None = None
+    translation: str | None = None
+    summary: str | None = None
+    perspectives: str | None = None
+    comment: str | None = None
+
+
+class EditSummaryRequest(BaseModel):
+    """编辑导读摘要请求。"""
+
+    summary: str
+
+
+class ReorderRequest(BaseModel):
+    """调整排序请求。"""
+
+    items: list[ReorderInput]

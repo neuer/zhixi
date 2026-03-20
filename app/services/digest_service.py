@@ -1,13 +1,13 @@
-"""digest_service — 草稿组装编排层（US-023 + US-024 + US-025）。
+"""digest_service — 草稿组装编排层。
 
-编排草稿创建、快照写入、导读摘要生成、Markdown 渲染。
+编排草稿创建、快照写入、导读摘要生成、Markdown 渲染、编辑操作。
 """
 
 import json
 import logging
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
@@ -331,3 +331,173 @@ class DigestService:
             duration_ms=response.duration_ms,
         )
         self._db.add(cost_log)
+
+    # ──────────────────────────────────────────────────
+    # 编辑操作（US-031/032/033/034）
+    # ──────────────────────────────────────────────────
+
+    async def _get_current_draft(self, digest_date: date) -> DailyDigest:
+        """获取当日 is_current=true 的草稿，校验 status=draft。"""
+        stmt = select(DailyDigest).where(
+            DailyDigest.digest_date == digest_date,
+            DailyDigest.is_current.is_(True),
+        )
+        result = await self._db.execute(stmt)
+        digest = result.scalar_one_or_none()
+        if digest is None:
+            raise DigestNotFoundError
+        if digest.status != "draft":
+            raise DigestNotEditableError
+        return digest
+
+    async def _find_item(self, digest_id: int, item_type: str, item_ref_id: int) -> DigestItem:
+        """通过 (digest_id, item_type, item_ref_id) 定位 digest_item。"""
+        stmt = select(DigestItem).where(
+            DigestItem.digest_id == digest_id,
+            DigestItem.item_type == item_type,
+            DigestItem.item_ref_id == item_ref_id,
+        )
+        result = await self._db.execute(stmt)
+        item = result.scalar_one_or_none()
+        if item is None:
+            raise DigestItemNotFoundError
+        return item
+
+    async def _rerender_markdown(self, digest: DailyDigest) -> None:
+        """重新查询 items → 调用 render_markdown → 写回 content_markdown。"""
+        items_stmt = (
+            select(DigestItem)
+            .where(DigestItem.digest_id == digest.id)
+            .order_by(DigestItem.display_order)
+        )
+        items_result = await self._db.execute(items_stmt)
+        items = list(items_result.scalars().all())
+        top_n = int(await get_system_config(self._db, "top_n", "10"))
+        digest.content_markdown = render_markdown(digest, items, top_n)
+
+    async def edit_item(
+        self,
+        item_type: str,
+        item_ref_id: int,
+        updates: dict[str, str],
+        digest_date: date | None = None,
+    ) -> DigestItem:
+        """编辑单条内容的 snapshot 字段（US-031）。"""
+        if digest_date is None:
+            digest_date = get_today_digest_date()
+
+        digest = await self._get_current_draft(digest_date)
+        item = await self._find_item(digest.id, item_type, item_ref_id)
+
+        # 字段映射：请求字段 → snapshot 字段
+        field_map = {
+            "title": "snapshot_title",
+            "translation": "snapshot_translation",
+            "summary": "snapshot_summary",
+            "perspectives": "snapshot_perspectives",
+            "comment": "snapshot_comment",
+        }
+        for req_field, snap_field in field_map.items():
+            value = updates.get(req_field)
+            if value is not None:
+                setattr(item, snap_field, value)
+
+        await self._rerender_markdown(digest)
+        await self._db.flush()
+        return item
+
+    async def edit_summary(
+        self,
+        summary: str,
+        digest_date: date | None = None,
+    ) -> None:
+        """编辑导读摘要并重渲染 Markdown（US-032）。"""
+        if digest_date is None:
+            digest_date = get_today_digest_date()
+
+        digest = await self._get_current_draft(digest_date)
+        digest.summary = summary
+        await self._rerender_markdown(digest)
+        await self._db.flush()
+
+    async def reorder_items(
+        self,
+        items_input: list[dict[str, object]],
+        digest_date: date | None = None,
+    ) -> None:
+        """调整排序与置顶（US-033）。"""
+        if digest_date is None:
+            digest_date = get_today_digest_date()
+
+        digest = await self._get_current_draft(digest_date)
+
+        for entry in items_input:
+            item_id = entry["id"]
+            stmt = select(DigestItem).where(
+                DigestItem.id == item_id,
+                DigestItem.digest_id == digest.id,
+            )
+            result = await self._db.execute(stmt)
+            item = result.scalar_one_or_none()
+            if item is None:
+                raise DigestItemNotFoundError
+            item.display_order = entry["display_order"]  # type: ignore[assignment]
+            item.is_pinned = entry.get("is_pinned", False)  # type: ignore[assignment]
+
+        await self._rerender_markdown(digest)
+        await self._db.flush()
+
+    async def exclude_item(
+        self,
+        item_type: str,
+        item_ref_id: int,
+        digest_date: date | None = None,
+    ) -> None:
+        """剔除条目（US-034）。"""
+        if digest_date is None:
+            digest_date = get_today_digest_date()
+
+        digest = await self._get_current_draft(digest_date)
+        item = await self._find_item(digest.id, item_type, item_ref_id)
+        item.is_excluded = True
+        await self._rerender_markdown(digest)
+        await self._db.flush()
+
+    async def restore_item(
+        self,
+        item_type: str,
+        item_ref_id: int,
+        digest_date: date | None = None,
+    ) -> None:
+        """恢复条目（US-034）。"""
+        if digest_date is None:
+            digest_date = get_today_digest_date()
+
+        digest = await self._get_current_draft(digest_date)
+        item = await self._find_item(digest.id, item_type, item_ref_id)
+        item.is_excluded = False
+
+        # display_order = max(非 excluded 条目) + 1
+        max_order_stmt = select(func.max(DigestItem.display_order)).where(
+            DigestItem.digest_id == digest.id,
+            DigestItem.is_excluded.is_(False),
+            DigestItem.id != item.id,
+        )
+        max_result = await self._db.execute(max_order_stmt)
+        max_order = max_result.scalar_one_or_none() or 0
+        item.display_order = max_order + 1
+
+        await self._rerender_markdown(digest)
+        await self._db.flush()
+
+
+class DigestNotFoundError(Exception):
+    """当日无 is_current=true 的草稿。"""
+
+
+class DigestNotEditableError(Exception):
+    """草稿状态非 draft，不可编辑。"""
+
+
+class DigestItemNotFoundError(Exception):
+    """指定的 digest_item 不存在。"""
