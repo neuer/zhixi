@@ -170,6 +170,38 @@ export type EditSummaryRequest = {
     summary: string;
 };
 
+/**
+ * 历史详情响应（完整信息 + items 快照）。
+ */
+export type HistoryDetailResponse = {
+    digest: DigestBriefResponse;
+    items: Array<DigestItemResponse>;
+};
+
+/**
+ * 历史列表条目（每日期一条）。
+ */
+export type HistoryListItem = {
+    id: number;
+    digest_date: string;
+    version: number;
+    status: string;
+    summary: (string | null);
+    item_count: number;
+    published_at: (string | null);
+    created_at: string;
+};
+
+/**
+ * 历史列表分页响应。
+ */
+export type HistoryListResponse = {
+    items: Array<HistoryListItem>;
+    total: number;
+    page: number;
+    page_size: number;
+};
+
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
 };
@@ -211,6 +243,15 @@ export type PipelineStatus = {
     status?: (string | null);
     started_at?: (string | null);
     error_message?: (string | null);
+};
+
+/**
+ * 预览响应（digest + items + Markdown）。
+ */
+export type PreviewResponse = {
+    digest: DigestBriefResponse;
+    items: Array<DigestItemResponse>;
+    content_markdown: string;
 };
 
 /**
