@@ -139,3 +139,43 @@ uv run pytest tests/test_regenerate_service.py tests/test_regenerate_api.py test
 uv run pytest
 uv run ruff check . && uv run ruff format --check . && uv run pyright
 ```
+
+---
+
+## 执行结果
+
+### 交付物清单
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `app/services/digest_service.py` | 修改 | +73 |
+| `app/api/digest.py` | 修改 | +132 |
+| `app/schemas/digest_types.py` | 修改 | +6 |
+| `docs/spec/user-stories.md` | 修改 | +2 |
+| `tests/test_regenerate_service.py` | 新增 | 370 |
+| `tests/test_regenerate_api.py` | 新增 | 161 |
+| `tests/test_publish_api.py` | 新增 | 143 |
+| `docs/plans/us-035-036-regenerate-manual-publish.md` | 新增 | — |
+
+### 偏离项
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | deps.py 中新增工厂函数 | 路由中直接构造 DigestService | 与 manual_fetch 模式一致，无需额外工厂 |
+| 2 | RegenerateResponse schema | 未创建，用 dict 返回 | regenerate 路由 response_model=None（需 JSONResponse 分支），独立 schema 无实际用途 |
+| 3 | test_publish_api 7 个用例 | 8 个用例 | 增加了 GET /markdown 401 测试 |
+
+### 问题与修复
+| 问题 | 解决 |
+|------|------|
+| test_publish_api 中 `db.refresh()` 读回旧状态 | 改用 `select()` 查询触发 autoflush 获取最新状态 |
+
+### 质量门禁
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ 0 errors |
+| ruff format | ✅ 0 reformatted |
+| lint-imports | ✅ 0 broken |
+| pyright | ✅ 0 errors |
+| pytest | ✅ 393 passed |
+
+### PR 链接
+https://github.com/neuer/zhixi/pull/20
