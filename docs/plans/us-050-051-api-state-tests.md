@@ -120,3 +120,40 @@ tests/test_state_transition.py
 - `tests/test_digest_edit_api.py` — 数据预置模式
 - `tests/test_publish_api.py` — mark-published 测试模式
 - `app/api/digest.py` — 全部 digest 路由实现
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `tests/test_api.py` | 新增 | ~400 |
+| `tests/test_state_transition.py` | 新增 | ~580 |
+| `docs/spec/user-stories.md` | 修改 | 2 |
+| `docs/plans/us-050-051-api-state-tests.md` | 新增 | ~160 |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 无 | — | — | 完全按计划执行 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| main 上有 12 个预存测试失败（test_digest_edit_api.py + test_lock_service.py） | 确认为预存问题，本轮不引入新失败 |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 125 files already formatted |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest (新增) | ✅ 55/55 passed (test_api: 34, test_state_transition: 21) |
+| pytest (全量) | ✅ 436 passed, 12 pre-existing failures |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/21
