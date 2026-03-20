@@ -231,6 +231,11 @@ async def test_generate_daily_digest_mixed(db: AsyncSession) -> None:
     assert ("tweet", tw_th1.id) not in item_types_refs
     assert ("tweet", tw_th2.id) not in item_types_refs
 
+    # 验证 content_markdown 已渲染（US-025 集成）
+    assert digest.content_markdown is not None
+    assert "智曦" in digest.content_markdown
+    assert "GPT-5 发布" in digest.content_markdown
+
 
 @pytest.mark.asyncio
 async def test_tweet_snapshot_mapping(db: AsyncSession) -> None:
