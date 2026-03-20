@@ -203,7 +203,7 @@ async def get_current_admin(
 pytest tests/test_setup.py tests/test_auth.py -v
 
 # 2. 质量门禁
-ruff check app/auth.py app/api/setup.py app/api/auth.py app/api/deps.py app/schemas/auth_types.py
+ruff check .
 ruff format --check .
 pyright
 uv run lint-imports
@@ -211,3 +211,52 @@ uv run lint-imports
 # 3. 全量测试确认无回归
 pytest
 ```
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 类型 | 说明 |
+|------|------|------|
+| `app/auth.py` | 修改 | 核心认证模块：bcrypt 密码哈希/验证、密码强度校验、JWT HS256 创建/验证、登录限流器（内存实现） |
+| `app/schemas/auth_types.py` | 新增 | SetupStatusResponse, SetupInitRequest, LoginRequest, LoginResponse |
+| `app/api/setup.py` | 修改 | GET /status + POST /init 设置向导路由 |
+| `app/api/auth.py` | 修改 | POST /login + POST /logout 认证路由 |
+| `app/api/deps.py` | 修改 | 新增 `get_current_admin` JWT 依赖函数 |
+| `app/api/accounts.py` | 修改 | 4 个端点添加 `Depends(get_current_admin)` |
+| `tests/test_setup.py` | 新增 | 10 个设置向导 API 测试 |
+| `tests/test_auth.py` | 新增 | 26 个认证测试（密码单元 + JWT 单元 + 限流单元 + API 集成） |
+| `tests/conftest.py` | 修改 | 新增 `auth_headers` + `authed_client` fixture |
+| `tests/test_accounts.py` | 修改 | 改用 `authed_client` fixture 适配 JWT 保护 |
+| `tests/test_logging.py` | 修改 | request_id 中间件测试改用 conftest 的 `client` fixture |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 无 | — | — | 完全按计划执行 |
+
+### 问题与修复
+
+| 问题 | 修复 |
+|------|------|
+| `_login_attempts` 模块级变量误用 `field(default_factory=dict)` | 改为直接赋值 `{}` |
+| `test_accounts.py` 全部因缺 JWT 失败（12 个） | 新增 `authed_client` fixture，全部改用 |
+| `test_logging.py` request_id 测试因自行管理 client 无 DB 注入而失败 | 改用 conftest 的 `client` fixture + `/api/auth/logout` 端点 |
+| pyright 报 fixture 返回类型错误 | `_clean_rate_limiter` 移除返回类型注解 |
+
+### 质量门禁
+
+| 检查项 | 结果 |
+|--------|------|
+| `ruff check .` | ✅ 通过 |
+| `ruff format --check .` | ✅ 通过 |
+| `pyright` | ✅ 0 errors |
+| `lint-imports` | ✅ 4 contracts kept |
+| `pytest` | ✅ 267 passed |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/11
