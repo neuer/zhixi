@@ -151,6 +151,44 @@ generate_daily_digest(digest_date)
 
 ---
 
-## 执行结果（实施后回填）
+## 执行结果
 
-> 待实施完成后补充
+### 交付物清单
+
+| 文件 | 类型 | 说明 |
+|------|------|------|
+| `app/digest/summary_prompts.py` | 新建 | R.1.6 导读摘要 Prompt 模板 + DEFAULT_SUMMARY 降级文案 |
+| `app/digest/summary_generator.py` | 新建 | generate_summary() 异步函数，调用 Claude API，失败降级 |
+| `app/services/digest_service.py` | 重写 | DigestService 类，完整草稿组装流程 |
+| `app/api/deps.py` | 修改 | 新增 get_digest_service DI 工厂 |
+| `tests/test_summary_generator.py` | 新建 | 4 个测试（正常/格式/降级/空列表） |
+| `tests/test_digest_service.py` | 新建 | 8 个测试（混合场景 + snapshot 映射 + 边界条件） |
+| `docs/spec/user-stories.md` | 修改 | US-023/024 状态更新为 ✅ |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 无 | - | - | 完全按计划执行，无偏离 |
+
+### 问题与修复
+
+| 问题 | 修复方式 |
+|------|----------|
+| SQLite 读回 datetime 丢失 tzinfo（经典问题） | 测试断言使用 `.replace(tzinfo=None)` 比较 |
+| pyright: snapshot_tweet_time 可能为 None | 添加 `assert is not None` 前置检查 |
+| pyright: snapshot_source_tweets 可能为 None | 添加 `assert is not None` 前置检查 |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format --check | ✅ 105 files already formatted |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 279 passed（含 12 个新增） |
+| pre-commit hook | ✅ 通过 |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/13
