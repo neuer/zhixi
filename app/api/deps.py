@@ -7,6 +7,7 @@ from app.auth import InvalidTokenError, verify_jwt
 from app.clients.claude_client import get_claude_client
 from app.database import get_db
 from app.services.account_service import AccountService
+from app.services.digest_service import DigestService
 from app.services.fetch_service import FetchService
 from app.services.process_service import ProcessService
 
@@ -44,3 +45,10 @@ async def get_process_service(
 ) -> ProcessService:
     """构造 ProcessService 并注入 DB Session + ClaudeClient。"""
     return ProcessService(db, claude_client=get_claude_client())
+
+
+async def get_digest_service(
+    db: AsyncSession = Depends(get_db),
+) -> DigestService:
+    """构造 DigestService 并注入 DB Session + ClaudeClient。"""
+    return DigestService(db, claude_client=get_claude_client())
