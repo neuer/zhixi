@@ -191,6 +191,13 @@ export type LoginResponse = {
 };
 
 /**
+ * Markdown 内容响应（供一键复制）。
+ */
+export type MarkdownResponse = {
+    content_markdown: string;
+};
+
+/**
  * 通用消息响应。
  */
 export type MessageResponse = {
