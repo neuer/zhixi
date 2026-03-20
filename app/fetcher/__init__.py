@@ -5,9 +5,9 @@ from app.fetcher.x_api import XApiFetcher
 
 
 def get_fetcher(bearer_token: str) -> BaseFetcher:
-    """工厂函数：根据配置返回合适的数据抓取器。
+    """工厂函数：返回数据抓取器实例。
 
-    当前默认返回 XApiFetcher。Phase 2 可根据环境变量切换为 ThirdPartyFetcher。
+    当前默认返回 XApiFetcher。如需切换实现可在此处添加分支。
 
     Args:
         bearer_token: X API Bearer Token

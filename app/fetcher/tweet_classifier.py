@@ -19,7 +19,7 @@ def classify_tweet(raw_tweet: RawTweet) -> TweetType:
     - referenced_tweets[0].type == "replied_to" 且
       ref.author_id != raw_tweet.author_id           → REPLY
 
-    注意：此函数只负责分类，过滤逻辑（KEEP_TYPES）由 US-013 实现。
+    注意：此函数只负责分类，过滤逻辑（KEEP_TYPES）在 FetchService 层实现。
     """
     if not raw_tweet.referenced_tweets:
         return TweetType.ORIGINAL
