@@ -1,5 +1,6 @@
 """FastAPI 应用入口 — 路由注册、中间件、SPA 静态文件。"""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -59,12 +60,16 @@ app.include_router(history_router, prefix="/api/history", tags=["历史记录"])
 
 
 # 全局异常处理器
+logger = logging.getLogger(__name__)
+
+
 @app.exception_handler(XApiError)
-async def handle_x_api_error(_request: Request, _exc: XApiError) -> JSONResponse:
+async def handle_x_api_error(_request: Request, exc: XApiError) -> JSONResponse:
     """X API 调用失败 → 502 + allow_manual 标记。"""
+    logger.error("X API 调用失败: %s", exc, exc_info=True)
     return JSONResponse(
         status_code=502,
-        content={"detail": "X API拉取失败", "allow_manual": True},
+        content={"detail": f"X API拉取失败: {exc}", "allow_manual": True},
     )
 
 
@@ -75,8 +80,9 @@ if ADMIN_DIST.exists():
 
     @app.get("/{path:path}")
     async def spa_fallback(path: str) -> FileResponse:
-        """SPA 回退 — 所有非 API 请求返回 index.html。"""
+        """SPA 回退 — 所有非 API 请求返回 index.html，含路径遍历防护。"""
         file_path = ADMIN_DIST / path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
+        resolved = file_path.resolve()
+        if resolved.is_relative_to(ADMIN_DIST.resolve()) and resolved.is_file():
+            return FileResponse(resolved)
         return FileResponse(ADMIN_DIST / "index.html")

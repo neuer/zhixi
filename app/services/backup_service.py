@@ -1,5 +1,6 @@
 """backup_service — SQLite 备份与清理编排层。"""
 
+import logging
 import sqlite3
 import time
 from datetime import UTC, datetime
@@ -9,6 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job_run import JobRun
+
+logger = logging.getLogger(__name__)
 
 # 保留天数
 RETENTION_DAYS = 30
@@ -60,14 +63,14 @@ class BackupService:
         Path(backup_dir).mkdir(parents=True, exist_ok=True)
         backup_path = str(Path(backup_dir) / backup_filename)
 
+        source_conn: sqlite3.Connection | None = None
+        target_conn: sqlite3.Connection | None = None
         try:
             # 2. 执行在线备份（sqlite3 阻塞调用，MVP CLI 场景可接受）
             source_conn = sqlite3.connect(db_path)
             target_conn = sqlite3.connect(backup_path)
             with source_conn, target_conn:
                 source_conn.backup(target_conn)
-            target_conn.close()
-            source_conn.close()
 
             # 3. 成功
             job.status = "completed"
@@ -76,6 +79,7 @@ class BackupService:
 
         except Exception as exc:
             # 3. 失败
+            logger.error("数据库备份失败: %s", exc, exc_info=True)
             error_msg = str(exc)
             job.status = "failed"
             job.error_message = error_msg
@@ -84,9 +88,18 @@ class BackupService:
             try:
                 if Path(backup_path).exists():
                     Path(backup_path).unlink()
-            except OSError:
-                pass
+            except OSError as cleanup_err:
+                logger.warning(
+                    "备份失败后清理残留文件也失败: path=%s, error=%s",
+                    backup_path,
+                    cleanup_err,
+                )
             return BackupResult(success=False, error=error_msg)
+        finally:
+            if target_conn:
+                target_conn.close()
+            if source_conn:
+                source_conn.close()
 
     async def run_cleanup(
         self,
@@ -112,8 +125,8 @@ class BackupService:
                     if mtime < cutoff:
                         file_path.unlink()
                         removed += 1
-                except OSError:
-                    # 删除失败时跳过，不影响其他文件
+                except OSError as e:
+                    logger.warning("清理过期文件失败: path=%s, error=%s", file_path, e)
                     continue
 
         return removed

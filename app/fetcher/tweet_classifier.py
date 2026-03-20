@@ -1,6 +1,10 @@
 """推文分类器（US-012 实现）。"""
 
+import logging
+
 from app.schemas.fetcher_types import RawTweet, TweetType
+
+logger = logging.getLogger(__name__)
 
 
 def classify_tweet(raw_tweet: RawTweet) -> TweetType:
@@ -34,4 +38,5 @@ def classify_tweet(raw_tweet: RawTweet) -> TweetType:
         return TweetType.REPLY
 
     # 未知引用类型按原创处理
+    logger.warning("未知推文引用类型: %s，按原创处理", ref.type)
     return TweetType.ORIGINAL

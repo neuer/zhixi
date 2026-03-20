@@ -40,21 +40,28 @@ async def lookup_user(bearer_token: str, handle: str) -> XUserProfile:
         try:
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()
+            payload = response.json()
         except httpx.HTTPError as exc:
             logger.warning("X API 用户查询失败: handle=%s, error=%s", handle, exc)
             raise XApiError(f"X API 查询失败: {exc}") from exc
+        except ValueError as exc:
+            logger.warning("X API 返回非 JSON 响应: handle=%s, error=%s", handle, exc)
+            raise XApiError("X API 查询失败: 响应非 JSON") from exc
 
-    payload = response.json()
     data = payload.get("data")
     if not data:
         logger.warning("X API 返回空数据: handle=%s, payload=%s", handle, payload)
         raise XApiError(f"X API 未找到用户: {handle}")
 
-    metrics = data.get("public_metrics", {})
-    return XUserProfile(
-        twitter_user_id=data["id"],
-        display_name=data["name"],
-        bio=data.get("description"),
-        avatar_url=data.get("profile_image_url"),
-        followers_count=metrics.get("followers_count", 0),
-    )
+    try:
+        metrics = data.get("public_metrics", {})
+        return XUserProfile(
+            twitter_user_id=data["id"],
+            display_name=data["name"],
+            bio=data.get("description"),
+            avatar_url=data.get("profile_image_url"),
+            followers_count=metrics.get("followers_count", 0),
+        )
+    except KeyError as exc:
+        logger.warning("X API 用户数据字段缺失: handle=%s, field=%s", handle, exc)
+        raise XApiError(f"X API 查询失败: 用户数据字段缺失 {exc}") from exc
