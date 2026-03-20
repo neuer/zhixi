@@ -231,6 +231,7 @@ async def test_unlock_sets_finished_at(db: AsyncSession) -> None:
 # ── require_no_pipeline_lock 增强锁依赖 ──────────────────────
 
 
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_require_no_pipeline_lock_raises_409(db: AsyncSession) -> None:
     """当日有 pipeline running → HTTPException(409)。"""
     from app.api.deps import require_no_pipeline_lock

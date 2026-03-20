@@ -2,9 +2,9 @@
 
 import json
 from datetime import UTC, date, datetime
-from unittest.mock import patch
 
 import pytest
+from freezegun import freeze_time
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -217,9 +217,8 @@ async def _seed_draft_with_multiple_items(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_edit_tweet_item(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -246,9 +245,8 @@ async def test_edit_tweet_item(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_edit_aggregated_topic_item(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -279,9 +277,8 @@ async def test_edit_aggregated_topic_item(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_edit_thread_topic_item(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -302,9 +299,8 @@ async def test_edit_thread_topic_item(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_edit_item_partial_update(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -325,9 +321,8 @@ async def test_edit_item_partial_update(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_edit_item_not_found_404(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -343,9 +338,8 @@ async def test_edit_item_not_found_404(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_edit_item_published_409(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -372,9 +366,8 @@ async def test_edit_item_requires_auth_401(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_edit_summary(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -396,9 +389,8 @@ async def test_edit_summary(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_edit_summary_published_409(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -417,9 +409,8 @@ async def test_edit_summary_published_409(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_reorder_items(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -450,9 +441,8 @@ async def test_reorder_items(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_reorder_rerenders_markdown(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -475,9 +465,8 @@ async def test_reorder_rerenders_markdown(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_reorder_invalid_item_404(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -496,9 +485,8 @@ async def test_reorder_invalid_item_404(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_exclude_item(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
@@ -519,9 +507,8 @@ async def test_exclude_item(
 
 
 @pytest.mark.asyncio
-@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+@freeze_time("2026-03-20 08:00:00+08:00")
 async def test_restore_item(
-    _mock_date: object,
     authed_client: AsyncClient,
     db: AsyncSession,
 ) -> None:
