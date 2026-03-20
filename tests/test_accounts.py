@@ -41,9 +41,9 @@ async def _seed_account(db: AsyncSession, **overrides: object) -> TwitterAccount
 # ──────────────────── GET /api/accounts ────────────────────
 
 
-async def test_list_accounts_empty(client: AsyncClient) -> None:
+async def test_list_accounts_empty(authed_client: AsyncClient) -> None:
     """空列表返回 items=[], total=0。"""
-    resp = await client.get("/api/accounts")
+    resp = await authed_client.get("/api/accounts")
     assert resp.status_code == 200
     body = resp.json()
     assert body["items"] == []
@@ -51,7 +51,7 @@ async def test_list_accounts_empty(client: AsyncClient) -> None:
     assert body["page"] == 1
 
 
-async def test_list_accounts_with_data(client: AsyncClient, db: AsyncSession) -> None:
+async def test_list_accounts_with_data(authed_client: AsyncClient, db: AsyncSession) -> None:
     """有数据时正确返回分页列表。"""
     await _seed_account(db, twitter_handle="user1", display_name="User 1")
     await _seed_account(db, twitter_handle="user2", display_name="User 2")
@@ -59,7 +59,7 @@ async def test_list_accounts_with_data(client: AsyncClient, db: AsyncSession) ->
     await db.commit()
 
     # 第一页，page_size=2
-    resp = await client.get("/api/accounts?page=1&page_size=2")
+    resp = await authed_client.get("/api/accounts?page=1&page_size=2")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["items"]) == 2
@@ -68,18 +68,20 @@ async def test_list_accounts_with_data(client: AsyncClient, db: AsyncSession) ->
     assert body["page_size"] == 2
 
     # 第二页
-    resp2 = await client.get("/api/accounts?page=2&page_size=2")
+    resp2 = await authed_client.get("/api/accounts?page=2&page_size=2")
     body2 = resp2.json()
     assert len(body2["items"]) == 1
 
 
-async def test_list_accounts_excludes_inactive(client: AsyncClient, db: AsyncSession) -> None:
+async def test_list_accounts_excludes_inactive(
+    authed_client: AsyncClient, db: AsyncSession
+) -> None:
     """默认不返回 inactive 账号。"""
     await _seed_account(db, twitter_handle="active", display_name="Active", is_active=True)
     await _seed_account(db, twitter_handle="inactive", display_name="Inactive", is_active=False)
     await db.commit()
 
-    resp = await client.get("/api/accounts")
+    resp = await authed_client.get("/api/accounts")
     body = resp.json()
     assert body["total"] == 1
     assert body["items"][0]["twitter_handle"] == "active"
@@ -89,13 +91,13 @@ async def test_list_accounts_excludes_inactive(client: AsyncClient, db: AsyncSes
 
 
 @respx.mock
-async def test_create_account_auto_fetch(client: AsyncClient) -> None:
+async def test_create_account_auto_fetch(authed_client: AsyncClient) -> None:
     """X API 拉取成功 → 201 + 完整用户信息。"""
     respx.get("https://api.x.com/2/users/by/username/karpathy").mock(
         return_value=Response(200, json=X_API_USER_RESPONSE)
     )
 
-    resp = await client.post(
+    resp = await authed_client.post(
         "/api/accounts",
         json={"twitter_handle": "karpathy", "weight": 1.3},
     )
@@ -109,9 +111,9 @@ async def test_create_account_auto_fetch(client: AsyncClient) -> None:
     assert body["is_active"] is True
 
 
-async def test_create_account_manual_mode(client: AsyncClient) -> None:
+async def test_create_account_manual_mode(authed_client: AsyncClient) -> None:
     """提供 display_name 时跳过 X API，手动模式创建。"""
-    resp = await client.post(
+    resp = await authed_client.post(
         "/api/accounts",
         json={
             "twitter_handle": "manualuser",
@@ -130,13 +132,13 @@ async def test_create_account_manual_mode(client: AsyncClient) -> None:
 
 
 @respx.mock
-async def test_create_account_x_api_failure(client: AsyncClient) -> None:
+async def test_create_account_x_api_failure(authed_client: AsyncClient) -> None:
     """X API 失败 → 502 + allow_manual 标记。"""
     respx.get("https://api.x.com/2/users/by/username/baduser").mock(
         return_value=Response(403, json={"errors": [{"message": "Forbidden"}]})
     )
 
-    resp = await client.post(
+    resp = await authed_client.post(
         "/api/accounts",
         json={"twitter_handle": "baduser"},
     )
@@ -146,12 +148,12 @@ async def test_create_account_x_api_failure(client: AsyncClient) -> None:
     assert body["allow_manual"] is True
 
 
-async def test_create_account_duplicate(client: AsyncClient, db: AsyncSession) -> None:
+async def test_create_account_duplicate(authed_client: AsyncClient, db: AsyncSession) -> None:
     """重复 handle → 409。"""
     await _seed_account(db, twitter_handle="duplicate", display_name="Dup")
     await db.commit()
 
-    resp = await client.post(
+    resp = await authed_client.post(
         "/api/accounts",
         json={"twitter_handle": "duplicate", "display_name": "Another"},
     )
@@ -159,9 +161,9 @@ async def test_create_account_duplicate(client: AsyncClient, db: AsyncSession) -
     assert resp.json()["detail"] == "该账号已存在"
 
 
-async def test_create_account_strip_at(client: AsyncClient) -> None:
+async def test_create_account_strip_at(authed_client: AsyncClient) -> None:
     """自动去除 @ 前缀。"""
-    resp = await client.post(
+    resp = await authed_client.post(
         "/api/accounts",
         json={"twitter_handle": "@atuser", "display_name": "At User"},
     )
@@ -172,12 +174,12 @@ async def test_create_account_strip_at(client: AsyncClient) -> None:
 # ──────────────────── PUT /api/accounts/{id} ────────────────────
 
 
-async def test_update_account_weight(client: AsyncClient, db: AsyncSession) -> None:
+async def test_update_account_weight(authed_client: AsyncClient, db: AsyncSession) -> None:
     """更新权重成功。"""
     account = await _seed_account(db, twitter_handle="upd", display_name="Upd")
     await db.commit()
 
-    resp = await client.put(
+    resp = await authed_client.put(
         f"/api/accounts/{account.id}",
         json={"weight": 3.5},
     )
@@ -185,9 +187,9 @@ async def test_update_account_weight(client: AsyncClient, db: AsyncSession) -> N
     assert resp.json()["weight"] == 3.5
 
 
-async def test_update_account_not_found(client: AsyncClient) -> None:
+async def test_update_account_not_found(authed_client: AsyncClient) -> None:
     """不存在的 ID → 404。"""
-    resp = await client.put("/api/accounts/9999", json={"weight": 1.0})
+    resp = await authed_client.put("/api/accounts/9999", json={"weight": 1.0})
     assert resp.status_code == 404
     assert resp.json()["detail"] == "账号不存在"
 
@@ -195,22 +197,22 @@ async def test_update_account_not_found(client: AsyncClient) -> None:
 # ──────────────────── DELETE /api/accounts/{id} ────────────────────
 
 
-async def test_delete_account_soft(client: AsyncClient, db: AsyncSession) -> None:
+async def test_delete_account_soft(authed_client: AsyncClient, db: AsyncSession) -> None:
     """软删除：is_active 变为 false。"""
     account = await _seed_account(db, twitter_handle="del", display_name="Del")
     await db.commit()
 
-    resp = await client.delete(f"/api/accounts/{account.id}")
+    resp = await authed_client.delete(f"/api/accounts/{account.id}")
     assert resp.status_code == 200
     assert resp.json()["message"] == "账号已删除"
 
     # 验证列表不再包含
-    list_resp = await client.get("/api/accounts")
+    list_resp = await authed_client.get("/api/accounts")
     assert list_resp.json()["total"] == 0
 
 
-async def test_delete_account_not_found(client: AsyncClient) -> None:
+async def test_delete_account_not_found(authed_client: AsyncClient) -> None:
     """不存在的 ID → 404。"""
-    resp = await client.delete("/api/accounts/9999")
+    resp = await authed_client.delete("/api/accounts/9999")
     assert resp.status_code == 404
     assert resp.json()["detail"] == "账号不存在"

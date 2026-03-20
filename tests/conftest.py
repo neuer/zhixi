@@ -2,10 +2,12 @@
 
 from collections.abc import AsyncGenerator
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.auth import create_jwt
 from app.database import Base, get_db
 from app.main import app
 
@@ -40,6 +42,29 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def auth_headers() -> dict[str, str]:
+    """JWT 认证 header — 用于需要登录的 API 测试。"""
+    token, _ = create_jwt("admin")
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def authed_client(
+    db: AsyncSession, auth_headers: dict[str, str]
+) -> AsyncGenerator[AsyncClient, None]:
+    """带 JWT 认证的 HTTP 客户端。"""
+
+    async def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test", headers=auth_headers) as c:
         yield c
     app.dependency_overrides.clear()
 
