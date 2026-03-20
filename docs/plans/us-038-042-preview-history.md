@@ -188,3 +188,48 @@ cd admin && bunx biome check . && bunx vue-tsc --noEmit
 3. **History 窗口函数**：SQLite 支持 ROW_NUMBER()，避免 N+1 查询
 4. **ArticlePreview 组件复用**：Preview.vue 和 HistoryDetail.vue 共用，减少重复
 5. **Preview.vue 白名单处理**：/preview 在路由白名单中（为 US-009 预留），US-038 通过检查 localStorage JWT 实现登录态访问
+
+---
+
+## 执行结果
+
+### 交付物清单
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `app/schemas/digest_types.py` | 修改 | +45 |
+| `app/api/digest.py` | 修改 | +35 |
+| `app/api/history.py` | 重写 | +105 |
+| `tests/test_preview_api.py` | 新建 | +152 |
+| `tests/test_history_api.py` | 新建 | +245 |
+| `admin/src/components/ArticlePreview.vue` | 新建 | +275 |
+| `admin/src/views/Preview.vue` | 重写 | +92 |
+| `admin/src/views/History.vue` | 重写 | +117 |
+| `admin/src/views/HistoryDetail.vue` | 重写 | +70 |
+| `packages/openapi-client/src/gen/types.gen.ts` | 重生成 | 自动 |
+| `docs/spec/user-stories.md` | 修改 | +2 |
+
+### 偏离项
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | 仅修改本轮文件 | 额外修复 Settings.vue TS 错误 | biome 之前把 dayOptions/timeColumns 重命名为 _dayOptions/_timeColumns，模板引用断裂导致 vue-tsc 报错，需恢复原名才能通过 build |
+
+### 问题与修复
+| 问题 | 解决 |
+|------|------|
+| biome 误删 Vue 组件 import | biome 不识别 Vue template 中的组件引用，`--fix` 会移除。手动恢复 import 后不再用 `--fix --unsafe` 处理这些 |
+| Settings.vue 预存 TS 错误 | biome 在之前轮次把变量名加了 `_` 前缀，但模板仍引用原名。恢复为不带下划线的变量名 |
+
+### 质量门禁
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ 通过 |
+| ruff format | ✅ 通过 |
+| lint-imports | ✅ 4 kept, 0 broken |
+| pyright | ✅ 0 errors |
+| pytest | ✅ 460 passed（+12 新测试） |
+| biome check | ✅ 0 errors（warnings 为 Vue template 引用误报） |
+| vue-tsc | ✅ 0 errors |
+| bun run build | ✅ 通过 |
+
+### PR 链接
+https://github.com/neuer/zhixi/pull/22
