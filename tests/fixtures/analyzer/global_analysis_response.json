@@ -1,0 +1,26 @@
+{
+  "filtered_ids": ["tweet_filtered_1"],
+  "filtered_count": 1,
+  "topics": [
+    {
+      "type": "aggregated",
+      "topic_label": "GPT-5 发布",
+      "ai_importance_score": 90,
+      "tweet_ids": ["tweet_agg_1", "tweet_agg_2"],
+      "reason": "多位大V讨论同一事件"
+    },
+    {
+      "type": "single",
+      "ai_importance_score": 70,
+      "tweet_ids": ["tweet_single_1"],
+      "reason": null
+    },
+    {
+      "type": "thread",
+      "ai_importance_score": 80,
+      "tweet_ids": ["tweet_thread_1", "tweet_thread_2"],
+      "merged_text": "This is a thread about AI safety. Part 1: concerns. Part 2: solutions.",
+      "reason": "同一作者连续自回复Thread"
+    }
+  ]
+}
