@@ -293,3 +293,47 @@ pytest
 # 4. 质量门禁
 ruff check . && ruff format --check . && pyright
 ```
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `app/digest/renderer.py` | 改写 | ~160 行 |
+| `app/api/digest.py` | 改写 | ~60 行 |
+| `app/schemas/digest_types.py` | 修改 | +55 行 |
+| `app/services/digest_service.py` | 修改 | +5 行 |
+| `tests/test_markdown_renderer.py` | 新建 | ~370 行，20 个测试 |
+| `tests/test_digest_api.py` | 新建 | ~170 行，5 个测试 |
+| `tests/test_digest_service.py` | 修改 | +4 行 |
+| `docs/spec/user-stories.md` | 修改 | US-025/030/052 → ✅ |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 无 | — | — | 完全按计划执行 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| `round(85.5)` = 86（Python 银行家舍入） | 修正测试断言为 85.0 → 🔥85 |
+| ruff E741 变量名 `l` 不规范 | 改为 `line` |
+| ruff I001 import 排序 | `ruff check --fix` 自动修复 |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 107 files already formatted |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 304 passed |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/14
