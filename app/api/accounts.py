@@ -9,6 +9,7 @@ from app.schemas.account_types import (
     AccountResponse,
     AccountUpdate,
 )
+from app.schemas.digest_types import MessageResponse
 from app.services.account_service import AccountDuplicateError, AccountNotFoundError, AccountService
 
 # TODO: US-008 添加 Depends(get_current_admin)
@@ -57,14 +58,14 @@ async def update_account(
     return AccountResponse.model_validate(account)
 
 
-@router.delete("/{account_id}")
+@router.delete("/{account_id}", response_model=MessageResponse)
 async def delete_account(
     account_id: int,
     svc: AccountService = Depends(get_account_service),
-) -> dict[str, str]:
+) -> MessageResponse:
     """软删除账号（设 is_active=false）。"""
     try:
         await svc.delete_account(account_id)
     except AccountNotFoundError:
         raise HTTPException(status_code=404, detail="账号不存在") from None
-    return {"message": "账号已删除"}
+    return MessageResponse(message="账号已删除")

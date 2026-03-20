@@ -1,15 +1,11 @@
 """日报条目模型 — 快照式存储。"""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
-
-
-def _utcnow() -> datetime:
-    return datetime.now(UTC)
+from app.database import Base, _utcnow
 
 
 class DigestItem(Base):
