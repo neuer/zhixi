@@ -145,3 +145,26 @@ def test_classify_reply_with_extra_refs():
     ref1 = ReferencedTweet(type="quoted", id="701", author_id="user_a")
     tweet = _make_tweet(author_id="user_a", referenced_tweets=[ref0, ref1])
     assert classify_tweet(tweet) == TweetType.REPLY
+
+
+# ---------------------------------------------------------------------------
+# 未知引用类型兜底
+# ---------------------------------------------------------------------------
+
+
+def test_classify_unknown_type_fallback_to_original():
+    """未知的 referenced_tweets type → ORIGINAL（兜底）。"""
+    ref = ReferencedTweet(type="mentioned", id="800", author_id="user_other")
+    tweet = _make_tweet(referenced_tweets=[ref])
+    assert classify_tweet(tweet) == TweetType.ORIGINAL
+
+
+def test_classify_unknown_type_logs_warning(caplog):
+    """未知引用类型应记录 warning 日志。"""
+    import logging
+
+    ref = ReferencedTweet(type="pinned", id="900", author_id="user_other")
+    tweet = _make_tweet(referenced_tweets=[ref])
+    with caplog.at_level(logging.WARNING, logger="app.fetcher.tweet_classifier"):
+        classify_tweet(tweet)
+    assert any("未知推文引用类型" in r.message for r in caplog.records)
