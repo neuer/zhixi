@@ -48,6 +48,53 @@ export type AccountUpdate = {
 };
 
 /**
+ * 告警条目。
+ */
+export type AlertItem = {
+    job_type: string;
+    status: string;
+    error_message?: (string | null);
+    started_at: string;
+};
+
+/**
+ * 单个 API 状态。
+ */
+export type ApiStatusItem = {
+    status: string;
+    latency_ms?: (number | null);
+};
+
+/**
+ * API 状态检测响应。
+ */
+export type ApiStatusResponse = {
+    x_api: ApiStatusItem;
+    claude_api: ApiStatusItem;
+    gemini_api: ApiStatusItem;
+    wechat_api: ApiStatusItem;
+};
+
+/**
+ * 成本汇总。
+ */
+export type CostSummary = {
+    total_cost: number;
+    by_service: Array<ServiceCostItem>;
+};
+
+/**
+ * Dashboard 概览响应。
+ */
+export type DashboardOverviewResponse = {
+    pipeline_status: PipelineStatus;
+    digest_status: DigestStatus;
+    today_cost: CostSummary;
+    recent_7_days: Array<DigestDayRecord>;
+    alerts: Array<AlertItem>;
+};
+
+/**
  * 日报摘要响应。
  */
 export type DigestBriefResponse = {
@@ -59,6 +106,16 @@ export type DigestBriefResponse = {
     item_count: number;
     content_markdown: (string | null);
     created_at: string;
+};
+
+/**
+ * 近 7 天推送记录单条。
+ */
+export type DigestDayRecord = {
+    date: string;
+    status: string;
+    item_count: number;
+    version: number;
 };
 
 /**
@@ -83,6 +140,16 @@ export type DigestItemResponse = {
     snapshot_source_tweets: (string | null);
     snapshot_topic_type: (string | null);
     snapshot_tweet_time: (string | null);
+};
+
+/**
+ * 今日 Digest 状态。
+ */
+export type DigestStatus = {
+    status?: (string | null);
+    digest_id?: (number | null);
+    item_count?: number;
+    version?: number;
 };
 
 /**
@@ -131,6 +198,15 @@ export type MessageResponse = {
 };
 
 /**
+ * 今日 Pipeline 状态。
+ */
+export type PipelineStatus = {
+    status?: (string | null);
+    started_at?: (string | null);
+    error_message?: (string | null);
+};
+
+/**
  * 排序请求条目。
  */
 export type ReorderInput = {
@@ -144,6 +220,46 @@ export type ReorderInput = {
  */
 export type ReorderRequest = {
     items: Array<ReorderInput>;
+};
+
+/**
+ * 单个服务的成本摘要。
+ */
+export type ServiceCostItem = {
+    service: string;
+    call_count: number;
+    total_tokens: number;
+    estimated_cost: number;
+};
+
+/**
+ * 系统设置响应（不含密钥）。
+ */
+export type SettingsResponse = {
+    push_time: string;
+    push_days: Array<(number)>;
+    top_n: number;
+    min_articles: number;
+    publish_mode: string;
+    enable_cover_generation: boolean;
+    cover_generation_timeout: number;
+    notification_webhook_url: string;
+    db_size_mb: number;
+    last_backup_at?: (string | null);
+};
+
+/**
+ * 系统设置更新请求（所有字段可选）。
+ */
+export type SettingsUpdate = {
+    push_time?: (string | null);
+    push_days?: (Array<(number)> | null);
+    top_n?: (number | null);
+    min_articles?: (number | null);
+    publish_mode?: (string | null);
+    enable_cover_generation?: (boolean | null);
+    cover_generation_timeout?: (number | null);
+    notification_webhook_url?: (string | null);
 };
 
 /**
