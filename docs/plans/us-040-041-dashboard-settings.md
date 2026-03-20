@@ -247,3 +247,55 @@ class ApiStatusResponse(BaseModel):
 4. `uv run pyright` — 0 errors
 5. `make gen && git diff --exit-code packages/` — 生成物一致
 6. `cd admin && bunx biome check . && bunx vue-tsc --noEmit && bun run build` — 前端门禁全通过
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `app/schemas/dashboard_types.py` | 新建 | 64 |
+| `app/schemas/settings_types.py` | 新建 | 53 |
+| `app/api/dashboard.py` | 修改 | 191 |
+| `app/api/settings.py` | 修改 | 199 |
+| `tests/test_dashboard_api.py` | 新建 | 290 |
+| `tests/test_settings_api.py` | 新建 | 227 |
+| `admin/src/views/Dashboard.vue` | 修改 | 184 |
+| `admin/src/views/Settings.vue` | 修改 | 307 |
+| `admin/tsconfig.json` | 修改 | +1（路径别名） |
+| `packages/openapi-client/src/gen/types.gen.ts` | 自动生成 | +116 |
+| `docs/spec/user-stories.md` | 修改 | 2 行状态更新 |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | Dashboard overview 仅含 architecture.md 契约字段 | 扩展了 pipeline_status 和 digest_status 子结构 | US-040 验收标准要求"pipeline状态、digest状态"，architecture.md 的 overview 响应未包含这些，属于规范补充 |
+| 2 | Gemini API 实际 ping list_models | 有 key 则直接返回 ok（latency=0） | MVP 阶段不引入 google-generativeai 依赖，等 US-026 封面图时再实际集成 |
+| 3 | 无 tsconfig 路径别名计划 | 新增 `@zhixi/openapi-client` 路径别名 | admin 需要导入 packages/openapi-client 生成的类型，tsconfig paths 是必要配置 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| total_tokens 测试断言错误（15000 vs 16500） | total_tokens = SUM(input + output)，修正测试期望值 |
+| biome --unsafe 自动重命名模板引用变量 | 手动恢复 timeColumns/dayOptions 原名，biome 无法识别 Vue 模板引用属于已知限制 |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 112 files formatted |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 334 passed (含 15 新测试) |
+| biome check | ✅ 0 errors, 12 warnings（Vue 模板引用误报） |
+| vue-tsc | ✅ 通过 |
+| bun run build | ✅ 构建成功 |
+| make gen | ✅ 生成物一致 |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/17
