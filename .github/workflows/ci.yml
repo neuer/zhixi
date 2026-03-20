@@ -11,9 +11,31 @@ on:
 env:
   X_API_BEARER_TOKEN: test
   ANTHROPIC_API_KEY: test
-  JWT_SECRET_KEY: test_ci_secret
+  JWT_SECRET_KEY: test_ci_secret_minimum_32_chars!
 
 jobs:
+  # 检测哪些模块需要检查
+  changes:
+    name: Detect Scope
+    runs-on: ubuntu-latest
+    outputs:
+      run_frontend: ${{ steps.scope.outputs.run_frontend }}
+      run_codegen: ${{ steps.scope.outputs.run_codegen }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: scope
+        run: |
+          if [ -f admin/package.json ]; then
+            echo "run_frontend=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_frontend=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f packages/openapi-client/package.json ]; then
+            echo "run_codegen=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_codegen=false" >> "$GITHUB_OUTPUT"
+          fi
+
   backend:
     runs-on: ubuntu-latest
     steps:
@@ -34,4 +56,31 @@ jobs:
       - name: Tests
         run: uv run pytest
 
-  # frontend 和 codegen jobs 在 P2 阶段添加（需要 admin/ 和 packages/ 目录）
+  frontend:
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.run_frontend == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: cd admin && bun install --frozen-lockfile
+      - run: cd admin && bunx biome check .
+      - run: cd admin && bunx vue-tsc --noEmit
+      - run: cd admin && bun run build
+
+  codegen:
+    runs-on: ubuntu-latest
+    needs: [changes, backend]
+    if: needs.changes.outputs.run_codegen == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+      - uses: oven-sh/setup-bun@v2
+      - name: Install backend dependencies
+        run: uv sync --all-extras
+      - name: Generate OpenAPI client
+        run: make gen
+      - name: Check generated files are up to date
+        run: git diff --exit-code || (echo "生成物过期，请本地运行 make gen 并提交" && exit 1)
