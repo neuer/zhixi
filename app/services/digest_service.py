@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
@@ -35,7 +35,9 @@ class DigestService:
         self._db = db
         self._claude = claude_client
 
-    async def generate_daily_digest(self, digest_date: date | None = None) -> DailyDigest:
+    async def generate_daily_digest(
+        self, digest_date: date | None = None, *, version: int = 1
+    ) -> DailyDigest:
         """生成当日草稿。
 
         流程：查询数据 → 创建 DailyDigest → 创建 DigestItem 快照 → 生成导读摘要。
@@ -69,7 +71,7 @@ class DigestService:
         # 6. 创建 DailyDigest
         digest = DailyDigest(
             digest_date=digest_date,
-            version=1,
+            version=version,
             is_current=True,
             status="draft",
             item_count=len(sortable_items),
@@ -145,7 +147,8 @@ class DigestService:
             )
             member_result = await self._db.execute(member_stmt)
             members = list(member_result.scalars().all())
-            result.append((topic, members))
+            if members:  # 过滤空成员话题（regenerate 后旧话题无成员）
+                result.append((topic, members))
         return result
 
     async def _get_accounts_map(self, account_ids: set[int]) -> dict[int, TwitterAccount]:
@@ -331,6 +334,68 @@ class DigestService:
             duration_ms=response.duration_ms,
         )
         self._db.add(cost_log)
+
+    # ──────────────────────────────────────────────────
+    # 重新生成（US-035）
+    # ──────────────────────────────────────────────────
+
+    async def regenerate_digest(self, digest_date: date | None = None) -> DailyDigest:
+        """重新生成草稿（重置推文 → M2 全量重跑 → M3 新版本）。
+
+        当日无草稿时等价于首次生成 v1。
+        M3 失败时自动回滚旧版本 is_current=true。
+        """
+        from app.services.process_service import ProcessService
+
+        if digest_date is None:
+            digest_date = get_today_digest_date()
+
+        # 1. 查询旧版本（不校验 status）
+        old_digest = await self._get_current_digest_or_none(digest_date)
+        old_version = old_digest.version if old_digest else 0
+
+        # 2. 重置推文状态（M2 重跑前必须执行）
+        await self._reset_tweets_for_reprocess(digest_date)
+
+        # 3. 旧版本 is_current=false
+        if old_digest:
+            old_digest.is_current = False
+            await self._db.flush()
+
+        # 4. M2 + M3
+        try:
+            process_svc = ProcessService(self._db, claude_client=self._claude)
+            await process_svc.run_daily_process(digest_date)
+
+            new_digest = await self.generate_daily_digest(digest_date, version=old_version + 1)
+            return new_digest
+        except Exception:
+            # 回滚：恢复旧版本 is_current
+            if old_digest:
+                old_digest.is_current = True
+                await self._db.flush()
+            raise
+
+    async def _get_current_digest_or_none(self, digest_date: date) -> DailyDigest | None:
+        """查询当日 is_current=true 的 digest（不校验 status）。"""
+        stmt = select(DailyDigest).where(
+            DailyDigest.digest_date == digest_date,
+            DailyDigest.is_current.is_(True),
+        )
+        result = await self._db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _reset_tweets_for_reprocess(self, digest_date: date) -> int:
+        """重置当日所有推文的 AI 字段，为全量重跑铺路。"""
+        stmt = (
+            update(Tweet)
+            .where(Tweet.digest_date == digest_date)
+            .values(is_processed=False, is_ai_relevant=True, topic_id=None)
+        )
+        result = await self._db.execute(stmt)
+        count: int = result.rowcount  # type: ignore[assignment]
+        logger.info("重置 %d 条推文状态 (%s)", count, digest_date)
+        return count
 
     # ──────────────────────────────────────────────────
     # 编辑操作（US-031/032/033/034）
