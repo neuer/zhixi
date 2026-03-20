@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -12,6 +13,11 @@ from app.config import settings
 
 class Base(DeclarativeBase):
     """ORM 模型基类。"""
+
+
+def _utcnow() -> datetime:
+    """返回当前 UTC 时间（供 ORM default/onupdate 使用）。"""
+    return datetime.now(UTC)
 
 
 def get_async_url(url: str) -> str:
