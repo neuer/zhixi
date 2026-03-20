@@ -106,3 +106,47 @@ uv run lint-imports
 uv run pyright
 uv run pytest
 ```
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 类型 | 说明 |
+|------|------|------|
+| `app/clients/claude_client.py` | 修改 | ClaudeClient 类 + ClaudeAPIError + SAFETY_PREFIX + get_claude_client() |
+| `app/schemas/client_types.py` | 修改 | ClaudeResponse 添加 estimated_cost 字段 |
+| `app/processor/json_validator.py` | 修改 | validate_and_fix + JsonValidationError + 三级解析 |
+| `app/processor/heat_calculator.py` | 修改 | 5 个纯函数（base_score / ref_time / hours / normalize / heat_score） |
+| `tests/test_claude_client.py` | 新建 | 11 测试用例 |
+| `tests/test_json_validator.py` | 新建 | 21 测试用例 |
+| `tests/test_heat_calculator.py` | 新建 | 22 测试用例 |
+| `docs/spec/user-stories.md` | 修改 | US-017/018/022/048/049 → ✅ 已完成 |
+
+### 偏离项
+
+| 计划 | 实际 | 原因 |
+|------|------|------|
+| `response.content[0].text` 直接取值 | 添加 `isinstance(TextBlock)` 类型窄化 | pyright 严格检查 anthropic SDK union 类型 |
+| Mock 用 MagicMock 模拟 content block | 用 `TextBlock(type="text", text=...)` 真实构造 | isinstance 检查需要真实类型 |
+
+### 问题与修复
+
+1. **pyright 报 11 errors**：anthropic SDK 的 `response.content[0]` 是 union 类型（TextBlock / ThinkingBlock / ToolUseBlock 等），不是所有类型都有 `.text`。修复：`from anthropic.types import TextBlock` + `isinstance` 类型窄化。
+2. **ruff I001 import 排序**：测试中函数内 import 顺序不对。修复：按 ruff 要求调整。
+3. **分支切换问题**：工作区意外切到 `chore/type-safety-enums` 分支。修复：stash → checkout → stash pop。
+
+### 质量门禁详表
+
+| 检查项 | 结果 |
+|--------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 91 files already formatted |
+| lint-imports | ✅ 4 contracts kept, 0 broken |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 141 passed |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/7
