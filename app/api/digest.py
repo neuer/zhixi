@@ -23,6 +23,7 @@ from app.schemas.digest_types import (
     EditSummaryRequest,
     MarkdownResponse,
     MessageResponse,
+    PreviewResponse,
     ReorderRequest,
     TodayResponse,
 )
@@ -79,6 +80,45 @@ async def get_today_digest(
         digest=DigestBriefResponse.model_validate(digest),
         items=[DigestItemResponse.model_validate(item) for item in items],
         low_content_warning=low_content_warning,
+    )
+
+
+# ── US-038: 预览功能（登录态） ──
+
+
+@router.get("/preview", response_model=PreviewResponse)
+async def get_preview(
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> PreviewResponse:
+    """预览当日日报（登录态）。
+
+    返回当日 is_current=true 的 digest + items + Markdown。
+    """
+    digest_date = get_today_digest_date()
+
+    stmt = select(DailyDigest).where(
+        DailyDigest.digest_date == digest_date,
+        DailyDigest.is_current.is_(True),
+    )
+    result = await db.execute(stmt)
+    digest = result.scalar_one_or_none()
+
+    if digest is None:
+        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
+
+    items_stmt = (
+        select(DigestItem)
+        .where(DigestItem.digest_id == digest.id)
+        .order_by(DigestItem.display_order)
+    )
+    items_result = await db.execute(items_stmt)
+    items = list(items_result.scalars().all())
+
+    return PreviewResponse(
+        digest=DigestBriefResponse.model_validate(digest),
+        items=[DigestItemResponse.model_validate(item) for item in items],
+        content_markdown=digest.content_markdown or "",
     )
 
 

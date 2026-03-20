@@ -1,9 +1,130 @@
 <script setup lang="ts">
+import api from "@/api";
+import type {
+  HistoryListItem,
+  HistoryListResponse,
+} from "@zhixi/openapi-client";
+import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
+const loading = ref(false);
+const refreshing = ref(false);
+const finished = ref(false);
+const items = ref<HistoryListItem[]>([]);
+const page = ref(1);
+const pageSize = 20;
+
+const statusMap: Record<
+  string,
+  { text: string; type: "success" | "warning" | "danger" | "default" }
+> = {
+  published: { text: "已发布", type: "success" },
+  draft: { text: "草稿", type: "warning" },
+  failed: { text: "失败", type: "danger" },
+};
+
+function getStatus(status: string) {
+  return statusMap[status] ?? { text: status, type: "default" as const };
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+function formatWeekday(dateStr: string): string {
+  const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+  const d = new Date(dateStr);
+  return days[d.getDay()] ?? "";
+}
+
+async function loadMore() {
+  if (loading.value || finished.value) return;
+  loading.value = true;
+
+  try {
+    const resp = await api.get<HistoryListResponse>("/history", {
+      params: { page: page.value, page_size: pageSize },
+    });
+    const data = resp.data;
+
+    if (page.value === 1) {
+      items.value = data.items;
+    } else {
+      items.value.push(...data.items);
+    }
+
+    if (items.value.length >= data.total) {
+      finished.value = true;
+    }
+    page.value += 1;
+  } catch {
+    finished.value = true;
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function onRefresh() {
+  page.value = 1;
+  finished.value = false;
+  items.value = [];
+  refreshing.value = false;
+  await loadMore();
+}
+
+function goDetail(id: number) {
+  router.push(`/history/${id}`);
+}
+
+function goBack() {
+  router.push("/dashboard");
+}
+
+onMounted(loadMore);
 </script>
 
 <template>
   <div class="history-page">
-    <h2>推送历史</h2>
-    <p>历史记录列表（待实现）</p>
+    <van-nav-bar
+      title="推送历史"
+      left-text="返回"
+      left-arrow
+      @click-left="goBack"
+    />
+
+    <van-pull-refresh v-model="refreshing" @refresh="onRefresh">
+      <van-list
+        v-model:loading="loading"
+        :finished="finished"
+        finished-text="没有更多了"
+        @load="loadMore"
+      >
+        <van-cell
+          v-for="item in items"
+          :key="item.id"
+          :title="`${formatDate(item.digest_date)} ${formatWeekday(item.digest_date)}`"
+          :label="`${item.item_count}条 · v${item.version}`"
+          is-link
+          @click="goDetail(item.id)"
+        >
+          <template #value>
+            <van-tag :type="getStatus(item.status).type">
+              {{ getStatus(item.status).text }}
+            </van-tag>
+          </template>
+        </van-cell>
+
+        <van-empty v-if="!loading && items.length === 0" description="暂无历史记录" />
+      </van-list>
+    </van-pull-refresh>
   </div>
 </template>
+
+<style scoped>
+.history-page {
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+</style>

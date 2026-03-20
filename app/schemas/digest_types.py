@@ -93,3 +93,48 @@ class MarkdownResponse(BaseModel):
     """Markdown 内容响应（供一键复制）。"""
 
     content_markdown: str
+
+
+# ── US-038: 预览功能 ──
+
+
+class PreviewResponse(BaseModel):
+    """预览响应（digest + items + Markdown）。"""
+
+    digest: DigestBriefResponse
+    items: list[DigestItemResponse]
+    content_markdown: str
+
+
+# ── US-042: 推送历史 ──
+
+
+class HistoryListItem(BaseModel):
+    """历史列表条目（每日期一条）。"""
+
+    id: int
+    digest_date: date
+    version: int
+    status: str
+    summary: str | None
+    item_count: int
+    published_at: datetime | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HistoryListResponse(BaseModel):
+    """历史列表分页响应。"""
+
+    items: list[HistoryListItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class HistoryDetailResponse(BaseModel):
+    """历史详情响应（完整信息 + items 快照）。"""
+
+    digest: DigestBriefResponse
+    items: list[DigestItemResponse]
