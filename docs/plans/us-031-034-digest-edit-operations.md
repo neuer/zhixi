@@ -280,3 +280,46 @@ pytest
 # 质量门禁
 ruff check . && ruff format --check . && uv run lint-imports && pyright
 ```
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `app/services/digest_service.py` | 修改 | +150 行（3 异常类 + 3 helper + 5 编辑方法） |
+| `app/api/digest.py` | 修改 | +110 行（5 个路由端点） |
+| `app/schemas/digest_types.py` | 修改 | +20 行（3 个请求 Schema） |
+| `tests/test_digest_edit_api.py` | 新建 | ~560 行，15 个测试 |
+| `docs/plans/us-031-034-digest-edit-operations.md` | 新建 | 实施计划 |
+| `docs/spec/user-stories.md` | 修改 | US-031/032/033/034 → ✅ |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 无 | — | — | 完全按计划执行 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| ruff I001 import 排序 | 调整 test 文件 import 顺序 |
+| ruff B007 未使用的循环变量 `idx` | 移除 `enumerate` 改为直接迭代 |
+| digest_service.py 格式化 | `ruff format` 自动修复 |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 108 files already formatted |
+| lint-imports | ✅ 4 kept, 0 broken |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 319 passed |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/15
