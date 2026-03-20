@@ -87,3 +87,9 @@ class ReorderRequest(BaseModel):
     """调整排序请求。"""
 
     items: list[ReorderInput]
+
+
+class MarkdownResponse(BaseModel):
+    """Markdown 内容响应（供一键复制）。"""
+
+    content_markdown: str

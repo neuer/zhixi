@@ -1,19 +1,27 @@
 """digest 路由 — 日报查看与操作。"""
 
+import logging
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin, get_digest_service
+from app.api.deps import get_current_admin, get_digest_service, require_no_pipeline_lock
+from app.clients.claude_client import get_claude_client
+from app.clients.notifier import send_alert
 from app.config import get_system_config, get_today_digest_date
 from app.database import get_db
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
+from app.models.job_run import JobRun
 from app.schemas.digest_types import (
     DigestBriefResponse,
     DigestItemResponse,
     EditItemRequest,
     EditSummaryRequest,
+    MarkdownResponse,
     MessageResponse,
     ReorderRequest,
     TodayResponse,
@@ -24,6 +32,9 @@ from app.services.digest_service import (
     DigestNotFoundError,
     DigestService,
 )
+from app.services.lock_service import has_running_job
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -185,3 +196,122 @@ async def restore_item(
     except DigestItemNotFoundError:
         raise HTTPException(status_code=404, detail="条目不存在") from None
     return MessageResponse(message="条目已恢复")
+
+
+# ── US-035: 重新生成草稿 ──
+
+
+@router.post("/regenerate", response_model=None)
+async def regenerate_digest(
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+    _lock: None = Depends(require_no_pipeline_lock),
+) -> dict[str, object] | JSONResponse:
+    """重新生成草稿（同步执行，可能耗时数分钟）。
+
+    流程：重置推文 → M2 全量重跑 → M3 新版本。
+    增强锁：同日有 pipeline running → 409。
+    """
+    digest_date = get_today_digest_date()
+
+    # 基本锁：同日 pipeline 已 running → 409
+    if await has_running_job(db, "pipeline", digest_date):
+        raise HTTPException(
+            status_code=409,
+            detail="当前有任务在运行中，请稍后再试",
+        ) from None
+
+    # 创建 job_run
+    job_run = JobRun(
+        job_type="pipeline",
+        digest_date=digest_date,
+        trigger_source="regenerate",
+        status="running",
+        started_at=datetime.now(UTC),
+    )
+    db.add(job_run)
+    await db.flush()
+
+    try:
+        claude = get_claude_client()
+        svc = DigestService(db, claude_client=claude)
+        new_digest = await svc.regenerate_digest(digest_date)
+
+        job_run.status = "completed"
+        job_run.finished_at = datetime.now(UTC)
+
+        return {
+            "message": "重新生成完成",
+            "digest_id": new_digest.id,
+            "version": new_digest.version,
+            "item_count": new_digest.item_count,
+            "job_run_id": job_run.id,
+        }
+
+    except Exception as exc:
+        error_msg = str(exc)[:500]
+        job_run.status = "failed"
+        job_run.error_message = error_msg
+        job_run.finished_at = datetime.now(UTC)
+
+        logger.error("重新生成失败: %s", error_msg, exc_info=True)
+
+        try:
+            await send_alert("重新生成失败", f"错误: {error_msg}", db)
+        except Exception:
+            logger.warning("重新生成失败通知发送也失败", exc_info=True)
+
+        # JSONResponse 保证 job_run 持久化
+        return JSONResponse(
+            status_code=500,
+            content={"detail": f"重新生成失败: {str(exc)[:200]}"},
+        )
+
+
+# ── US-036: 手动发布模式 ──
+
+
+@router.get("/markdown", response_model=MarkdownResponse)
+async def get_markdown(
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> MarkdownResponse:
+    """获取当日 Markdown 内容（供一键复制）。"""
+    digest_date = get_today_digest_date()
+    stmt = select(DailyDigest).where(
+        DailyDigest.digest_date == digest_date,
+        DailyDigest.is_current.is_(True),
+    )
+    result = await db.execute(stmt)
+    digest = result.scalar_one_or_none()
+
+    if digest is None:
+        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
+
+    return MarkdownResponse(content_markdown=digest.content_markdown or "")
+
+
+@router.post("/mark-published", response_model=MessageResponse)
+async def mark_published(
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+    _lock: None = Depends(require_no_pipeline_lock),
+) -> MessageResponse:
+    """标记当前草稿为已发布（手动发布模式）。"""
+    digest_date = get_today_digest_date()
+    stmt = select(DailyDigest).where(
+        DailyDigest.digest_date == digest_date,
+        DailyDigest.is_current.is_(True),
+    )
+    result = await db.execute(stmt)
+    digest = result.scalar_one_or_none()
+
+    if digest is None:
+        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
+    if digest.status == "published":
+        raise HTTPException(status_code=409, detail="该版本已发布") from None
+
+    digest.status = "published"
+    digest.published_at = datetime.now(UTC)
+
+    return MessageResponse(message="发布成功")
