@@ -1,6 +1,6 @@
-"""digest_service — 草稿组装编排层（US-023 + US-024）。
+"""digest_service — 草稿组装编排层（US-023 + US-024 + US-025）。
 
-编排草稿创建、快照写入、导读摘要生成。
+编排草稿创建、快照写入、导读摘要生成、Markdown 渲染。
 """
 
 import json
@@ -11,7 +11,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
-from app.config import get_today_digest_date
+from app.config import get_system_config, get_today_digest_date
+from app.digest.renderer import render_markdown
 from app.digest.summary_generator import generate_summary
 from app.models.account import TwitterAccount
 from app.models.api_cost_log import ApiCostLog
@@ -98,6 +99,10 @@ class DigestService:
         digest.summary = summary
         if cost_response:
             self._record_cost(cost_response, "summary", digest_date)
+
+        # 9. 渲染 Markdown
+        top_n = int(await get_system_config(self._db, "top_n", "10"))
+        digest.content_markdown = render_markdown(digest, created_items, top_n)
 
         await self._db.flush()
         logger.info(
