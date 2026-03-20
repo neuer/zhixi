@@ -277,3 +277,65 @@ def test_get_fetcher_returns_base_fetcher_instance():
     """get_fetcher 工厂函数返回 BaseFetcher 的实例。"""
     fetcher = get_fetcher(bearer_token="test_token")
     assert isinstance(fetcher, BaseFetcher)
+
+
+# ──────────────────────────────────────────────────
+# 9. _parse_tweet 解析失败边界
+# ──────────────────────────────────────────────────
+
+
+class TestParseTweetEdgeCases:
+    """_parse_tweet 字段缺失和格式异常测试。"""
+
+    def _make_fetcher(self) -> XApiFetcher:
+        return XApiFetcher(bearer_token="test_token")
+
+    def test_missing_author_id_returns_none(self):
+        """缺少 author_id → 返回 None。"""
+        fetcher = self._make_fetcher()
+        raw: dict[str, object] = {
+            "id": "1001",
+            "text": "hello",
+            "created_at": "2026-03-18T10:00:00Z",
+        }
+        result = fetcher._parse_tweet(raw, {}, {})
+        assert result is None
+
+    def test_missing_text_returns_none(self):
+        """缺少 text → 返回 None。"""
+        fetcher = self._make_fetcher()
+        raw: dict[str, object] = {
+            "id": "1001",
+            "author_id": "u1",
+            "created_at": "2026-03-18T10:00:00Z",
+        }
+        result = fetcher._parse_tweet(raw, {}, {})
+        assert result is None
+
+    def test_missing_created_at_returns_none(self):
+        """缺少 created_at → 返回 None。"""
+        fetcher = self._make_fetcher()
+        raw: dict[str, object] = {"id": "1001", "author_id": "u1", "text": "hello"}
+        result = fetcher._parse_tweet(raw, {}, {})
+        assert result is None
+
+    def test_invalid_created_at_format_returns_none(self):
+        """created_at 格式异常 → 返回 None。"""
+        fetcher = self._make_fetcher()
+        raw: dict[str, object] = {
+            "id": "1001",
+            "author_id": "u1",
+            "text": "hello",
+            "created_at": "not-a-date",
+        }
+        result = fetcher._parse_tweet(raw, {}, {})
+        assert result is None
+
+    def test_complete_data_returns_raw_tweet(self):
+        """完整数据 → 返回 RawTweet。"""
+        fetcher = self._make_fetcher()
+        raw = make_tweet_data()
+        result = fetcher._parse_tweet(raw, {}, {})
+        assert result is not None
+        assert isinstance(result, RawTweet)
+        assert result.tweet_id == "1001"

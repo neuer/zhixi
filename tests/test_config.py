@@ -96,3 +96,28 @@ class TestSettings:
         assert settings.API_PORT == 8000
         assert pytest.approx(3.0) == settings.CLAUDE_INPUT_PRICE_PER_MTOK
         assert pytest.approx(15.0) == settings.CLAUDE_OUTPUT_PRICE_PER_MTOK
+
+
+class TestGetSystemConfig:
+    """get_system_config 测试。"""
+
+    async def test_existing_key_returns_value(self, seeded_db) -> None:
+        """key 存在时返回对应 value。"""
+        from app.config import get_system_config
+
+        result = await get_system_config(seeded_db, "push_time")
+        assert result == "08:00"
+
+    async def test_missing_key_returns_default(self, seeded_db) -> None:
+        """key 不存在时返回 default。"""
+        from app.config import get_system_config
+
+        result = await get_system_config(seeded_db, "nonexistent_key", "fallback")
+        assert result == "fallback"
+
+    async def test_missing_key_empty_default(self, seeded_db) -> None:
+        """key 不存在且未指定 default 时返回空字符串。"""
+        from app.config import get_system_config
+
+        result = await get_system_config(seeded_db, "nonexistent_key")
+        assert result == ""

@@ -43,7 +43,7 @@ def get_today_digest_date() -> date:
 
 
 def get_fetch_window(digest_date: date) -> tuple[datetime, datetime]:
-    """前一日 06:00 ~ 当日 05:59（北京时间）→ 转 UTC。"""
+    """前一日 06:00:00 ~ 当日 05:59:59（北京时间）→ 转 UTC。"""
     bj_since = datetime(
         digest_date.year, digest_date.month, digest_date.day, 6, 0, 0, tzinfo=BEIJING_TZ
     ) - timedelta(days=1)

@@ -28,5 +28,5 @@ class BaseFetcher(ABC):
         """
         ...
 
-    async def close(self) -> None:  # noqa: B027
+    async def close(self) -> None:  # noqa: B027  -- 有意设计为可选覆盖，非强制实现
         """释放连接资源。子类可覆盖，默认无操作。"""
