@@ -1,6 +1,6 @@
-"""process_service — AI 加工编排层（US-019 + US-021）。
+"""process_service — AI 加工编排层（US-019 + US-020 + US-021）。
 
-编排全局分析、逐条/逐话题加工、热度计算。
+编排全局分析（含分批+去重）、逐条/逐话题加工、热度计算。
 """
 
 import asyncio
@@ -18,6 +18,8 @@ from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.processor.analyzer import run_global_analysis
 from app.processor.analyzer_prompts import serialize_tweets_for_analysis
+from app.processor.batch_merger import merge_analysis_results, run_dedup_analysis
+from app.processor.batch_strategy import split_into_batches
 from app.processor.heat_calculator import (
     calculate_base_score,
     calculate_heat_score,
@@ -157,10 +159,53 @@ class ProcessService:
         accounts_map: dict[int, TwitterAccount],
         digest_date: date,
     ) -> AnalysisResult:
-        """执行全局分析，失败重试 1 次。"""
-        serialized = serialize_tweets_for_analysis(tweets, accounts_map)
-        tweets_json = json.dumps(serialized, ensure_ascii=False)
+        """执行全局分析（含分批 + 去重，US-020）。
 
+        流程：
+        1. split_into_batches 检查是否需要分批
+        2. 单批：走原有逻辑
+        3. 多批：逐批分析 → 合并 → AI 去重
+        """
+        batches = split_into_batches(tweets, accounts_map)
+
+        if len(batches) <= 1:
+            # 单批：原有逻辑
+            serialized = serialize_tweets_for_analysis(tweets, accounts_map)
+            tweets_json = json.dumps(serialized, ensure_ascii=False)
+            return await self._run_single_analysis(tweets_json, digest_date)
+
+        # 多批处理
+        logger.info("推文 token 超限，分 %d 批处理", len(batches))
+        batch_results: list[AnalysisResult] = []
+
+        for i, batch in enumerate(batches):
+            logger.info(
+                "执行第 %d/%d 批全局分析（%d 条推文）",
+                i + 1,
+                len(batches),
+                len(batch),
+            )
+            serialized = serialize_tweets_for_analysis(batch, accounts_map)
+            tweets_json = json.dumps(serialized, ensure_ascii=False)
+            result = await self._run_single_analysis(tweets_json, digest_date)
+            batch_results.append(result)
+
+        # 合并 + 去重
+        merged_data = merge_analysis_results(batch_results)
+        deduped = await self._run_dedup_with_retry(merged_data, digest_date)
+        logger.info(
+            "去重完成: filtered=%d, topics=%d",
+            len(deduped.filtered_ids),
+            len(deduped.topics),
+        )
+        return deduped
+
+    async def _run_single_analysis(
+        self,
+        tweets_json: str,
+        digest_date: date,
+    ) -> AnalysisResult:
+        """单批全局分析（含重试），从原 _run_analysis_with_retry 提取。"""
         last_error: Exception | None = None
         for attempt in range(_ANALYSIS_MAX_RETRIES + 1):
             try:
@@ -177,6 +222,25 @@ class ProcessService:
                 logger.warning("全局分析第 %d 次尝试失败: %s", attempt + 1, e)
 
         logger.error("全局分析连续失败，中止 pipeline")
+        raise last_error  # type: ignore[misc]
+
+    async def _run_dedup_with_retry(
+        self,
+        merged_data: dict[str, object],
+        digest_date: date,
+    ) -> AnalysisResult:
+        """去重 AI 调用（含重试）。"""
+        last_error: Exception | None = None
+        for attempt in range(_ANALYSIS_MAX_RETRIES + 1):
+            try:
+                deduped, response = await run_dedup_analysis(self._claude, merged_data)
+                self._record_cost(response, "dedup_analysis", digest_date)
+                return deduped
+            except (ClaudeAPIError, JsonValidationError) as e:
+                last_error = e
+                logger.warning("去重分析第 %d 次尝试失败: %s", attempt + 1, e)
+
+        logger.error("去重分析连续失败，中止 pipeline")
         raise last_error  # type: ignore[misc]
 
     def _apply_filtering(
