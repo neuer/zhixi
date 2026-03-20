@@ -4,8 +4,7 @@ import json
 import logging
 from io import StringIO
 
-import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 
 from app.logging_config import JsonFormatter
 from app.middleware import request_id_var
@@ -106,27 +105,9 @@ class TestSetupLogging:
 class TestRequestIdMiddleware:
     """request_id 中间件测试。"""
 
-    @pytest.fixture
-    def _clean_app(self):
-        from app.main import app
-
-        app.dependency_overrides.clear()
-        yield app
-        app.dependency_overrides.clear()
-
-    async def test_response_has_request_id_header(self, _clean_app) -> None:
-        from app.main import app
-        from app.middleware import RequestIdMiddleware
-
-        if not any(
-            getattr(m, "cls", None) is RequestIdMiddleware
-            for m in getattr(app, "user_middleware", [])
-        ):
-            app.add_middleware(RequestIdMiddleware)
-
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            resp = await client.get("/api/setup/status")
-            assert "x-request-id" in resp.headers
-            rid = resp.headers["x-request-id"]
-            assert len(rid) > 0
+    async def test_response_has_request_id_header(self, client: AsyncClient) -> None:
+        """任意请求的响应都应包含 X-Request-ID header。"""
+        resp = await client.post("/api/auth/logout")
+        assert "x-request-id" in resp.headers
+        rid = resp.headers["x-request-id"]
+        assert len(rid) > 0

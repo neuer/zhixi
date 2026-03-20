@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.deps import get_account_service
+from app.api.deps import get_account_service, get_current_admin
 from app.schemas.account_types import (
     AccountCreate,
     AccountListResponse,
@@ -12,7 +12,6 @@ from app.schemas.account_types import (
 from app.schemas.digest_types import MessageResponse
 from app.services.account_service import AccountDuplicateError, AccountNotFoundError, AccountService
 
-# TODO: US-008 添加 Depends(get_current_admin)
 router = APIRouter()
 
 
@@ -21,6 +20,7 @@ async def list_accounts(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     svc: AccountService = Depends(get_account_service),
+    _admin: str = Depends(get_current_admin),
 ) -> AccountListResponse:
     """获取大V账号分页列表。"""
     return await svc.list_accounts(page=page, page_size=page_size)
@@ -30,6 +30,7 @@ async def list_accounts(
 async def create_account(
     data: AccountCreate,
     svc: AccountService = Depends(get_account_service),
+    _admin: str = Depends(get_current_admin),
 ) -> AccountResponse:
     """创建大V账号。
 
@@ -49,6 +50,7 @@ async def update_account(
     account_id: int,
     data: AccountUpdate,
     svc: AccountService = Depends(get_account_service),
+    _admin: str = Depends(get_current_admin),
 ) -> AccountResponse:
     """更新账号配置（weight、is_active）。"""
     try:
@@ -62,6 +64,7 @@ async def update_account(
 async def delete_account(
     account_id: int,
     svc: AccountService = Depends(get_account_service),
+    _admin: str = Depends(get_current_admin),
 ) -> MessageResponse:
     """软删除账号（设 is_active=false）。"""
     try:
