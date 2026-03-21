@@ -181,18 +181,34 @@ class DigestService:
         return list(result.scalars().all())
 
     async def _get_topics_with_members(self, digest_date: date) -> list[tuple[Topic, list[Tweet]]]:
-        """查询当日话题及各话题的成员推文。"""
+        """查询当日话题及各话题的成员推文（批量查询避免 N+1）。"""
         topic_stmt = select(Topic).where(Topic.digest_date == digest_date)
         topic_result = await self._db.execute(topic_stmt)
         topics = list(topic_result.scalars().all())
 
+        if not topics:
+            return []
+
+        # 批量查询所有话题的成员推文
+        topic_ids = [t.id for t in topics]
+        member_stmt = (
+            select(Tweet)
+            .where(Tweet.topic_id.in_(topic_ids))
+            .order_by(Tweet.topic_id, Tweet.tweet_time.asc())
+        )
+        member_result = await self._db.execute(member_stmt)
+        all_members = list(member_result.scalars().all())
+
+        # 按 topic_id 分组（IN 查询保证 topic_id 非 None）
+        members_by_topic: dict[int, list[Tweet]] = {}
+        for tweet in all_members:
+            tid = tweet.topic_id
+            if tid is not None:
+                members_by_topic.setdefault(tid, []).append(tweet)
+
         result: list[tuple[Topic, list[Tweet]]] = []
         for topic in topics:
-            member_stmt = (
-                select(Tweet).where(Tweet.topic_id == topic.id).order_by(Tweet.tweet_time.asc())
-            )
-            member_result = await self._db.execute(member_stmt)
-            members = list(member_result.scalars().all())
+            members = members_by_topic.get(topic.id, [])
             if members:  # 过滤空成员话题（regenerate 后旧话题无成员）
                 result.append((topic, members))
         return result
@@ -644,13 +660,17 @@ class DigestService:
 
         digest = await self._get_current_draft(digest_date)
 
+        # 批量查询所有相关 DigestItem，避免 N+1
+        item_ids = [entry.id for entry in items_input]
+        stmt = select(DigestItem).where(
+            DigestItem.id.in_(item_ids),
+            DigestItem.digest_id == digest.id,
+        )
+        result = await self._db.execute(stmt)
+        items_map = {item.id: item for item in result.scalars().all()}
+
         for entry in items_input:
-            stmt = select(DigestItem).where(
-                DigestItem.id == entry.id,
-                DigestItem.digest_id == digest.id,
-            )
-            result = await self._db.execute(stmt)
-            item = result.scalar_one_or_none()
+            item = items_map.get(entry.id)
             if item is None:
                 raise DigestItemNotFoundError
             item.display_order = entry.display_order

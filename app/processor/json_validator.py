@@ -109,17 +109,27 @@ def _extract_json(text: str) -> str:
 
 
 def _fix_brackets(text: str) -> str:
-    """补全缺失的右括号。"""
-    open_braces = text.count("{") - text.count("}")
-    open_brackets = text.count("[") - text.count("]")
-
-    result = text
-    if open_brackets > 0:
-        result += "]" * open_brackets
-    if open_braces > 0:
-        result += "}" * open_braces
-
-    return result
+    """补全未闭合的括号，使用栈追踪嵌套顺序。"""
+    stack: list[str] = []
+    in_string = False
+    escape = False
+    for ch in text:
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch in ("{", "["):
+            stack.append("}" if ch == "{" else "]")
+        elif ch in ("}", "]") and stack and stack[-1] == ch:
+            stack.pop()
+    return text + "".join(reversed(stack))
 
 
 def _validate_schema(data: dict, schema: dict, raw_text: str) -> None:

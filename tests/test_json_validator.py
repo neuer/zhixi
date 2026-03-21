@@ -148,6 +148,50 @@ class TestInvalidInput:
             validate_and_fix('{"title": "标题", "trans', SIMPLE_SCHEMA)
 
 
+class TestFixBracketsNested:
+    """C-1: _fix_brackets 嵌套括号补全顺序验证。"""
+
+    def test_fix_brackets_nested_missing(self):
+        """验证嵌套缺失括号按正确顺序补全。"""
+        import json
+
+        from app.processor.json_validator import _fix_brackets
+
+        result = _fix_brackets('{"items": [{"a": 1')
+        parsed = json.loads(result)
+        assert parsed == {"items": [{"a": 1}]}
+
+    def test_fix_brackets_single_brace(self):
+        """单个未闭合大括号。"""
+        import json
+
+        from app.processor.json_validator import _fix_brackets
+
+        result = _fix_brackets('{"key": "value"')
+        parsed = json.loads(result)
+        assert parsed == {"key": "value"}
+
+    def test_fix_brackets_string_with_brackets(self):
+        """字符串内的括号不应被计数。"""
+        import json
+
+        from app.processor.json_validator import _fix_brackets
+
+        result = _fix_brackets('{"text": "hello [world"')
+        parsed = json.loads(result)
+        assert parsed == {"text": "hello [world"}
+
+    def test_fix_brackets_escaped_quote(self):
+        """转义引号不影响字符串状态追踪。"""
+        import json
+
+        from app.processor.json_validator import _fix_brackets
+
+        result = _fix_brackets('{"text": "say \\"hi\\"", "arr": [1')
+        parsed = json.loads(result)
+        assert parsed == {"text": 'say "hi"', "arr": [1]}
+
+
 class TestEdgeCases:
     """边界情况。"""
 
