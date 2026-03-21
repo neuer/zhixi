@@ -16,5 +16,8 @@ SUMMARY_PROMPT_TEMPLATE = """\
 
 请只输出导读文本。"""
 
-# 降级默认文案
+# 降级默认文案（Claude API 失败时使用）
 DEFAULT_SUMMARY = "今日 AI 热点已为您整理完毕，请查阅以下资讯。"
+
+# 空草稿导读（0 条推文时使用）
+EMPTY_DAY_SUMMARY = "今日 AI 领域较为平静"

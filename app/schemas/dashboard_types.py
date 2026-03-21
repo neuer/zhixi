@@ -36,6 +36,7 @@ class DigestStatus(BaseModel):
     digest_id: int | None = None
     item_count: int = 0
     version: int = 0
+    low_content_warning: bool = False
 
 
 class DigestDayRecord(BaseModel):

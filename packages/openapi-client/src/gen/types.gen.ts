@@ -176,6 +176,7 @@ export type DigestStatus = {
     digest_id?: (number | null);
     item_count?: number;
     version?: number;
+    low_content_warning?: boolean;
 };
 
 /**

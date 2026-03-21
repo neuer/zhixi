@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
-from app.digest.summary_prompts import DEFAULT_SUMMARY
+from app.digest.summary_prompts import EMPTY_DAY_SUMMARY
 from app.models.account import TwitterAccount
 from app.models.api_cost_log import ApiCostLog
 from app.models.digest_item import DigestItem
@@ -403,7 +403,7 @@ async def test_empty_digest_no_processed_tweets(db: AsyncSession) -> None:
 
     digest = await svc.generate_daily_digest(DIGEST_DATE)
     assert digest.item_count == 0
-    assert digest.summary == DEFAULT_SUMMARY
+    assert digest.summary == EMPTY_DAY_SUMMARY
 
     items_result = await db.execute(select(DigestItem).where(DigestItem.digest_id == digest.id))
     assert list(items_result.scalars().all()) == []

@@ -13,7 +13,7 @@ const statusMap: Record<string, { text: string; color: string }> = {
   running: { text: "运行中", color: "#1989fa" },
   failed: { text: "失败", color: "#ee0a24" },
   skipped: { text: "已跳过", color: "#969799" },
-  draft: { text: "草稿", color: "#ff976a" },
+  draft: { text: "待审核", color: "#ff976a" },
   published: { text: "已发布", color: "#07c160" },
 };
 
@@ -118,6 +118,16 @@ onMounted(loadData);
             </template>
           </van-cell>
         </van-cell-group>
+
+        <!-- 低内容提示 (US-045) -->
+        <van-notice-bar
+          v-if="data?.digest_status?.low_content_warning"
+          color="#ed6a0c"
+          background="#fffbe8"
+          left-icon="info-o"
+          :text="`今日资讯较少（${data.digest_status.item_count}条）`"
+          style="margin-bottom: 12px"
+        />
 
         <!-- 成本卡片 -->
         <van-cell-group inset title="今日 API 成本" style="margin-bottom: 12px">

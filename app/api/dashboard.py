@@ -11,7 +11,7 @@ from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin
-from app.config import get_today_digest_date
+from app.config import get_system_config, get_today_digest_date
 from app.database import get_db
 from app.models.api_cost_log import ApiCostLog
 from app.models.digest import DailyDigest
@@ -202,11 +202,13 @@ async def _get_digest_status(db: AsyncSession, today: object) -> DigestStatus:
     digest = result.scalar_one_or_none()
     if not digest:
         return DigestStatus()
+    min_articles = int(await get_system_config(db, "min_articles", "1"))
     return DigestStatus(
         status=digest.status,
         digest_id=digest.id,
         item_count=digest.item_count,
         version=digest.version,
+        low_content_warning=digest.item_count < min_articles,
     )
 
 

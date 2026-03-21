@@ -7,7 +7,7 @@ import pytest
 
 from app.clients.claude_client import ClaudeAPIError, ClaudeClient
 from app.digest.summary_generator import generate_summary
-from app.digest.summary_prompts import DEFAULT_SUMMARY
+from app.digest.summary_prompts import DEFAULT_SUMMARY, EMPTY_DAY_SUMMARY
 from app.models.digest_item import DigestItem
 from app.schemas.client_types import ClaudeResponse
 
@@ -125,10 +125,11 @@ async def test_generate_summary_claude_api_error_fallback() -> None:
 
 @pytest.mark.asyncio
 async def test_generate_summary_empty_items() -> None:
-    """空 items 列表返回默认文案，不调用 Claude。"""
+    """空 items 列表返回空日导读，不调用 Claude。"""
     client = AsyncMock(spec=ClaudeClient)
 
     summary, response = await generate_summary(client, [])
-    assert summary == DEFAULT_SUMMARY
+    assert summary == EMPTY_DAY_SUMMARY
+    assert summary == "今日 AI 领域较为平静"
     assert response is None
     client.complete.assert_not_called()
