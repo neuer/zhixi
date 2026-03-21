@@ -163,3 +163,47 @@ uv run ruff check . && uv run ruff format --check .   # lint
 uv run pyright                                        # 类型检查
 cd admin && bunx biome check . && bunx vue-tsc --noEmit  # 前端检查
 ```
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `app/schemas/digest_types.py` | 修改 | +10 |
+| `app/services/digest_service.py` | 修改 | +75 |
+| `app/api/digest.py` | 修改 | +42 |
+| `admin/src/views/Preview.vue` | 修改 | +49 -10 |
+| `tests/test_preview_link_api.py` | 新增 | +262 |
+| `docs/plans/us-009-preview-signed-link.md` | 新增 | 计划文件 |
+| `docs/spec/user-stories.md` | 修改 | US-009 → ✅ |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | mock patch `app.api.digest.get_today_digest_date` | patch `app.services.digest_service.get_today_digest_date` | `generate_preview_link()` 内部调用 `get_today_digest_date()`，需 patch service 模块的引用 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| 2 个测试 404（mock 路径错误） | patch 路径从 `app.api.digest` 改为 `app.services.digest_service` |
+| ruff format 3 个文件不通过 | `ruff format` 自动修复 |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 129 files already formatted |
+| pyright | ✅ 0 errors, 0 warnings |
+| biome check | ✅ 32 warnings（已有 Vue 误报，无新增） |
+| vue-tsc | ✅ 通过 |
+| pytest | ✅ 490 passed（+11 新增） |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/25
