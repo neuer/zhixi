@@ -7,6 +7,7 @@ import { useRouter } from "vue-router";
 const router = useRouter();
 
 const loading = ref(false);
+const refreshing = ref(false);
 const finished = ref(false);
 const logs = ref<LogsResponse["logs"]>([]);
 const selectedLevel = ref("INFO");
@@ -44,8 +45,11 @@ function levelBg(level: string): string {
   }
 }
 
+let isLoadingMore = false;
+
 async function loadLogs() {
-  if (loading.value || finished.value) return;
+  if (isLoadingMore || finished.value) return;
+  isLoadingMore = true;
   loading.value = true;
   try {
     const resp = await api.get<LogsResponse>("/dashboard/logs", {
@@ -66,10 +70,10 @@ async function loadLogs() {
     }
     pageVal.value += 1;
   } catch {
-    // 拦截器已处理
-    finished.value = true;
+    // 拦截器已处理 toast；不设 finished，允许用户滚动重试
   } finally {
     loading.value = false;
+    isLoadingMore = false;
   }
 }
 
@@ -77,6 +81,7 @@ function resetAndLoad() {
   pageVal.value = 1;
   finished.value = false;
   logs.value = [];
+  refreshing.value = false;
   loadLogs();
 }
 
@@ -97,7 +102,7 @@ onMounted(loadLogs);
       </van-dropdown-menu>
     </div>
 
-    <van-pull-refresh v-model="loading" @refresh="resetAndLoad">
+    <van-pull-refresh v-model="refreshing" @refresh="resetAndLoad">
       <van-list
         v-model:loading="loading"
         :finished="finished"

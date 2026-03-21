@@ -27,26 +27,41 @@ function parsePerspectives(raw: string | null): string[] {
   return [];
 }
 
-/** 解析 source_tweets JSON（带元素类型守卫）。 */
+/** 解析 source_tweets JSON（带元素类型守卫）。字段名与后端 _build_source_tweets_json 一致：handle, tweet_url。 */
 function parseSourceTweets(
   raw: string | null,
-): { author: string; url: string }[] {
+): { handle: string; tweet_url: string }[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed))
       return parsed.filter(
-        (item): item is { author: string; url: string } =>
+        (item): item is { handle: string; tweet_url: string } =>
           typeof item === "object" &&
           item !== null &&
-          typeof (item as Record<string, unknown>).author === "string" &&
-          typeof (item as Record<string, unknown>).url === "string",
+          typeof (item as Record<string, unknown>).handle === "string" &&
+          typeof (item as Record<string, unknown>).tweet_url === "string",
       );
   } catch {
     /* 忽略解析失败 */
   }
   return [];
 }
+
+/** 预解析条目，避免模板中重复调用 JSON.parse。 */
+interface ParsedItem {
+  item: DigestItemResponse;
+  perspectives: string[];
+  sourceTweets: { handle: string; tweet_url: string }[];
+}
+
+const parsedItems = computed<ParsedItem[]>(() =>
+  visibleItems.value.map((item) => ({
+    item,
+    perspectives: parsePerspectives(item.snapshot_perspectives),
+    sourceTweets: parseSourceTweets(item.snapshot_source_tweets),
+  })),
+);
 </script>
 
 <template>
@@ -66,69 +81,69 @@ function parseSourceTweets(
     <!-- 条目列表 -->
     <div class="preview-items">
       <div
-        v-for="(item, idx) in visibleItems"
-        :key="item.id"
+        v-for="(parsed, idx) in parsedItems"
+        :key="parsed.item.id"
         class="preview-card"
       >
         <!-- 序号 + 热度 -->
         <div class="card-header">
           <span class="card-index">{{ idx + 1 }}</span>
-          <span class="card-heat">🔥 {{ Math.round(item.snapshot_heat_score) }}</span>
+          <span class="card-heat">🔥 {{ Math.round(parsed.item.snapshot_heat_score) }}</span>
           <span
-            v-if="item.is_pinned"
+            v-if="parsed.item.is_pinned"
             class="card-pinned"
           >置顶</span>
         </div>
 
         <!-- 标题 -->
-        <h3 class="card-title">{{ item.snapshot_title }}</h3>
+        <h3 class="card-title">{{ parsed.item.snapshot_title }}</h3>
 
         <!-- 聚合话题：摘要 + 观点 + 来源 -->
-        <template v-if="item.item_type === 'topic' && item.snapshot_topic_type === 'aggregated'">
-          <p v-if="item.snapshot_summary" class="card-summary">
-            {{ item.snapshot_summary }}
+        <template v-if="parsed.item.item_type === 'topic' && parsed.item.snapshot_topic_type === 'aggregated'">
+          <p v-if="parsed.item.snapshot_summary" class="card-summary">
+            {{ parsed.item.snapshot_summary }}
           </p>
-          <div v-if="parsePerspectives(item.snapshot_perspectives).length" class="card-perspectives">
+          <div v-if="parsed.perspectives.length" class="card-perspectives">
             <div class="perspectives-label">各方观点</div>
             <ul>
-              <li v-for="(p, pi) in parsePerspectives(item.snapshot_perspectives)" :key="pi">
+              <li v-for="(p, pi) in parsed.perspectives" :key="pi">
                 {{ p }}
               </li>
             </ul>
           </div>
-          <div v-if="parseSourceTweets(item.snapshot_source_tweets).length" class="card-sources">
+          <div v-if="parsed.sourceTweets.length" class="card-sources">
             <span class="sources-label">来源：</span>
             <a
-              v-for="(src, si) in parseSourceTweets(item.snapshot_source_tweets)"
+              v-for="(src, si) in parsed.sourceTweets"
               :key="si"
-              :href="safeHref(src.url)"
+              :href="safeHref(src.tweet_url)"
               target="_blank"
               rel="noopener noreferrer"
               class="source-link"
-            >@{{ src.author }}</a>
+            >@{{ src.handle }}</a>
           </div>
         </template>
 
         <!-- Thread / 单条推文：翻译 + 点评 -->
         <template v-else>
-          <p v-if="item.snapshot_translation" class="card-translation">
-            {{ item.snapshot_translation }}
+          <p v-if="parsed.item.snapshot_translation" class="card-translation">
+            {{ parsed.item.snapshot_translation }}
           </p>
-          <div v-if="item.snapshot_author_handle" class="card-author">
+          <div v-if="parsed.item.snapshot_author_handle" class="card-author">
             <a
-              v-if="item.snapshot_tweet_url"
-              :href="safeHref(item.snapshot_tweet_url)"
+              v-if="parsed.item.snapshot_tweet_url"
+              :href="safeHref(parsed.item.snapshot_tweet_url)"
               target="_blank"
               rel="noopener noreferrer"
               class="author-link"
-            >@{{ item.snapshot_author_handle }}</a>
-            <span v-else>@{{ item.snapshot_author_handle }}</span>
+            >@{{ parsed.item.snapshot_author_handle }}</a>
+            <span v-else>@{{ parsed.item.snapshot_author_handle }}</span>
           </div>
         </template>
 
         <!-- 点评 -->
-        <div v-if="item.snapshot_comment" class="card-comment">
-          <span class="comment-label">智曦点评：</span>{{ item.snapshot_comment }}
+        <div v-if="parsed.item.snapshot_comment" class="card-comment">
+          <span class="comment-label">智曦点评：</span>{{ parsed.item.snapshot_comment }}
         </div>
       </div>
     </div>
