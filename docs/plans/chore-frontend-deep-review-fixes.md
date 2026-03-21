@@ -319,21 +319,67 @@ cd admin && bunx vue-tsc --noEmit && bunx biome check .
 
 ---
 
-## 执行结果（待回填）
-
-> 以下内容在实施完成后回填
+## 执行结果
 
 ### 交付物清单
-_待回填_
+
+| 类别 | 文件 | 变更说明 |
+|------|------|----------|
+| **新建** | `admin/src/constants/index.ts` | AUTH_TOKEN_KEY 常量 |
+| **新建** | `admin/src/composables/useAsyncData.ts` | 通用异步数据加载 composable |
+| **新建** | `admin/src/components/AsyncContent.vue` | loading/error/content 三态包装组件 |
+| **新建** | `admin/src/utils/digest.ts` | filterVisibleItems 共享工具函数 |
+| **前端核心** | `admin/src/api/index.ts` | 循环依赖消除、网络错误差异化、401 防重复、ApiError 联合类型、签名链接排除、超时调整 |
+| **前端核心** | `admin/src/router/index.ts` | 生成类型替换内联类型、setupCache TTL、常量引用 |
+| **前端核心** | `admin/src/main.ts` | 全局错误处理器 |
+| **前端工具** | `admin/src/utils/format.ts` | formatDate 防御 Invalid Date、formatWeekday 提取 |
+| **前端视图** | `admin/src/views/Digest.vue` | dialog/API 错误分离、filterVisibleItems、命名路由、scoped CSS |
+| **前端视图** | `admin/src/views/History.vue` | 分页不置 finished、竞态守卫、formatWeekday 引用、命名路由 |
+| **前端视图** | `admin/src/views/Dashboard.vue` | 空值保护、命名路由、scoped CSS |
+| **前端视图** | `admin/src/views/HistoryDetail.vue` | 路由参数校验、区分 404、AsyncContent、命名路由 |
+| **前端视图** | `admin/src/views/ApiCosts.vue` | Promise.all 改分别 catch |
+| **前端视图** | `admin/src/views/Logs.vue` | van-list 分页加载替代一次加载 200 条 |
+| **前端视图** | `admin/src/views/Settings.vue` | 去除 as 断言、API 状态 v-for |
+| **前端视图** | `admin/src/views/Preview.vue` | 命名路由 |
+| **前端组件** | `admin/src/components/ArticlePreview.vue` | JSON 解析元素类型守卫、filterVisibleItems |
+| **前端 stub** | Login/Setup/Accounts/DigestEdit.vue | 添加 TODO 标注 |
+| **后端 Schema** | `app/schemas/digest_types.py` | item_type/snapshot_topic_type/status 改用枚举 |
+| **后端 Schema** | `app/schemas/dashboard_types.py` | status/job_type 改用枚举、DigestStatus→DigestStatusSummary |
+| **后端 Schema** | `app/schemas/settings_types.py` | publish_mode 改用 PublishMode 枚举 |
+| **后端路由** | `app/api/dashboard.py` | 枚举构造适配（JobStatus/DigestStatus/JobType） |
+| **后端路由** | `app/api/settings.py` | PublishMode 构造适配 |
+| **生成物** | `packages/openapi-client/src/gen/types.gen.ts` | 自动重新生成，枚举类型收窄 |
+
+共 28 个文件变更（23 modified + 5 new），+864 / -220 行。
 
 ### 偏离项表格
-_待回填_
+
+| 编号 | 计划内容 | 实际执行 | 原因 |
+|------|----------|----------|------|
+| D-1 | dashboard_types.py 的 `DigestStatus` 类保持原名，用 `enums.DigestStatus` 别名导入枚举 | 将类重命名为 `DigestStatusSummary` | OpenAPI 生成器遇到同名类时会生成 `app__schemas__dashboard_types__DigestStatus` 这种丑陋的全路径类型名，重命名后生成物干净 |
+| D-2 | Settings.vue 直接删除 `as "manual" \| "api"` 断言 | 改为 `as PublishMode`（导入生成的 PublishMode 类型） | form 初始值 `"manual"` 被 TS 推断为字面量 `"manual"` 而非联合类型，需要显式标注为 `PublishMode` |
+| D-3 | S-1 useAsyncData composable 应用到 6 个视图 | 仅创建了 composable，未全面替换各视图的加载逻辑 | 各视图的加载逻辑差异较大（分页、双数据源、条件加载等），强行统一会降低可读性，保留 composable 供后续新视图使用 |
 
 ### 问题与修复
-_待回填_
+
+| 问题 | 发现阶段 | 修复方式 |
+|------|----------|----------|
+| pyright 6 个类型错误：DB model 的 str 字段赋值给 Schema 枚举类型不兼容 | 第 5 轮全量验证 | dashboard.py 中对 `job.status`/`digest.status`/`j.job_type` 包裹 `JobStatus()`/`enums.DigestStatus()`/`JobType()` 构造；settings.py 包裹 `PublishMode()` |
+| ruff I001 import 排序：dashboard.py 新增的 `import app.schemas.enums as enums` 位置不符合 isort 规则 | 第 5 轮全量验证 | `ruff check --fix` 自动修复 |
+| biome organizeImports：api/index.ts 的 import 排序不符合 biome 规则 | 第 1 轮验证 | 手动将 `@/constants` import 移到最前 |
 
 ### 质量门禁详表
-_待回填_
+
+| 门禁 | 命令 | 结果 |
+|------|------|------|
+| 后端 Lint | `ruff check .` | All checks passed |
+| 后端格式 | `ruff format --check .` | 135 files already formatted |
+| 后端类型 | `pyright` | 0 errors, 0 warnings, 0 informations |
+| 后端测试 | `pytest tests/` | **537 passed**, 278 warnings in 60s |
+| 前端类型 | `vue-tsc --noEmit` | 0 errors |
+| 前端 Lint | `biome check .` | ok (no errors) |
+| 生成物一致 | `make gen && git diff --exit-code` | 无 diff |
 
 ### PR 链接
-_待回填_
+
+https://github.com/neuer/zhixi/pull/30
