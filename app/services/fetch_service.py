@@ -10,6 +10,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.notifier import send_alert
 from app.clients.x_client import XApiError
 from app.config import get_fetch_window, get_today_digest_date, settings
 from app.fetcher import get_fetcher
@@ -161,6 +162,15 @@ class FetchService:
         )
         self.db.add(fetch_log)
         await self.db.flush()
+
+        # I-21: 抓取失败时发送告警通知
+        if fail_count > 0:
+            await send_alert(
+                "推文抓取部分失败",
+                f"日期={digest_date}, 失败={fail_count}/{total_accounts}, "
+                f"新增推文={new_tweets_total}",
+                self.db,
+            )
 
         return FetchResult(
             new_tweets_count=new_tweets_total,
