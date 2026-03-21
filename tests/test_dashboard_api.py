@@ -57,6 +57,7 @@ async def test_overview_empty(
     # digest 状态
     assert data["digest_status"]["status"] is None
     assert data["digest_status"]["item_count"] == 0
+    assert data["digest_status"]["low_content_warning"] is False
     # 成本
     assert data["today_cost"]["total_cost"] == 0
     assert data["today_cost"]["by_service"] == []
@@ -603,3 +604,83 @@ async def test_logs_limit(authed_client: AsyncClient) -> None:
         assert logs[0]["message"] == "消息 19"
     finally:
         tmp_path.unlink()
+
+
+# ══════════════════════════════════════════
+# US-045: 冷门日处理 — low_content_warning
+# ══════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_overview_digest_low_content_warning(
+    authed_client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """item_count < min_articles 时 low_content_warning=True。"""
+    # min_articles=5
+    db.add(SystemConfig(key="min_articles", value="5"))
+    digest = DailyDigest(
+        digest_date=TODAY,
+        version=1,
+        is_current=True,
+        status="draft",
+        item_count=3,
+    )
+    db.add(digest)
+    await db.commit()
+
+    with patch("app.api.dashboard.get_today_digest_date", return_value=TODAY):
+        resp = await authed_client.get("/api/dashboard/overview")
+    assert resp.status_code == 200
+    assert resp.json()["digest_status"]["low_content_warning"] is True
+    assert resp.json()["digest_status"]["item_count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_overview_digest_no_warning_when_enough(
+    authed_client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """item_count >= min_articles 时 low_content_warning=False。"""
+    digest = DailyDigest(
+        digest_date=TODAY,
+        version=1,
+        is_current=True,
+        status="draft",
+        item_count=8,
+    )
+    db.add(digest)
+    await db.commit()
+
+    with patch("app.api.dashboard.get_today_digest_date", return_value=TODAY):
+        resp = await authed_client.get("/api/dashboard/overview")
+    assert resp.status_code == 200
+    assert resp.json()["digest_status"]["low_content_warning"] is False
+
+
+# ══════════════════════════════════════════
+# US-046: 超时未审核处理 — draft 行为验证
+# ══════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_overview_draft_status_pending_review(
+    authed_client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """US-046: draft 状态正确返回，不存在自动状态流转。"""
+    digest = DailyDigest(
+        digest_date=TODAY,
+        version=1,
+        is_current=True,
+        status="draft",
+        item_count=8,
+    )
+    db.add(digest)
+    await db.commit()
+
+    with patch("app.api.dashboard.get_today_digest_date", return_value=TODAY):
+        resp = await authed_client.get("/api/dashboard/overview")
+    assert resp.status_code == 200
+    # draft 状态保持不变，不会自动变为 published
+    assert resp.json()["digest_status"]["status"] == "draft"

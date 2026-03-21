@@ -4,7 +4,11 @@ import json
 import logging
 
 from app.clients.claude_client import ClaudeAPIError, ClaudeClient
-from app.digest.summary_prompts import DEFAULT_SUMMARY, SUMMARY_PROMPT_TEMPLATE
+from app.digest.summary_prompts import (
+    DEFAULT_SUMMARY,
+    EMPTY_DAY_SUMMARY,
+    SUMMARY_PROMPT_TEMPLATE,
+)
 from app.models.digest_item import DigestItem
 from app.schemas.client_types import ClaudeResponse
 
@@ -49,8 +53,8 @@ async def generate_summary(
         (summary_text, claude_response)。失败时返回 (DEFAULT_SUMMARY, None)。
     """
     if not top_items:
-        logger.info("无可用条目，使用默认导读摘要")
-        return DEFAULT_SUMMARY, None
+        logger.info("无可用条目，使用空日导读摘要")
+        return EMPTY_DAY_SUMMARY, None
 
     top_articles_json = _serialize_top_items(top_items)
     prompt = SUMMARY_PROMPT_TEMPLATE.format(top_articles_json=top_articles_json)
