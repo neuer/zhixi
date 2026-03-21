@@ -1,6 +1,6 @@
 """多批分析结果合并与 AI 去重（US-020）。
 
-将多批全局分析的 AnalysisResult 合并为 R.1.5b 输入格式，
+将多批全局分析的 AnalysisResult 合并为 R.1.2b 输入格式，
 调用 Claude API 执行轻量去重。
 """
 
@@ -11,7 +11,7 @@ from app.clients.claude_client import ClaudeClient
 from app.processor.json_validator import validate_and_fix
 from app.processor.merger_prompts import DEDUP_PROMPT, DEDUP_SCHEMA
 from app.schemas.client_types import ClaudeResponse
-from app.schemas.processor_types import AnalysisResult, TopicResult
+from app.schemas.processor_types import AnalysisResult
 
 logger = logging.getLogger(__name__)
 
@@ -76,22 +76,6 @@ async def run_dedup_analysis(
 
     parsed = validate_and_fix(response.content, DEDUP_SCHEMA)
 
-    topics = [
-        TopicResult(
-            type=t["type"],
-            topic_label=t.get("topic_label"),
-            ai_importance_score=t["ai_importance_score"],
-            tweet_ids=t["tweet_ids"],
-            merged_text=t.get("merged_text"),
-            reason=t.get("reason"),
-        )
-        for t in parsed.get("topics", [])
-    ]
-
-    result = AnalysisResult(
-        filtered_ids=parsed.get("filtered_ids", []),
-        filtered_count=parsed.get("filtered_count", len(parsed.get("filtered_ids", []))),
-        topics=topics,
-    )
+    result = AnalysisResult.from_parsed(parsed)
 
     return result, response

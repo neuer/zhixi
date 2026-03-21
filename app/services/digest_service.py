@@ -23,6 +23,7 @@ from app.config import (
 from app.digest.cover_generator import generate_cover_image
 from app.digest.renderer import render_markdown
 from app.digest.summary_generator import generate_summary
+from app.lib.account_helpers import get_accounts_map_by_ids
 from app.lib.cost_logger import record_api_cost
 from app.models.account import TwitterAccount
 from app.models.digest import DailyDigest
@@ -104,7 +105,7 @@ class DigestService:
         self._db.add(digest)
         await self._db.flush()
 
-        # 7. 创建 DigestItem 快照
+        # 8. 创建 DigestItem 快照
         created_items: list[DigestItem] = []
         for order, (_score, item_type, source_obj, extra) in enumerate(sortable_items, start=1):
             item = self._create_digest_item(
@@ -120,7 +121,7 @@ class DigestService:
 
         await self._db.flush()
 
-        # 8. 生成导读摘要
+        # 9. 生成导读摘要
         top_items = created_items[:_SUMMARY_TOP_N]
         summary, cost_response, degraded = await generate_summary(
             self._claude, top_items, db=self._db
@@ -131,11 +132,11 @@ class DigestService:
         if cost_response:
             self._record_cost(cost_response, "summary", digest_date)
 
-        # 9. 渲染 Markdown
+        # 10. 渲染 Markdown
         top_n = await safe_int_config(self._db, "top_n", 10)
         digest.content_markdown = render_markdown(digest, created_items, top_n)
 
-        # 10. 封面图生成（可选，不阻塞）
+        # 11. 封面图生成（可选，不阻塞）
         enable_cover = await get_system_config(self._db, "enable_cover_generation", "false")
         if enable_cover.lower() == "true":
             gemini_client = get_gemini_client()
@@ -162,7 +163,107 @@ class DigestService:
         return digest
 
     # ──────────────────────────────────────────────────
-    # 查询方法
+    # 公开查询方法（供路由层调用）
+    # ──────────────────────────────────────────────────
+
+    async def get_today_digest(
+        self, digest_date: date
+    ) -> tuple[DailyDigest | None, list[DigestItem]]:
+        """查询指定日期 is_current=true 的 digest 及其 items。
+
+        Returns:
+            (digest, items)。digest 为 None 时 items 为空列表。
+        """
+        stmt = select(DailyDigest).where(
+            DailyDigest.digest_date == digest_date,
+            DailyDigest.is_current.is_(True),
+        )
+        result = await self._db.execute(stmt)
+        digest = result.scalar_one_or_none()
+
+        if digest is None:
+            return None, []
+
+        items_stmt = (
+            select(DigestItem)
+            .where(DigestItem.digest_id == digest.id)
+            .order_by(DigestItem.display_order)
+        )
+        items_result = await self._db.execute(items_stmt)
+        items = list(items_result.scalars().all())
+        return digest, items
+
+    async def get_markdown_content(self, digest_date: date) -> str:
+        """获取指定日期 is_current=true digest 的 Markdown 内容。
+
+        Raises:
+            DigestNotFoundError: 无当日草稿。
+        """
+        digest = await self._get_current_digest_or_none(digest_date)
+        if digest is None:
+            raise DigestNotFoundError
+        return digest.content_markdown or ""
+
+    async def mark_as_published(self, digest_date: date) -> None:
+        """标记指定日期的 current digest 为已发布。
+
+        Raises:
+            DigestNotFoundError: 无当日草稿。
+            DigestAlreadyPublishedError: 已发布。
+        """
+        digest = await self._get_current_digest_or_none(digest_date)
+        if digest is None:
+            raise DigestNotFoundError
+        if digest.status == DigestStatus.PUBLISHED:
+            raise DigestAlreadyPublishedError
+        digest.status = DigestStatus.PUBLISHED
+        digest.published_at = datetime.now(UTC)
+
+    async def generate_cover(self, digest_date: date) -> str | None:
+        """生成封面图并关联到 digest。
+
+        Raises:
+            DigestNotFoundError: 无当日草稿。
+
+        Returns:
+            封面图路径，失败时为 None。
+        """
+        digest = await self._get_current_digest_or_none(digest_date)
+        if digest is None:
+            raise DigestNotFoundError
+
+        # 查询 digest_items
+        items_stmt = (
+            select(DigestItem)
+            .where(
+                DigestItem.digest_id == digest.id,
+                DigestItem.is_excluded.is_(False),
+            )
+            .order_by(DigestItem.display_order)
+        )
+        items_result = await self._db.execute(items_stmt)
+        items = list(items_result.scalars())
+
+        gemini_client = get_gemini_client()
+        if gemini_client is None:
+            return None
+
+        cover_timeout = await safe_float_config(self._db, "cover_generation_timeout", 30.0)
+        cover_path = await generate_cover_image(
+            gemini_client=gemini_client,
+            top_items=items[:_SUMMARY_TOP_N],
+            digest_date=digest_date,
+            timeout=cover_timeout,
+            db=self._db,
+        )
+
+        if cover_path is not None:
+            digest.cover_image_path = cover_path
+
+        return cover_path
+
+    # ──────────────────────────────────────────────────
+    # 内部查询方法
     # ──────────────────────────────────────────────────
 
     async def _get_standalone_tweets(self, digest_date: date) -> list[Tweet]:
@@ -214,12 +315,8 @@ class DigestService:
         return result
 
     async def _get_accounts_map(self, account_ids: set[int]) -> dict[int, TwitterAccount]:
-        """批量查询账号信息。"""
-        if not account_ids:
-            return {}
-        stmt = select(TwitterAccount).where(TwitterAccount.id.in_(account_ids))
-        result = await self._db.execute(stmt)
-        return {acct.id: acct for acct in result.scalars().all()}
+        """批量查询账号信息（委托共享函数）。"""
+        return await get_accounts_map_by_ids(self._db, account_ids)
 
     # ──────────────────────────────────────────────────
     # 构建排序项
@@ -791,6 +888,10 @@ class DigestNotEditableError(Exception):
 
 class DigestItemNotFoundError(Exception):
     """指定的 digest_item 不存在。"""
+
+
+class DigestAlreadyPublishedError(Exception):
+    """该版本已发布。"""
 
 
 class PreviewTokenInvalidError(Exception):

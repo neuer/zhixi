@@ -6,17 +6,19 @@ from datetime import UTC, datetime
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin, get_digest_service, require_no_pipeline_lock
-from app.clients.claude_client import get_claude_client
+from app.api.deps import (
+    get_current_admin,
+    get_digest_service,
+    get_fetch_service,
+    get_process_service,
+    require_no_pipeline_lock,
+)
 from app.clients.notifier import send_alert
 from app.clients.x_client import XApiError
 from app.config import get_system_config, get_today_digest_date, safe_int_config
 from app.database import get_db
-from app.models.digest import DailyDigest
-from app.models.digest_item import DigestItem
 from app.models.job_run import JobRun
 from app.schemas.digest_types import (
     AddTweetRequest,
@@ -33,8 +35,9 @@ from app.schemas.digest_types import (
     ReorderRequest,
     TodayResponse,
 )
-from app.schemas.enums import DigestStatus, ItemType, JobStatus, JobType, PublishMode, TriggerSource
+from app.schemas.enums import ItemType, JobStatus, JobType, PublishMode, TriggerSource
 from app.services.digest_service import (
+    DigestAlreadyPublishedError,
     DigestNotEditableError,
     DigestNotFoundError,
     DigestService,
@@ -51,6 +54,7 @@ router = APIRouter()
 @router.get("/today", response_model=TodayResponse)
 async def get_today_digest(
     db: AsyncSession = Depends(get_db),
+    svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
 ) -> TodayResponse:
     """查看今日内容列表。
@@ -59,26 +63,10 @@ async def get_today_digest(
     查询 digest_date = today AND is_current = true。
     """
     digest_date = get_today_digest_date()
-
-    # 查询当日 is_current=true 的草稿
-    stmt = select(DailyDigest).where(
-        DailyDigest.digest_date == digest_date,
-        DailyDigest.is_current.is_(True),
-    )
-    result = await db.execute(stmt)
-    digest = result.scalar_one_or_none()
+    digest, items = await svc.get_today_digest(digest_date)
 
     if digest is None:
         return TodayResponse(digest=None, items=[], low_content_warning=False)
-
-    # 查询 items
-    items_stmt = (
-        select(DigestItem)
-        .where(DigestItem.digest_id == digest.id)
-        .order_by(DigestItem.display_order)
-    )
-    items_result = await db.execute(items_stmt)
-    items = list(items_result.scalars().all())
 
     # low_content_warning
     min_articles = await safe_int_config(db, "min_articles", 1)
@@ -96,7 +84,7 @@ async def get_today_digest(
 
 @router.get("/preview", response_model=PreviewResponse)
 async def get_preview(
-    db: AsyncSession = Depends(get_db),
+    svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
 ) -> PreviewResponse:
     """预览当日日报（登录态）。
@@ -104,24 +92,10 @@ async def get_preview(
     返回当日 is_current=true 的 digest + items + Markdown。
     """
     digest_date = get_today_digest_date()
-
-    stmt = select(DailyDigest).where(
-        DailyDigest.digest_date == digest_date,
-        DailyDigest.is_current.is_(True),
-    )
-    result = await db.execute(stmt)
-    digest = result.scalar_one_or_none()
+    digest, items = await svc.get_today_digest(digest_date)
 
     if digest is None:
         raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-
-    items_stmt = (
-        select(DigestItem)
-        .where(DigestItem.digest_id == digest.id)
-        .order_by(DigestItem.display_order)
-    )
-    items_result = await db.execute(items_stmt)
-    items = list(items_result.scalars().all())
 
     return PreviewResponse(
         digest=DigestBriefResponse.model_validate(digest),
@@ -247,6 +221,7 @@ async def restore_item(
 @router.post("/regenerate", response_model=RegenerateResponse)
 async def regenerate_digest(
     db: AsyncSession = Depends(get_db),
+    svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
     _lock: None = Depends(require_no_pipeline_lock),
 ) -> RegenerateResponse | JSONResponse:
@@ -269,7 +244,6 @@ async def regenerate_digest(
     await db.flush()
 
     try:
-        svc = DigestService(db, claude_client=get_claude_client())
         new_digest = await svc.regenerate_digest(digest_date)
 
         job_run.status = JobStatus.COMPLETED
@@ -308,27 +282,22 @@ async def regenerate_digest(
 
 @router.get("/markdown", response_model=MarkdownResponse)
 async def get_markdown(
-    db: AsyncSession = Depends(get_db),
+    svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
 ) -> MarkdownResponse:
     """获取当日 Markdown 内容（供一键复制）。"""
     digest_date = get_today_digest_date()
-    stmt = select(DailyDigest).where(
-        DailyDigest.digest_date == digest_date,
-        DailyDigest.is_current.is_(True),
-    )
-    result = await db.execute(stmt)
-    digest = result.scalar_one_or_none()
-
-    if digest is None:
+    try:
+        content = await svc.get_markdown_content(digest_date)
+    except DigestNotFoundError:
         raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-
-    return MarkdownResponse(content_markdown=digest.content_markdown or "")
+    return MarkdownResponse(content_markdown=content)
 
 
 @router.post("/mark-published", response_model=None)
 async def mark_published(
     db: AsyncSession = Depends(get_db),
+    svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
     _lock: None = Depends(require_no_pipeline_lock),
 ) -> MessageResponse | JSONResponse:
@@ -342,20 +311,12 @@ async def mark_published(
         )
 
     digest_date = get_today_digest_date()
-    stmt = select(DailyDigest).where(
-        DailyDigest.digest_date == digest_date,
-        DailyDigest.is_current.is_(True),
-    )
-    result = await db.execute(stmt)
-    digest = result.scalar_one_or_none()
-
-    if digest is None:
+    try:
+        await svc.mark_as_published(digest_date)
+    except DigestNotFoundError:
         raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-    if digest.status == DigestStatus.PUBLISHED:
+    except DigestAlreadyPublishedError:
         raise HTTPException(status_code=409, detail="该版本已发布") from None
-
-    digest.status = DigestStatus.PUBLISHED
-    digest.published_at = datetime.now(UTC)
 
     return MessageResponse(message="发布成功")
 
@@ -369,10 +330,11 @@ async def add_tweet(
     db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
     digest_svc: DigestService = Depends(get_digest_service),
+    fetch_svc: FetchService = Depends(get_fetch_service),
+    process_svc: ProcessService = Depends(get_process_service),
 ) -> AddTweetResponse | JSONResponse:
     """手动补录推文 — M1 抓取 → 入库 → M2 AI 加工 → M3 热度计算 + 建 item。"""
     digest_date = get_today_digest_date()
-    claude = get_claude_client()
     try:
         await digest_svc.check_draft_editable(digest_date)
     except DigestNotFoundError:
@@ -387,7 +349,6 @@ async def add_tweet(
         ) from None
 
     # M1: 抓取 + 入库
-    fetch_svc = FetchService(db)
     try:
         tweet = await fetch_svc.fetch_single_tweet(body.tweet_url, digest_date)
     except ValueError:
@@ -398,7 +359,6 @@ async def add_tweet(
         raise HTTPException(status_code=502, detail="推文抓取失败") from None
 
     # M2: AI 加工（失败时推文保留但不建 item）
-    process_svc = ProcessService(db, claude_client=claude)
     try:
         await process_svc.process_single_tweet_by_id(tweet.id)
     except Exception as exc:

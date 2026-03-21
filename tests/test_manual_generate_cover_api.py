@@ -83,9 +83,13 @@ class TestManualGenerateCover:
             patch("app.api.manual.get_gemini_client", return_value=mock_client),
             patch("app.api.manual.get_today_digest_date", return_value=digest_date),
             patch(
-                "app.api.manual.generate_cover_image",
+                "app.services.digest_service.generate_cover_image",
                 new_callable=AsyncMock,
                 return_value="data/covers/cover_20260319.png",
+            ),
+            patch(
+                "app.services.digest_service.get_gemini_client",
+                return_value=mock_client,
             ),
         ):
             resp = await authed_client.post("/api/manual/generate-cover")
@@ -108,9 +112,13 @@ class TestManualGenerateCover:
             patch("app.api.manual.get_gemini_client", return_value=mock_client),
             patch("app.api.manual.get_today_digest_date", return_value=digest_date),
             patch(
-                "app.api.manual.generate_cover_image",
+                "app.services.digest_service.generate_cover_image",
                 new_callable=AsyncMock,
                 return_value=None,
+            ),
+            patch(
+                "app.services.digest_service.get_gemini_client",
+                return_value=mock_client,
             ),
         ):
             resp = await authed_client.post("/api/manual/generate-cover")

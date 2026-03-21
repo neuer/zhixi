@@ -19,6 +19,12 @@ from app.processor.translator_prompts import (
     TOPIC_SCHEMA,
 )
 from app.schemas.client_types import ClaudeResponse
+from app.schemas.processor_types import (
+    PerspectiveItem,
+    SingleTweetResult,
+    ThreadResult,
+    TopicProcessResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +32,7 @@ logger = logging.getLogger(__name__)
 async def process_single_tweet(
     claude_client: ClaudeClient,
     tweet_data: dict[str, object],
-) -> tuple[dict[str, object], ClaudeResponse]:
+) -> tuple[SingleTweetResult, ClaudeResponse]:
     """单条推文加工（R.1.3）。
 
     Args:
@@ -35,18 +41,22 @@ async def process_single_tweet(
                     tweet_time, likes, retweets, replies, original_text
 
     Returns:
-        ({title, translation, comment}, ClaudeResponse)
+        (SingleTweetResult, ClaudeResponse)
     """
     prompt = SINGLE_TWEET_PROMPT.format(**tweet_data)
     response = await claude_client.complete(prompt, max_tokens=2048)
     parsed = validate_and_fix(response.content, SINGLE_TWEET_SCHEMA)
-    return parsed, response
+    return SingleTweetResult(
+        title=str(parsed["title"]),
+        translation=str(parsed["translation"]),
+        comment=str(parsed["comment"]),
+    ), response
 
 
 async def process_aggregated_topic(
     claude_client: ClaudeClient,
     tweets_json: str,
-) -> tuple[dict[str, object], ClaudeResponse]:
+) -> tuple[TopicProcessResult, ClaudeResponse]:
     """聚合话题加工（R.1.4）。
 
     Args:
@@ -54,18 +64,27 @@ async def process_aggregated_topic(
         tweets_json: R.1.4 格式序列化的推文 JSON 字符串
 
     Returns:
-        ({title, summary, perspectives, comment}, ClaudeResponse)
+        (TopicProcessResult, ClaudeResponse)
     """
     prompt = TOPIC_PROMPT.format(tweets_json=tweets_json)
     response = await claude_client.complete(prompt, max_tokens=4096)
     parsed = validate_and_fix(response.content, TOPIC_SCHEMA)
-    return parsed, response
+    raw_perspectives = parsed.get("perspectives", [])
+    perspectives: list[PerspectiveItem] = (
+        raw_perspectives if isinstance(raw_perspectives, list) else []
+    )
+    return TopicProcessResult(
+        title=str(parsed["title"]),
+        summary=str(parsed["summary"]),
+        perspectives=perspectives,
+        comment=str(parsed["comment"]),
+    ), response
 
 
 async def process_thread(
     claude_client: ClaudeClient,
     thread_data: dict[str, object],
-) -> tuple[dict[str, object], ClaudeResponse]:
+) -> tuple[ThreadResult, ClaudeResponse]:
     """Thread 加工（R.1.5）。
 
     Args:
@@ -75,9 +94,13 @@ async def process_thread(
                      total_likes, total_retweets, total_replies, merged_text
 
     Returns:
-        ({title, translation, comment}, ClaudeResponse)
+        (ThreadResult, ClaudeResponse)
     """
     prompt = THREAD_PROMPT.format(**thread_data)
     response = await claude_client.complete(prompt, max_tokens=4096)
     parsed = validate_and_fix(response.content, THREAD_SCHEMA)
-    return parsed, response
+    return ThreadResult(
+        title=str(parsed["title"]),
+        translation=str(parsed["translation"]),
+        comment=str(parsed["comment"]),
+    ), response
