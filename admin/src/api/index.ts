@@ -1,15 +1,18 @@
 import { AUTH_TOKEN_KEY } from "@/constants";
+import type { ValidationError } from "@zhixi/openapi-client";
 import axios, { type AxiosError } from "axios";
 import { showToast } from "vant";
 
-interface ValidationErrorItem {
-  loc: Array<string | number>;
-  msg: string;
-  type: string;
+interface ApiError {
+  detail: string | ValidationError[];
 }
 
-interface ApiError {
-  detail: string | ValidationErrorItem[];
+function extractDetail(
+  rawDetail: string | ValidationError[] | undefined,
+): string {
+  if (typeof rawDetail === "string") return rawDetail;
+  if (Array.isArray(rawDetail)) return rawDetail.map((e) => e.msg).join("; ");
+  return "未知错误";
 }
 
 let isRedirectingToLogin = false;
@@ -44,13 +47,7 @@ api.interceptors.response.use(
     }
 
     const status = error.response.status;
-    const rawDetail = error.response.data?.detail;
-    const detail =
-      typeof rawDetail === "string"
-        ? rawDetail
-        : Array.isArray(rawDetail)
-          ? rawDetail.map((e) => e.msg).join("; ")
-          : "未知错误";
+    const detail = extractDetail(error.response.data?.detail);
 
     if (status === 401) {
       // 签名链接路径不跳转登录
