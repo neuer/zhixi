@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job_run import JobRun
+from app.schemas.enums import TriggerSource
 from app.schemas.fetcher_types import FetchResult
 from app.schemas.processor_types import ProcessResult
 
@@ -119,7 +120,7 @@ class TestPipelineHappyPath:
         await db.flush()
 
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
 
         assert result.status == "completed"
         assert result.digest_date == date(2026, 3, 20)
@@ -164,7 +165,7 @@ class TestPipelineNotPushDay:
         await db.flush()
 
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
 
         assert result.status == "skipped"
 
@@ -197,7 +198,7 @@ class TestPipelineFetchFails:
 
         mock_fetch.side_effect = RuntimeError("X API timeout")
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
 
         assert result.status == "failed"
         assert result.failed_step == "fetch"
@@ -237,7 +238,7 @@ class TestPipelineProcessFails:
 
         mock_process.side_effect = RuntimeError("Claude API error")
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
 
         assert result.status == "failed"
         assert result.failed_step == "process"
@@ -266,7 +267,7 @@ class TestPipelineDigestFails:
 
         mock_digest.side_effect = RuntimeError("Digest creation error")
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
 
         assert result.status == "failed"
         assert result.failed_step == "digest"
@@ -294,7 +295,7 @@ class TestPipelineAlreadyRunning:
         existing = JobRun(
             job_type="pipeline",
             digest_date=date(2026, 3, 20),
-            trigger_source="cron",
+            trigger_source=TriggerSource.CRON,
             status="running",
             started_at=datetime.now(UTC),
         )
@@ -302,7 +303,7 @@ class TestPipelineAlreadyRunning:
         await db.flush()
 
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
 
         assert result.status == "skipped"
         assert "already running" in (result.error_message or "").lower()
@@ -334,7 +335,7 @@ class TestPipelineStaleCleanup:
         stale = JobRun(
             job_type="pipeline",
             digest_date=date(2026, 3, 20),
-            trigger_source="cron",
+            trigger_source=TriggerSource.CRON,
             status="running",
             started_at=datetime.now(UTC) - timedelta(hours=3),
         )
@@ -342,7 +343,7 @@ class TestPipelineStaleCleanup:
         await db.flush()
 
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
 
         # stale job 被清理
         await db.refresh(stale)
@@ -373,7 +374,7 @@ class TestPipelineWebhookFailure:
         mock_fetch.side_effect = RuntimeError("fetch error")
         mock_alert.side_effect = RuntimeError("webhook down")
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
 
         assert result.status == "failed"
         assert result.failed_step == "fetch"

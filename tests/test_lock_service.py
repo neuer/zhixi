@@ -8,6 +8,7 @@ from freezegun import freeze_time
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job_run import JobRun
+from app.schemas.enums import JobType
 from app.services.lock_service import (
     clean_stale_jobs,
     has_running_job,
@@ -47,7 +48,7 @@ async def test_has_running_job_true_when_running_exists(db: AsyncSession) -> Non
     db.add(_make_job(job_type="pipeline", status="running"))
     await db.flush()
 
-    result = await has_running_job(db, "pipeline", DIGEST_DATE)
+    result = await has_running_job(db, JobType.PIPELINE, DIGEST_DATE)
     assert result is True
 
 
@@ -57,7 +58,7 @@ async def test_has_running_job_false_when_no_running(db: AsyncSession) -> None:
     db.add(_make_job(job_type="pipeline", status="failed"))
     await db.flush()
 
-    result = await has_running_job(db, "pipeline", DIGEST_DATE)
+    result = await has_running_job(db, JobType.PIPELINE, DIGEST_DATE)
     assert result is False
 
 
@@ -66,7 +67,7 @@ async def test_has_running_job_false_different_date(db: AsyncSession) -> None:
     db.add(_make_job(job_type="pipeline", digest_date=OTHER_DATE, status="running"))
     await db.flush()
 
-    result = await has_running_job(db, "pipeline", DIGEST_DATE)
+    result = await has_running_job(db, JobType.PIPELINE, DIGEST_DATE)
     assert result is False
 
 
@@ -75,13 +76,13 @@ async def test_has_running_job_false_different_type(db: AsyncSession) -> None:
     db.add(_make_job(job_type="fetch", status="running"))
     await db.flush()
 
-    result = await has_running_job(db, "pipeline", DIGEST_DATE)
+    result = await has_running_job(db, JobType.PIPELINE, DIGEST_DATE)
     assert result is False
 
 
 async def test_has_running_job_false_empty_table(db: AsyncSession) -> None:
     """空表 → False。"""
-    result = await has_running_job(db, "pipeline", DIGEST_DATE)
+    result = await has_running_job(db, JobType.PIPELINE, DIGEST_DATE)
     assert result is False
 
 

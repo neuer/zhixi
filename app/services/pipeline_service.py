@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 async def run_pipeline(
     db: AsyncSession,
-    trigger_source: str = TriggerSource.CRON,
+    trigger_source: TriggerSource = TriggerSource.CRON,
 ) -> PipelineResult:
     """执行每日 Pipeline 主流程：fetch → process → digest。
 
@@ -148,8 +148,8 @@ async def run_pipeline(
 
 def _create_job_run(
     digest_date: date,
-    trigger_source: str,
-    status: str = JobStatus.RUNNING,
+    trigger_source: TriggerSource,
+    status: JobStatus = JobStatus.RUNNING,
 ) -> JobRun:
     """创建 job_run 记录。"""
     return JobRun(

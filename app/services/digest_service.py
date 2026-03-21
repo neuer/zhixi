@@ -30,6 +30,7 @@ from app.models.digest_item import DigestItem
 from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
+from app.schemas.digest_types import ReorderInput
 from app.schemas.enums import DigestStatus, ItemType, TopicType
 
 logger = logging.getLogger(__name__)
@@ -213,18 +214,18 @@ class DigestService:
         standalone_tweets: list[Tweet],
         topics_with_members: list[tuple[Topic, list[Tweet]]],
         accounts_map: dict[int, TwitterAccount],
-    ) -> list[tuple[float, str, Tweet | Topic, dict[str, object]]]:
+    ) -> list[tuple[float, ItemType, Tweet | Topic, dict[str, object]]]:
         """构建 (heat_score, item_type, source_obj, extra_data) 元组列表。"""
-        items: list[tuple[float, str, Tweet | Topic, dict[str, object]]] = []
+        items: list[tuple[float, ItemType, Tweet | Topic, dict[str, object]]] = []
 
         # 独立推文
         for tweet in standalone_tweets:
-            items.append((tweet.heat_score, "tweet", tweet, {}))
+            items.append((tweet.heat_score, ItemType.TWEET, tweet, {}))
 
         # 话题
         for topic, members in topics_with_members:
             extra: dict[str, object] = {"members": members}
-            items.append((topic.heat_score, "topic", topic, extra))
+            items.append((topic.heat_score, ItemType.TOPIC, topic, extra))
 
         return items
 
@@ -237,18 +238,20 @@ class DigestService:
         *,
         digest_id: int,
         display_order: int,
-        item_type: str,
+        item_type: ItemType,
         source_obj: Tweet | Topic,
         accounts_map: dict[int, TwitterAccount],
         extra: dict[str, object],
     ) -> DigestItem:
         """根据源对象类型创建 DigestItem 并填充 snapshot。"""
-        if item_type == "tweet" and isinstance(source_obj, Tweet):
+        if item_type == ItemType.TWEET and isinstance(source_obj, Tweet):
             return self._create_tweet_item(digest_id, display_order, source_obj, accounts_map)
 
-        if item_type == "topic" and isinstance(source_obj, Topic):
+        if item_type == ItemType.TOPIC and isinstance(source_obj, Topic):
             members = extra.get("members", [])
-            assert isinstance(members, list)
+            if not isinstance(members, list):
+                msg = f"members 必须是 list，实际类型: {type(members)}"
+                raise TypeError(msg)
             return self._create_topic_item(
                 digest_id, display_order, source_obj, members, accounts_map
             )
@@ -556,11 +559,11 @@ class DigestService:
         digest = result.scalar_one_or_none()
         if digest is None:
             raise DigestNotFoundError
-        if digest.status != "draft":
+        if digest.status != DigestStatus.DRAFT:
             raise DigestNotEditableError
         return digest
 
-    async def _find_item(self, digest_id: int, item_type: str, item_ref_id: int) -> DigestItem:
+    async def _find_item(self, digest_id: int, item_type: ItemType, item_ref_id: int) -> DigestItem:
         """通过 (digest_id, item_type, item_ref_id) 定位 digest_item。"""
         stmt = select(DigestItem).where(
             DigestItem.digest_id == digest_id,
@@ -587,7 +590,7 @@ class DigestService:
 
     async def edit_item(
         self,
-        item_type: str,
+        item_type: ItemType,
         item_ref_id: int,
         updates: dict[str, str],
         digest_date: date | None = None,
@@ -632,7 +635,7 @@ class DigestService:
 
     async def reorder_items(
         self,
-        items_input: list[dict[str, object]],
+        items_input: list[ReorderInput],
         digest_date: date | None = None,
     ) -> None:
         """调整排序与置顶（US-033）。"""
@@ -642,24 +645,23 @@ class DigestService:
         digest = await self._get_current_draft(digest_date)
 
         for entry in items_input:
-            item_id = entry["id"]
             stmt = select(DigestItem).where(
-                DigestItem.id == item_id,
+                DigestItem.id == entry.id,
                 DigestItem.digest_id == digest.id,
             )
             result = await self._db.execute(stmt)
             item = result.scalar_one_or_none()
             if item is None:
                 raise DigestItemNotFoundError
-            item.display_order = entry["display_order"]  # type: ignore[assignment]
-            item.is_pinned = entry.get("is_pinned", False)  # type: ignore[assignment]
+            item.display_order = entry.display_order
+            item.is_pinned = entry.is_pinned
 
         await self._rerender_markdown(digest)
         await self._db.flush()
 
     async def exclude_item(
         self,
-        item_type: str,
+        item_type: ItemType,
         item_ref_id: int,
         digest_date: date | None = None,
     ) -> None:
@@ -675,7 +677,7 @@ class DigestService:
 
     async def restore_item(
         self,
-        item_type: str,
+        item_type: ItemType,
         item_ref_id: int,
         digest_date: date | None = None,
     ) -> None:

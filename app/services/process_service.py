@@ -235,7 +235,9 @@ class ProcessService:
                 logger.warning("全局分析第 %d 次尝试失败: %s", attempt + 1, e)
 
         logger.error("全局分析连续失败，中止 pipeline")
-        assert last_error is not None, "重试循环未执行"
+        if last_error is None:
+            msg = "重试循环未执行"
+            raise RuntimeError(msg)
         raise last_error
 
     async def _run_dedup_with_retry(
@@ -255,7 +257,9 @@ class ProcessService:
                 logger.warning("去重分析第 %d 次尝试失败: %s", attempt + 1, e)
 
         logger.error("去重分析连续失败，中止 pipeline")
-        assert last_error is not None, "重试循环未执行"
+        if last_error is None:
+            msg = "重试循环未执行"
+            raise RuntimeError(msg)
         raise last_error
 
     def _apply_filtering(

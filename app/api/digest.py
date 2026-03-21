@@ -210,8 +210,7 @@ async def reorder_items(
     _admin: str = Depends(get_current_admin),
 ) -> MessageResponse:
     """调整排序与置顶。"""
-    items_input = [item.model_dump() for item in body.items]
-    await svc.reorder_items(items_input)
+    await svc.reorder_items(body.items)
     return MessageResponse(message="排序已更新")
 
 
