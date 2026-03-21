@@ -1,0 +1,195 @@
+/* ============================================================
+   智曦全局样式 — Vant 覆盖 + 基础 + 工具类
+   ============================================================ */
+
+/* ── Vant 4 主题变量覆盖 ── */
+
+:root {
+  --van-primary-color: var(--zx-primary);
+  --van-success-color: var(--zx-success);
+  --van-warning-color: var(--zx-warning);
+  --van-danger-color: var(--zx-danger);
+
+  --van-text-color: var(--zx-text-primary);
+  --van-text-color-2: var(--zx-text-secondary);
+  --van-text-color-3: var(--zx-text-tertiary);
+
+  --van-border-color: var(--zx-border);
+  --van-background: var(--zx-bg-page);
+  --van-background-2: var(--zx-bg-card);
+
+  --van-font-size-xs: var(--zx-text-xs);
+  --van-font-size-sm: var(--zx-text-sm);
+  --van-font-size-md: var(--zx-text-base);
+  --van-font-size-lg: var(--zx-text-lg);
+
+  --van-nav-bar-title-font-size: var(--zx-text-lg);
+  --van-nav-bar-height: 48px;
+  --van-nav-bar-background: var(--zx-bg-card);
+  --van-nav-bar-title-text-color: var(--zx-text-primary);
+
+  --van-cell-group-background: var(--zx-bg-card);
+  --van-cell-background: var(--zx-bg-card);
+  --van-cell-border-color: var(--zx-border-light);
+
+  --van-button-primary-background: var(--zx-primary);
+  --van-button-primary-border-color: var(--zx-primary);
+  --van-button-border-radius: var(--zx-radius-sm);
+
+  --van-tag-default-color: var(--zx-bg-sunken);
+
+  --van-empty-description-color: var(--zx-text-tertiary);
+  --van-empty-description-font-size: var(--zx-text-sm);
+
+  --van-pull-refresh-head-height: 60px;
+}
+
+/* ── 全局基础 ── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  margin: 0;
+  font-family: var(--zx-font-body);
+  color: var(--zx-text-primary);
+  background: var(--zx-bg-page);
+  line-height: 1.6;
+}
+
+/* ── NavBar 增强 ── */
+
+.van-nav-bar {
+  border-bottom: 1px solid var(--zx-border-light);
+}
+
+.van-nav-bar__title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ── CellGroup 增强 ── */
+
+.van-cell-group {
+  border-radius: var(--zx-radius-md);
+  overflow: hidden;
+  box-shadow: var(--zx-shadow-xs);
+}
+
+.van-cell-group--inset {
+  margin: 0;
+}
+
+/* ── Button 增强 ── */
+
+.van-button--primary {
+  font-weight: 500;
+  letter-spacing: 0.03em;
+}
+
+/* ── 通用工具类 ── */
+
+.zx-page {
+  background: var(--zx-bg-page);
+  min-height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.zx-page-content {
+  padding: var(--zx-space-base);
+}
+
+.zx-section-title {
+  font-family: var(--zx-font-display);
+  font-size: var(--zx-text-sm);
+  font-weight: 400;
+  color: var(--zx-text-tertiary);
+  margin: var(--zx-space-lg) 0 var(--zx-space-sm);
+  padding-left: var(--zx-space-base);
+  letter-spacing: 0.05em;
+}
+
+.zx-section-title:first-child {
+  margin-top: var(--zx-space-sm);
+}
+
+.zx-meta-text {
+  color: var(--zx-text-tertiary);
+  font-size: var(--zx-text-xs);
+}
+
+.zx-card {
+  background: var(--zx-bg-card);
+  border-radius: var(--zx-radius-md);
+  box-shadow: var(--zx-shadow-sm);
+  padding: var(--zx-space-base);
+}
+
+.zx-display-font {
+  font-family: var(--zx-font-display);
+}
+
+/* ── 空态增强 ── */
+
+.van-empty {
+  padding-top: 15vh;
+}
+
+.van-empty__description {
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
+  margin-top: var(--zx-space-md);
+}
+
+/* ── 页面转场 ── */
+
+.zx-fade-enter-active,
+.zx-fade-leave-active {
+  transition: opacity var(--zx-duration-fast) var(--zx-easing);
+}
+
+.zx-fade-enter-from,
+.zx-fade-leave-to {
+  opacity: 0;
+}
+
+/* ── 列表渐入 ── */
+
+@keyframes zx-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.zx-animate-in {
+  animation: zx-slide-up var(--zx-duration-normal) var(--zx-easing) both;
+}
+
+/* ── 滚动条美化（桌面端预览时） ── */
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--zx-border);
+  border-radius: 2px;
+}

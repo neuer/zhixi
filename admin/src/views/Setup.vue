@@ -161,45 +161,53 @@ async function handleSubmit() {
 <style scoped>
 .setup-page {
   min-height: 100vh;
-  background: linear-gradient(175deg, #f0f4ff 0%, #fafbff 40%, #fff 100%);
+  background: linear-gradient(
+    175deg,
+    var(--zx-primary-bg) 0%,
+    #f7f8fc 40%,
+    var(--zx-bg-card) 100%
+  );
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 var(--zx-space-lg);
 }
 
 .setup-header {
   text-align: center;
   padding-top: 15vh;
-  margin-bottom: 36px;
+  margin-bottom: var(--zx-space-2xl);
 }
 
 .logo-mark {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 12px;
-  border-radius: 14px;
-  background: #3b5bdb;
-  color: #fff;
-  font-size: 26px;
+  width: 60px;
+  height: 60px;
+  margin: 0 auto var(--zx-space-md);
+  border-radius: var(--zx-radius-md);
+  background: var(--zx-primary);
+  color: var(--zx-text-inverse);
+  font-size: 28px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   letter-spacing: -1px;
+  box-shadow: var(--zx-shadow-md);
 }
 
 .setup-title {
-  font-size: 24px;
+  font-family: var(--zx-font-display);
+  font-size: var(--zx-text-2xl);
   font-weight: 700;
-  color: #1a1a2e;
-  margin: 0 0 4px;
+  color: var(--zx-text-primary);
+  margin: 0 0 var(--zx-space-xs);
 }
 
 .setup-subtitle {
-  font-size: 13px;
-  color: #8c8ca1;
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
   margin: 0;
+  letter-spacing: 0.08em;
 }
 
 .setup-body {
@@ -212,55 +220,56 @@ async function handleSubmit() {
   align-items: center;
   justify-content: center;
   gap: 0;
-  margin-bottom: 24px;
+  margin-bottom: var(--zx-space-xl);
 }
 
 .step-dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
-  background: #d0d5dd;
-  transition: background 0.2s;
+  border-radius: var(--zx-radius-full);
+  background: var(--zx-border);
+  transition: background var(--zx-duration-normal) var(--zx-easing);
 }
 
 .step-dot.active {
-  background: #3b5bdb;
+  background: var(--zx-primary);
 }
 
 .step-line {
   width: 40px;
   height: 2px;
-  background: #d0d5dd;
-  transition: background 0.2s;
+  background: var(--zx-border);
+  transition: background var(--zx-duration-normal) var(--zx-easing);
 }
 
 .step-line.active {
-  background: #3b5bdb;
+  background: var(--zx-primary);
 }
 
 .form-heading {
-  font-size: 18px;
+  font-family: var(--zx-font-display);
+  font-size: var(--zx-text-lg);
   font-weight: 600;
-  color: #1a1a2e;
-  margin: 0 0 6px;
+  color: var(--zx-text-primary);
+  margin: 0 0 var(--zx-space-sm);
 }
 
 .form-desc {
-  font-size: 13px;
-  color: #8c8ca1;
-  margin: 0 0 16px;
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
+  margin: 0 0 var(--zx-space-base);
   line-height: 1.5;
 }
 
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: var(--zx-space-lg);
 }
 
 .next-btn {
-  margin-bottom: 10px;
+  margin-bottom: var(--zx-space-sm);
 }
 
 .back-btn {
-  margin-bottom: 20px;
+  margin-bottom: var(--zx-space-lg);
 }
 </style>

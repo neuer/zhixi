@@ -4,6 +4,8 @@ import App from "./App.vue";
 import router from "./router";
 
 import "vant/lib/index.css";
+import "./styles/tokens.css";
+import "./styles/global.css";
 
 const app = createApp(App);
 app.use(Vant);

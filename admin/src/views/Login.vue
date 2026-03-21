@@ -81,45 +81,53 @@ async function handleLogin() {
 <style scoped>
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(175deg, #f0f4ff 0%, #fafbff 40%, #fff 100%);
+  background: linear-gradient(
+    175deg,
+    var(--zx-primary-bg) 0%,
+    #f7f8fc 40%,
+    var(--zx-bg-card) 100%
+  );
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0 20px;
+  padding: 0 var(--zx-space-lg);
 }
 
 .login-header {
   text-align: center;
   padding-top: 20vh;
-  margin-bottom: 36px;
+  margin-bottom: var(--zx-space-2xl);
 }
 
 .logo-mark {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 12px;
-  border-radius: 14px;
-  background: #3b5bdb;
-  color: #fff;
-  font-size: 26px;
+  width: 60px;
+  height: 60px;
+  margin: 0 auto var(--zx-space-md);
+  border-radius: var(--zx-radius-md);
+  background: var(--zx-primary);
+  color: var(--zx-text-inverse);
+  font-size: 28px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   letter-spacing: -1px;
+  box-shadow: var(--zx-shadow-md);
 }
 
 .login-title {
-  font-size: 24px;
+  font-family: var(--zx-font-display);
+  font-size: var(--zx-text-2xl);
   font-weight: 700;
-  color: #1a1a2e;
-  margin: 0 0 4px;
+  color: var(--zx-text-primary);
+  margin: 0 0 var(--zx-space-xs);
 }
 
 .login-subtitle {
-  font-size: 13px;
-  color: #8c8ca1;
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
   margin: 0;
+  letter-spacing: 0.08em;
 }
 
 .login-body {
@@ -128,10 +136,12 @@ async function handleLogin() {
 }
 
 .form-group {
-  margin-bottom: 24px;
+  margin-bottom: var(--zx-space-xl);
 }
 
 .login-btn {
-  margin-bottom: 20px;
+  margin-bottom: var(--zx-space-lg);
+  font-weight: 500;
+  letter-spacing: 0.05em;
 }
 </style>

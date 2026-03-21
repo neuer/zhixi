@@ -1,0 +1,84 @@
+/* ============================================================
+   智曦设计令牌 — 编辑/杂志风格
+   ============================================================ */
+
+:root {
+  /* ── 品牌色 ── */
+  --zx-primary: #2b3a67;
+  --zx-primary-light: #3d4f7c;
+  --zx-primary-lighter: #5a6e99;
+  --zx-primary-bg: #f0f2f8;
+  --zx-primary-text: #1e2a4a;
+
+  --zx-accent: #c7873a;
+  --zx-accent-light: #e8a84c;
+  --zx-accent-bg: #fdf6ec;
+  --zx-accent-text: #8a5a1e;
+
+  /* ── 语义色 ── */
+  --zx-success: #2d8a56;
+  --zx-success-bg: #edf7f1;
+  --zx-warning: #c4761b;
+  --zx-warning-bg: #fef5e7;
+  --zx-danger: #c23934;
+  --zx-danger-bg: #fbeaea;
+  --zx-info: #5a7fb5;
+  --zx-info-bg: #eef3fa;
+
+  /* ── 中性色 ── */
+  --zx-text-primary: #1a1a2e;
+  --zx-text-secondary: #5a5a72;
+  --zx-text-tertiary: #8c8ca1;
+  --zx-text-disabled: #b8b8c8;
+  --zx-text-inverse: #fff;
+
+  --zx-bg-page: #f5f6fa;
+  --zx-bg-card: #fff;
+  --zx-bg-elevated: #f8f9fc;
+  --zx-bg-sunken: #edeef4;
+
+  --zx-border: #e4e6ee;
+  --zx-border-light: #f0f1f5;
+
+  /* ── 字体 ── */
+  --zx-font-display: "Noto Serif SC", "Source Han Serif CN", Georgia,
+    "Times New Roman", serif;
+  --zx-font-body: -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Helvetica Neue", "Microsoft YaHei", sans-serif;
+  --zx-font-mono: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
+
+  /* ── 字号 ── */
+  --zx-text-xs: 11px;
+  --zx-text-sm: 13px;
+  --zx-text-base: 15px;
+  --zx-text-lg: 17px;
+  --zx-text-xl: 20px;
+  --zx-text-2xl: 24px;
+
+  /* ── 圆角 ── */
+  --zx-radius-xs: 4px;
+  --zx-radius-sm: 6px;
+  --zx-radius-md: 10px;
+  --zx-radius-lg: 16px;
+  --zx-radius-full: 9999px;
+
+  /* ── 阴影 ── */
+  --zx-shadow-xs: 0 1px 2px rgba(26, 26, 46, 0.04);
+  --zx-shadow-sm: 0 1px 3px rgba(26, 26, 46, 0.06);
+  --zx-shadow-md: 0 2px 8px rgba(26, 26, 46, 0.08);
+  --zx-shadow-lg: 0 4px 16px rgba(26, 26, 46, 0.12);
+
+  /* ── 间距 ── */
+  --zx-space-xs: 4px;
+  --zx-space-sm: 8px;
+  --zx-space-md: 12px;
+  --zx-space-base: 16px;
+  --zx-space-lg: 20px;
+  --zx-space-xl: 28px;
+  --zx-space-2xl: 40px;
+
+  /* ── 动画 ── */
+  --zx-duration-fast: 0.15s;
+  --zx-duration-normal: 0.25s;
+  --zx-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
+}

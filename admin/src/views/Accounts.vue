@@ -171,7 +171,7 @@ onMounted(loadAccounts);
 </script>
 
 <template>
-  <div class="accounts-page">
+  <div class="zx-page accounts-page">
     <van-nav-bar
       title="大V账号管理"
       left-text="返回"
@@ -193,32 +193,36 @@ onMounted(loadAccounts);
         description="暂无账号，点击右上角添加"
       />
 
-      <div v-else class="page-content">
-        <van-cell-group inset :title="`共 ${total} 个账号`">
-          <van-cell
+      <div v-else class="zx-page-content">
+        <p class="zx-section-title">共 {{ total }} 个账号</p>
+        <div class="account-list">
+          <div
             v-for="account in accounts"
             :key="account.id"
-            :title="`@${account.twitter_handle}`"
-            :label="account.display_name"
+            class="account-card"
             @click="openEdit(account)"
-            is-link
           >
-            <template #value>
-              <div class="account-meta">
-                <van-tag
-                  :type="account.is_active ? 'success' : 'default'"
-                  size="medium"
-                >
-                  {{ account.is_active ? "活跃" : "停用" }}
-                </van-tag>
-                <span class="weight-badge">{{ account.weight }}x</span>
-                <span class="fetch-time">
-                  {{ formatLastFetch(account.last_fetch_at) }}
-                </span>
-              </div>
-            </template>
-          </van-cell>
-        </van-cell-group>
+            <div class="account-avatar">
+              {{ account.twitter_handle.charAt(0).toUpperCase() }}
+            </div>
+            <div class="account-info">
+              <div class="account-handle">@{{ account.twitter_handle }}</div>
+              <div class="account-name">{{ account.display_name }}</div>
+            </div>
+            <div class="account-end">
+              <van-tag
+                :type="account.is_active ? 'success' : 'default'"
+                size="medium"
+              >
+                {{ account.is_active ? "活跃" : "停用" }}
+              </van-tag>
+              <span class="weight-badge">{{ account.weight }}x</span>
+              <span class="fetch-time">
+                {{ formatLastFetch(account.last_fetch_at) }}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </van-pull-refresh>
 
@@ -235,11 +239,11 @@ onMounted(loadAccounts);
 
         <van-notice-bar
           v-if="addError"
-          color="#ed6a0c"
-          background="#fffbe8"
+          :color="'var(--zx-warning)'"
+          :background="'var(--zx-warning-bg)'"
           left-icon="info-o"
           :text="addError"
-          style="margin-bottom: 12px"
+          class="popup-notice"
         />
 
         <van-cell-group inset>
@@ -264,7 +268,7 @@ onMounted(loadAccounts);
         </van-cell-group>
 
         <!-- 手动模式补充信息 -->
-        <van-cell-group v-if="manualMode" inset style="margin-top: 12px">
+        <van-cell-group v-if="manualMode" inset class="manual-group">
           <van-field
             v-model="manualForm.display_name"
             label="显示名"
@@ -285,7 +289,7 @@ onMounted(loadAccounts);
           size="large"
           :loading="adding"
           :disabled="adding || !addForm.twitter_handle.trim()"
-          style="margin-top: 16px"
+          class="popup-btn"
           @click="handleAdd"
         >
           {{ manualMode ? "手动添加" : "添加" }}
@@ -352,55 +356,118 @@ onMounted(loadAccounts);
 </template>
 
 <style scoped>
-.accounts-page {
-  background: #f7f8fa;
-  min-height: 100vh;
+/* ── 账号列表 ── */
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zx-space-sm);
 }
 
-.page-content {
-  padding: 12px;
-}
-
-.account-meta {
+.account-card {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: var(--zx-space-md);
+  background: var(--zx-bg-card);
+  border-radius: var(--zx-radius-md);
+  box-shadow: var(--zx-shadow-xs);
+  padding: var(--zx-space-md) var(--zx-space-base);
+  cursor: pointer;
+  transition: box-shadow var(--zx-duration-fast) var(--zx-easing);
+}
+
+.account-card:active {
+  box-shadow: var(--zx-shadow-sm);
+}
+
+.account-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--zx-radius-full);
+  background: var(--zx-primary-bg);
+  color: var(--zx-primary);
+  font-weight: 700;
+  font-size: var(--zx-text-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.account-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-handle {
+  font-size: var(--zx-text-base);
+  font-weight: 500;
+  color: var(--zx-text-primary);
+}
+
+.account-name {
+  font-size: var(--zx-text-xs);
+  color: var(--zx-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-end {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--zx-space-xs);
+  flex-shrink: 0;
 }
 
 .weight-badge {
-  font-size: 12px;
-  color: #3b5bdb;
-  font-weight: 600;
+  font-size: var(--zx-text-xs);
+  color: var(--zx-accent);
+  font-weight: 700;
 }
 
 .fetch-time {
-  font-size: 11px;
-  color: #969799;
+  font-size: var(--zx-text-xs);
+  color: var(--zx-text-disabled);
 }
 
+/* ── 弹窗 ── */
+
 .popup-content {
-  padding: 20px 16px;
+  padding: var(--zx-space-lg) var(--zx-space-base);
 }
 
 .popup-title {
-  font-size: 17px;
+  font-family: var(--zx-font-display);
+  font-size: var(--zx-text-lg);
   font-weight: 600;
-  color: #1a1a2e;
-  margin: 0 0 4px;
+  color: var(--zx-text-primary);
+  margin: 0 0 var(--zx-space-xs);
 }
 
 .popup-desc {
-  font-size: 13px;
-  color: #8c8ca1;
-  margin: 0 0 16px;
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
+  margin: 0 0 var(--zx-space-base);
+}
+
+.popup-notice {
+  margin-bottom: var(--zx-space-md);
+}
+
+.popup-btn {
+  margin-top: var(--zx-space-base);
+}
+
+.manual-group {
+  margin-top: var(--zx-space-md);
 }
 
 .edit-actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 16px;
+  gap: var(--zx-space-sm);
+  margin-top: var(--zx-space-base);
 }
 </style>

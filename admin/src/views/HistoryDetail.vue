@@ -71,7 +71,7 @@ onMounted(loadDetail);
 
 <style scoped>
 .history-detail-page {
-  background: #fff;
+  background: var(--zx-bg-card);
   min-height: 100vh;
 }
 </style>

@@ -221,10 +221,10 @@ function onTimeConfirm({ selectedValues }: { selectedValues: string[] }) {
 }
 
 const apiStatusMap: Record<string, { text: string; color: string }> = {
-  ok: { text: "正常", color: "#07c160" },
-  error: { text: "异常", color: "#ee0a24" },
+  ok: { text: "正常", color: "var(--zx-success)" },
+  error: { text: "异常", color: "var(--zx-danger)" },
 };
-const apiStatusDefault = { text: "未配置", color: "#969799" };
+const apiStatusDefault = { text: "未配置", color: "var(--zx-text-disabled)" };
 
 function getApiStatus(status: string) {
   return apiStatusMap[status] ?? apiStatusDefault;
@@ -241,12 +241,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="settings-page">
+  <div class="zx-page settings-page">
     <van-nav-bar title="系统设置" left-arrow @click-left="router.back()" />
 
-    <div style="padding: 12px">
+    <div class="zx-page-content">
       <!-- 推送配置 -->
-      <van-cell-group inset title="推送配置" style="margin-bottom: 12px">
+      <p class="zx-section-title">推送配置</p>
+      <van-cell-group inset class="section-gap">
         <van-cell
           title="推送时间"
           :value="form.push_time"
@@ -261,7 +262,7 @@ onMounted(async () => {
                 :key="day.value"
                 :name="day.value"
                 shape="square"
-                style="margin: 2px 4px"
+                class="day-checkbox"
               >
                 {{ day.label }}
               </van-checkbox>
@@ -281,7 +282,8 @@ onMounted(async () => {
       </van-cell-group>
 
       <!-- 发布配置 -->
-      <van-cell-group inset title="发布配置" style="margin-bottom: 12px">
+      <p class="zx-section-title">发布配置</p>
+      <van-cell-group inset class="section-gap">
         <van-cell title="发布模式">
           <template #value>
             <van-radio-group v-model="form.publish_mode" direction="horizontal">
@@ -307,7 +309,8 @@ onMounted(async () => {
       </van-cell-group>
 
       <!-- 通知配置 -->
-      <van-cell-group inset title="通知配置" style="margin-bottom: 12px">
+      <p class="zx-section-title">通知配置</p>
+      <van-cell-group inset class="section-gap">
         <van-field
           v-model="form.notification_webhook_url"
           label="Webhook URL"
@@ -317,16 +320,17 @@ onMounted(async () => {
       </van-cell-group>
 
       <!-- API 密钥管理 -->
-      <van-cell-group inset title="API 密钥" style="margin-bottom: 12px">
+      <p class="zx-section-title">API 密钥</p>
+      <van-cell-group inset class="section-gap">
         <van-cell
           v-for="item in secretsStatus"
           :key="item.key"
           :title="item.label"
         >
           <template #value>
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end">
+            <div class="secret-value">
               <template v-if="item.configured">
-                <span style="color: #323233; font-family: monospace; font-size: 12px">
+                <span class="secret-masked">
                   {{ item.masked }}
                 </span>
                 <van-tag
@@ -349,7 +353,7 @@ onMounted(async () => {
                 </van-button>
               </template>
               <template v-else>
-                <span style="color: #969799">未配置</span>
+                <span class="secret-unconfigured">未配置</span>
                 <van-button size="mini" type="primary" @click="openSecretDialog(item)">
                   配置
                 </van-button>
@@ -360,16 +364,18 @@ onMounted(async () => {
       </van-cell-group>
 
       <!-- API 状态检测 -->
-      <van-cell-group inset title="API 状态" style="margin-bottom: 12px">
-        <van-button
-          size="small"
-          type="default"
-          :loading="checkingApi"
-          style="margin: 8px 16px"
-          @click="checkApiStatus"
-        >
-          检测 API 状态
-        </van-button>
+      <p class="zx-section-title">API 状态</p>
+      <van-cell-group inset class="section-gap">
+        <div class="api-check-btn">
+          <van-button
+            size="small"
+            type="default"
+            :loading="checkingApi"
+            @click="checkApiStatus"
+          >
+            检测 API 状态
+          </van-button>
+        </div>
         <van-cell
           v-for="entry in apiEntries"
           :key="entry.label"
@@ -381,7 +387,7 @@ onMounted(async () => {
             </span>
             <span
               v-if="entry.data.latency_ms != null"
-              style="color: #969799; margin-left: 4px; font-size: 12px"
+              class="api-latency"
             >
               {{ entry.data.latency_ms }}ms
             </span>
@@ -390,7 +396,8 @@ onMounted(async () => {
       </van-cell-group>
 
       <!-- 数据库信息 -->
-      <van-cell-group inset title="数据库" style="margin-bottom: 12px">
+      <p class="zx-section-title">数据库</p>
+      <van-cell-group inset class="section-gap">
         <van-cell title="数据库大小" :value="`${dbSizeMb} MB`" />
         <van-cell
           title="最近备份"
@@ -404,7 +411,7 @@ onMounted(async () => {
         block
         size="large"
         :loading="saving"
-        style="margin-top: 16px"
+        class="save-btn"
         @click="saveSettings"
       >
         保存配置
@@ -431,7 +438,7 @@ onMounted(async () => {
       @confirm="saveSecret"
       :before-close="(action: string) => action !== 'confirm' || !savingSecret"
     >
-      <div style="padding: 16px">
+      <div class="dialog-body">
         <van-field
           v-model="editingSecret.value"
           type="password"
@@ -442,3 +449,57 @@ onMounted(async () => {
     </van-dialog>
   </div>
 </template>
+
+<style scoped>
+.section-gap {
+  margin-bottom: var(--zx-space-md);
+}
+
+.day-checkbox {
+  margin: 2px 4px;
+}
+
+/* ── 密钥 ── */
+
+.secret-value {
+  display: flex;
+  align-items: center;
+  gap: var(--zx-space-sm);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.secret-masked {
+  color: var(--zx-text-secondary);
+  font-family: var(--zx-font-mono);
+  font-size: var(--zx-text-xs);
+}
+
+.secret-unconfigured {
+  color: var(--zx-text-disabled);
+}
+
+/* ── API 状态 ── */
+
+.api-check-btn {
+  padding: var(--zx-space-sm) var(--zx-space-base);
+}
+
+.api-latency {
+  color: var(--zx-text-disabled);
+  margin-left: var(--zx-space-xs);
+  font-size: var(--zx-text-xs);
+}
+
+/* ── 保存按钮 ── */
+
+.save-btn {
+  margin-top: var(--zx-space-lg);
+}
+
+/* ── 弹窗 ── */
+
+.dialog-body {
+  padding: var(--zx-space-base);
+}
+</style>

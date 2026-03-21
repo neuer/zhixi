@@ -70,7 +70,7 @@ onMounted(loadMore);
 </script>
 
 <template>
-  <div class="history-page">
+  <div class="zx-page history-page">
     <van-nav-bar
       title="推送历史"
       left-text="返回"
@@ -85,20 +85,22 @@ onMounted(loadMore);
         finished-text="没有更多了"
         @load="loadMore"
       >
-        <van-cell
-          v-for="item in items"
-          :key="item.id"
-          :title="`${formatDate(item.digest_date, false)} ${formatWeekday(item.digest_date)}`"
-          :label="`${item.item_count}条 · v${item.version}`"
-          is-link
-          @click="goDetail(item.id)"
-        >
-          <template #value>
-            <van-tag :type="getStatus(item.status).type">
-              {{ getStatus(item.status).text }}
-            </van-tag>
-          </template>
-        </van-cell>
+        <div class="history-list">
+          <van-cell
+            v-for="item in items"
+            :key="item.id"
+            :title="`${formatDate(item.digest_date, false)} ${formatWeekday(item.digest_date)}`"
+            :label="`${item.item_count}条 · v${item.version}`"
+            is-link
+            @click="goDetail(item.id)"
+          >
+            <template #value>
+              <van-tag :type="getStatus(item.status).type">
+                {{ getStatus(item.status).text }}
+              </van-tag>
+            </template>
+          </van-cell>
+        </div>
 
         <van-empty v-if="!loading && error" :description="error" image="error" />
         <van-empty v-else-if="!loading && items.length === 0" description="暂无历史记录" />
@@ -108,8 +110,13 @@ onMounted(loadMore);
 </template>
 
 <style scoped>
-.history-page {
-  background: #f5f5f5;
-  min-height: 100vh;
+.history-list {
+  padding: var(--zx-space-md) var(--zx-space-md) 0;
+}
+
+.history-list :deep(.van-cell) {
+  border-radius: var(--zx-radius-md);
+  margin-bottom: var(--zx-space-sm);
+  box-shadow: var(--zx-shadow-xs);
 }
 </style>

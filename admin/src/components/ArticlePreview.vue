@@ -113,7 +113,7 @@ const parsedItems = computed<ParsedItem[]>(() =>
         <!-- 序号 + 热度 -->
         <div class="card-header">
           <span class="card-index">{{ idx + 1 }}</span>
-          <span class="card-heat">🔥 {{ Math.round(parsed.item.snapshot_heat_score) }}</span>
+          <span class="card-heat">{{ Math.round(parsed.item.snapshot_heat_score) }}</span>
           <span
             v-if="parsed.item.is_pinned"
             class="card-pinned"
@@ -187,72 +187,74 @@ const parsedItems = computed<ParsedItem[]>(() =>
 .article-preview {
   max-width: 680px;
   margin: 0 auto;
-  padding: 0 16px 32px;
-  background: #fff;
+  padding: 0 var(--zx-space-base) var(--zx-space-2xl);
+  background: var(--zx-bg-card);
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  color: #333;
+  font-family: var(--zx-font-body);
+  color: var(--zx-text-primary);
 }
 
 .preview-header {
   text-align: center;
-  padding: 32px 0 16px;
-  border-bottom: 1px solid #eee;
+  padding: var(--zx-space-2xl) 0 var(--zx-space-base);
+  border-bottom: 1px solid var(--zx-border-light);
 }
 
 .preview-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 4px;
-  color: #1a1a1a;
+  font-family: var(--zx-font-display);
+  font-size: var(--zx-text-2xl);
+  font-weight: 700;
+  margin: 0 0 var(--zx-space-xs);
+  color: var(--zx-primary);
 }
 
 .preview-date {
-  font-size: 14px;
-  color: #999;
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
   margin: 0;
 }
 
 .preview-summary {
-  margin: 20px 0;
-  padding: 16px;
-  background: #f8f9fa;
-  border-radius: 12px;
-  border-left: 3px solid #4a90d9;
+  margin: var(--zx-space-lg) 0;
+  padding: var(--zx-space-base);
+  background: var(--zx-primary-bg);
+  border-radius: var(--zx-radius-md);
+  border-left: 3px solid var(--zx-primary);
 }
 
 .summary-label {
-  font-size: 12px;
-  color: #4a90d9;
+  font-size: var(--zx-text-xs);
+  color: var(--zx-primary);
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: var(--zx-space-sm);
+  letter-spacing: 0.05em;
 }
 
 .summary-text {
-  font-size: 15px;
-  line-height: 1.6;
-  color: #555;
+  font-size: var(--zx-text-base);
+  line-height: 1.7;
+  color: var(--zx-text-secondary);
   margin: 0;
 }
 
 .preview-items {
-  margin-top: 16px;
+  margin-top: var(--zx-space-base);
 }
 
 .preview-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
-  border: 1px solid #f0f0f0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: var(--zx-bg-card);
+  border-radius: var(--zx-radius-md);
+  padding: var(--zx-space-base);
+  margin-bottom: var(--zx-space-md);
+  border: 1px solid var(--zx-border-light);
+  box-shadow: var(--zx-shadow-xs);
 }
 
 .card-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: var(--zx-space-sm);
+  margin-bottom: var(--zx-space-sm);
 }
 
 .card-index {
@@ -261,113 +263,121 @@ const parsedItems = computed<ParsedItem[]>(() =>
   justify-content: center;
   width: 22px;
   height: 22px;
-  background: #4a90d9;
-  color: #fff;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
+  background: var(--zx-accent);
+  color: var(--zx-text-inverse);
+  border-radius: var(--zx-radius-sm);
+  font-size: var(--zx-text-xs);
+  font-weight: 700;
 }
 
 .card-heat {
-  font-size: 12px;
-  color: #999;
+  font-size: var(--zx-text-xs);
+  color: var(--zx-text-tertiary);
+}
+
+.card-heat::before {
+  content: "热度 ";
 }
 
 .card-pinned {
-  font-size: 11px;
-  color: #ff976a;
-  background: #fff7f0;
+  font-size: var(--zx-text-xs);
+  color: var(--zx-accent);
+  background: var(--zx-accent-bg);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--zx-radius-xs);
+  font-weight: 500;
 }
 
 .card-title {
-  font-size: 17px;
+  font-family: var(--zx-font-display);
+  font-size: var(--zx-text-lg);
   font-weight: 600;
   line-height: 1.4;
-  margin: 0 0 8px;
-  color: #1a1a1a;
+  margin: 0 0 var(--zx-space-sm);
+  color: var(--zx-text-primary);
 }
 
 .card-summary,
 .card-translation {
-  font-size: 15px;
-  line-height: 1.6;
-  color: #555;
-  margin: 0 0 8px;
+  font-size: var(--zx-text-base);
+  line-height: 1.7;
+  color: var(--zx-text-secondary);
+  margin: 0 0 var(--zx-space-sm);
 }
 
 .card-author {
-  font-size: 13px;
-  color: #999;
-  margin-bottom: 8px;
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
+  margin-bottom: var(--zx-space-sm);
 }
 
 .author-link {
-  color: #4a90d9;
+  color: var(--zx-primary-lighter);
   text-decoration: none;
 }
 
 .card-comment {
-  font-size: 14px;
-  line-height: 1.5;
-  color: #666;
-  background: #f8f9fa;
-  padding: 10px 12px;
-  border-radius: 8px;
-  margin-top: 8px;
+  font-size: var(--zx-text-sm);
+  line-height: 1.6;
+  color: var(--zx-text-secondary);
+  background: var(--zx-bg-elevated);
+  padding: var(--zx-space-md);
+  border-radius: var(--zx-radius-sm);
+  margin-top: var(--zx-space-sm);
 }
 
 .comment-label {
-  color: #4a90d9;
-  font-weight: 500;
+  color: var(--zx-accent);
+  font-weight: 600;
 }
 
 .card-perspectives {
-  margin: 8px 0;
+  margin: var(--zx-space-sm) 0;
+  padding: var(--zx-space-md);
+  background: var(--zx-bg-elevated);
+  border-radius: var(--zx-radius-sm);
+  border-left: 2px solid var(--zx-primary-lighter);
 }
 
 .perspectives-label {
-  font-size: 13px;
-  color: #4a90d9;
-  font-weight: 500;
-  margin-bottom: 4px;
+  font-size: var(--zx-text-sm);
+  color: var(--zx-primary);
+  font-weight: 600;
+  margin-bottom: var(--zx-space-xs);
 }
 
 .card-perspectives ul {
   margin: 0;
-  padding-left: 20px;
+  padding-left: var(--zx-space-lg);
 }
 
 .card-perspectives li {
-  font-size: 14px;
-  line-height: 1.6;
-  color: #555;
-  margin-bottom: 4px;
+  font-size: var(--zx-text-sm);
+  line-height: 1.7;
+  color: var(--zx-text-secondary);
+  margin-bottom: var(--zx-space-xs);
 }
 
 .card-sources {
-  font-size: 13px;
-  color: #999;
-  margin-top: 8px;
-}
-
-.sources-label {
-  color: #999;
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
+  margin-top: var(--zx-space-sm);
 }
 
 .source-link {
-  color: #4a90d9;
+  color: var(--zx-primary-lighter);
   text-decoration: none;
-  margin-right: 8px;
+  margin-right: var(--zx-space-sm);
 }
 
 .preview-footer {
   text-align: center;
-  padding: 24px 0;
-  margin-top: 16px;
-  border-top: 1px solid #eee;
-  color: #bbb;
-  font-size: 13px;
+  padding: var(--zx-space-xl) 0;
+  margin-top: var(--zx-space-base);
+  border-top: 1px solid var(--zx-border-light);
+  color: var(--zx-text-disabled);
+  font-size: var(--zx-text-sm);
+  font-family: var(--zx-font-display);
+  letter-spacing: 0.1em;
 }
 </style>

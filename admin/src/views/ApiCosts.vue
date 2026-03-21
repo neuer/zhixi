@@ -40,31 +40,31 @@ onMounted(loadData);
 </script>
 
 <template>
-  <div class="costs-page">
+  <div class="zx-page costs-page">
     <van-nav-bar title="API 成本监控" left-arrow @click-left="router.back()" />
 
     <van-pull-refresh v-model="loading" @refresh="loadData">
       <van-notice-bar
-        color="#1989fa"
-        background="#ecf9ff"
+        :color="'var(--zx-info)'"
+        :background="'var(--zx-info-bg)'"
         left-icon="info-o"
         text="费用为估算值，实际费用以服务商账单为准"
       />
 
       <!-- 加载失败 -->
-      <div v-if="!loading && error" style="padding-top: 20vh">
+      <div v-if="!loading && error" class="empty-state">
         <van-empty :description="error" image="error" />
       </div>
 
-      <div v-else style="padding: 12px">
+      <div v-else class="zx-page-content">
         <!-- 今日 / 本月切换 -->
-        <van-tabs v-model:active="activeTab" style="margin-bottom: 12px">
+        <van-tabs v-model:active="activeTab" class="section-gap">
           <van-tab title="今日">
-            <van-cell-group inset style="margin-top: 12px">
-              <van-cell
-                title="总费用（估算）"
-                :value="formatCost(costsData?.today?.total_cost ?? 0)"
-              />
+            <div class="cost-highlight">
+              <span class="cost-label">总费用（估算）</span>
+              <span class="cost-value">{{ formatCost(costsData?.today?.total_cost ?? 0) }}</span>
+            </div>
+            <van-cell-group inset>
               <van-cell
                 v-for="svc in costsData?.today?.by_service ?? []"
                 :key="svc.service"
@@ -80,11 +80,11 @@ onMounted(loadData);
           </van-tab>
 
           <van-tab title="本月">
-            <van-cell-group inset style="margin-top: 12px">
-              <van-cell
-                title="总费用（估算）"
-                :value="formatCost(costsData?.this_month?.total_cost ?? 0)"
-              />
+            <div class="cost-highlight">
+              <span class="cost-label">总费用（估算）</span>
+              <span class="cost-value">{{ formatCost(costsData?.this_month?.total_cost ?? 0) }}</span>
+            </div>
+            <van-cell-group inset>
               <van-cell
                 v-for="svc in costsData?.this_month?.by_service ?? []"
                 :key="svc.service"
@@ -101,7 +101,8 @@ onMounted(loadData);
         </van-tabs>
 
         <!-- 30 天趋势 -->
-        <van-cell-group inset title="近 30 天趋势">
+        <p class="zx-section-title">近 30 天趋势</p>
+        <van-cell-group inset>
           <van-cell
             v-for="day in dailyData?.days ?? []"
             :key="day.date"
@@ -123,3 +124,32 @@ onMounted(loadData);
     </van-pull-refresh>
   </div>
 </template>
+
+<style scoped>
+.empty-state {
+  padding-top: 20vh;
+}
+
+.section-gap {
+  margin-bottom: var(--zx-space-base);
+}
+
+.cost-highlight {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: var(--zx-space-lg) var(--zx-space-base) var(--zx-space-md);
+}
+
+.cost-label {
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
+}
+
+.cost-value {
+  font-family: var(--zx-font-display);
+  font-size: var(--zx-text-2xl);
+  font-weight: 700;
+  color: var(--zx-text-primary);
+}
+</style>

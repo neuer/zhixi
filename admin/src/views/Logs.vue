@@ -22,11 +22,14 @@ const levelOptions = [
 ];
 
 const levelStyleMap: Record<string, { color: string; bg: string }> = {
-  ERROR: { color: "#ee0a24", bg: "#fff0f0" },
-  CRITICAL: { color: "#ee0a24", bg: "#fff0f0" },
-  WARNING: { color: "#ff976a", bg: "#fffbe8" },
+  ERROR: { color: "var(--zx-danger)", bg: "var(--zx-danger-bg)" },
+  CRITICAL: { color: "var(--zx-danger)", bg: "var(--zx-danger-bg)" },
+  WARNING: { color: "var(--zx-warning)", bg: "var(--zx-warning-bg)" },
 };
-const levelStyleDefault = { color: "#323233", bg: "transparent" };
+const levelStyleDefault = {
+  color: "var(--zx-text-primary)",
+  bg: "transparent",
+};
 
 function getLevelStyle(level: string) {
   return levelStyleMap[level] ?? levelStyleDefault;
@@ -77,10 +80,10 @@ onMounted(loadLogs);
 </script>
 
 <template>
-  <div class="logs-page">
+  <div class="zx-page logs-page">
     <van-nav-bar title="系统日志" left-arrow @click-left="router.back()" />
 
-    <div style="padding: 12px 12px 0">
+    <div class="filter-bar">
       <van-dropdown-menu>
         <van-dropdown-item
           v-model="selectedLevel"
@@ -96,7 +99,7 @@ onMounted(loadLogs);
         finished-text="没有更多了"
         @load="loadLogs"
       >
-        <div class="log-list" style="padding: 12px">
+        <div class="log-list">
           <van-empty v-if="!logs.length && !loading" description="暂无日志" />
 
           <div
@@ -123,21 +126,29 @@ onMounted(loadLogs);
 </template>
 
 <style scoped>
+.filter-bar {
+  padding: var(--zx-space-md) var(--zx-space-md) 0;
+}
+
+.log-list {
+  padding: var(--zx-space-md);
+}
+
 .log-entry {
-  font-family: "SF Mono", "Menlo", "Monaco", "Courier New", monospace;
-  font-size: 12px;
-  padding: 8px;
-  margin-bottom: 4px;
-  border-radius: 4px;
-  border: 1px solid #ebedf0;
+  font-family: var(--zx-font-mono);
+  font-size: var(--zx-text-xs);
+  padding: var(--zx-space-sm);
+  margin-bottom: var(--zx-space-xs);
+  border-radius: var(--zx-radius-sm);
+  border: 1px solid var(--zx-border-light);
   word-break: break-all;
 }
 
 .log-meta {
   display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
-  font-size: 11px;
+  gap: var(--zx-space-sm);
+  margin-bottom: var(--zx-space-xs);
+  font-size: var(--zx-text-xs);
   opacity: 0.8;
 }
 
@@ -151,11 +162,11 @@ onMounted(loadLogs);
 }
 
 .log-exception {
-  margin-top: 4px;
-  padding: 4px;
+  margin-top: var(--zx-space-xs);
+  padding: var(--zx-space-xs);
   background: rgba(0, 0, 0, 0.03);
   border-radius: 2px;
   white-space: pre-wrap;
-  font-size: 11px;
+  font-size: var(--zx-text-xs);
 }
 </style>

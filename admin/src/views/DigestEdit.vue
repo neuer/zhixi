@@ -139,7 +139,7 @@ onMounted(loadItem);
 </script>
 
 <template>
-  <div class="edit-page">
+  <div class="zx-page edit-page">
     <van-nav-bar
       title="编辑内容"
       left-text="返回"
@@ -151,46 +151,44 @@ onMounted(loadItem);
       <van-empty v-if="!loading && error" :description="error" image="error" />
 
       <template v-else-if="item">
-        <div class="page-content">
+        <div class="zx-page-content">
           <!-- 条目信息卡 -->
-          <van-cell-group inset class="section-gap">
-            <van-cell
-              title="类型"
-              :value="isTopic ? '聚合话题' : '推文'"
-            />
-            <van-cell title="热度">
-              <template #value>
-                <span class="heat-score">
-                  🔥 {{ Math.round(item.snapshot_heat_score) }}
-                </span>
-              </template>
-            </van-cell>
-            <van-cell
-              v-if="item.snapshot_author_handle"
-              title="作者"
-              :value="`@${item.snapshot_author_handle}`"
-            />
-            <van-cell title="状态">
-              <template #value>
+          <div class="info-card zx-card section-gap">
+            <div class="info-row">
+              <span class="info-label">类型</span>
+              <span class="info-value">{{ isTopic ? '聚合话题' : '推文' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">热度</span>
+              <span class="info-heat">🔥 {{ Math.round(item.snapshot_heat_score) }}</span>
+            </div>
+            <div v-if="item.snapshot_author_handle" class="info-row">
+              <span class="info-label">作者</span>
+              <span class="info-value">@{{ item.snapshot_author_handle }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">状态</span>
+              <div>
                 <van-tag v-if="item.is_excluded" type="warning">已剔除</van-tag>
                 <van-tag v-else-if="item.is_pinned" type="primary">置顶</van-tag>
                 <van-tag v-else type="success">正常</van-tag>
-              </template>
-            </van-cell>
-          </van-cell-group>
+              </div>
+            </div>
+          </div>
 
           <!-- 不可编辑提示 -->
           <van-notice-bar
             v-if="!isEditable"
-            color="#969799"
-            background="#f7f8fa"
+            :color="'var(--zx-text-tertiary)'"
+            :background="'var(--zx-bg-elevated)'"
             left-icon="info-o"
             text="当前草稿非 draft 状态，不可编辑"
             class="section-gap"
           />
 
           <!-- 编辑表单 -->
-          <van-cell-group inset title="内容编辑" class="section-gap">
+          <p class="zx-section-title">内容编辑</p>
+          <van-cell-group inset class="section-gap">
             <van-field
               v-model="form.title"
               label="标题"
@@ -276,28 +274,45 @@ onMounted(loadItem);
 </template>
 
 <style scoped>
-.edit-page {
-  background: #f7f8fa;
-  min-height: 100vh;
-}
-
-.page-content {
-  padding: 12px;
-}
-
 .section-gap {
-  margin-bottom: 12px;
+  margin-bottom: var(--zx-space-base);
 }
 
-.heat-score {
-  color: #ff976a;
-  font-size: 14px;
+/* ── 信息卡片 ── */
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--zx-space-sm) 0;
 }
+
+.info-row + .info-row {
+  border-top: 1px solid var(--zx-border-light);
+}
+
+.info-label {
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
+}
+
+.info-value {
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-secondary);
+}
+
+.info-heat {
+  color: var(--zx-accent);
+  font-weight: 700;
+  font-size: var(--zx-text-base);
+}
+
+/* ── 操作按钮 ── */
 
 .action-buttons {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
+  gap: var(--zx-space-sm);
+  margin-top: var(--zx-space-xs);
 }
 </style>

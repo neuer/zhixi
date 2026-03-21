@@ -88,7 +88,7 @@ onMounted(loadData);
 </script>
 
 <template>
-  <div class="digest-page">
+  <div class="zx-page digest-page">
     <van-nav-bar
       title="今日内容"
       left-text="返回"
@@ -101,8 +101,8 @@ onMounted(loadData);
       <!-- 低内容提示 (US-045) -->
       <van-notice-bar
         v-if="data?.low_content_warning"
-        color="#ed6a0c"
-        background="#fffbe8"
+        :color="'var(--zx-warning)'"
+        :background="'var(--zx-warning-bg)'"
         left-icon="info-o"
         :text="`今日资讯较少（${data.digest?.item_count ?? 0}条）`"
       />
@@ -119,28 +119,30 @@ onMounted(loadData);
 
       <!-- 有草稿 -->
       <template v-else-if="data?.digest">
-        <div class="page-content">
+        <div class="zx-page-content">
           <!-- 概览卡片 -->
-          <van-cell-group inset class="section-gap">
-            <van-cell title="状态">
-              <template #value>
+          <div class="overview-card zx-card section-gap">
+            <div class="overview-row">
+              <span class="overview-label">状态</span>
+              <div class="overview-value">
                 <van-tag :type="getStatus(data.digest.status).type">
                   {{ getStatus(data.digest.status).text }}
                 </van-tag>
-                <span class="meta-text">
+                <span class="zx-meta-text">
                   {{ data.digest.item_count }}条 v{{ data.digest.version }}
                 </span>
-              </template>
-            </van-cell>
-            <van-cell
+              </div>
+            </div>
+            <p
               v-if="data.digest.summary"
-              title="导读"
-              :label="data.digest.summary"
-            />
-          </van-cell-group>
+              class="overview-summary"
+            >
+              {{ data.digest.summary }}
+            </p>
+          </div>
 
           <!-- 操作按钮 -->
-          <div v-if="data.digest.status === 'draft'" class="action-buttons">
+          <div v-if="data.digest.status === 'draft'" class="action-buttons section-gap">
             <van-button type="primary" block :loading="publishing" :disabled="publishing" @click="handlePublish">
               确认发布
             </van-button>
@@ -150,26 +152,32 @@ onMounted(loadData);
           </div>
 
           <!-- 条目列表 -->
-          <van-cell-group inset :title="`条目列表（${visibleItems.length}条）`">
-            <van-cell
+          <p class="zx-section-title">条目列表（{{ visibleItems.length }}条）</p>
+          <div class="item-list">
+            <div
               v-for="(item, idx) in visibleItems"
               :key="item.id"
-              :title="`${idx + 1}. ${item.snapshot_title || '无标题'}`"
-              :label="getItemLabel(item)"
-              is-link
+              class="item-card"
               @click="router.push({ name: 'digest-edit', params: { type: item.item_type, id: item.item_ref_id } })"
             >
-              <template #value>
-                <span class="heat-score">
-                  🔥 {{ Math.round(item.snapshot_heat_score) }}
-                </span>
-              </template>
-            </van-cell>
-            <van-cell
-              v-if="visibleItems.length === 0"
-              title="暂无条目"
-            />
-          </van-cell-group>
+              <div class="item-index">{{ idx + 1 }}</div>
+              <div class="item-body">
+                <div class="item-title">{{ item.snapshot_title || '无标题' }}</div>
+                <div class="item-meta">
+                  <span v-if="getItemLabel(item)" class="item-author">{{ getItemLabel(item) }}</span>
+                  <span class="item-heat">{{ Math.round(item.snapshot_heat_score) }}</span>
+                </div>
+              </div>
+              <van-icon name="arrow" class="item-arrow" />
+            </div>
+          </div>
+          <div
+            v-if="visibleItems.length === 0"
+            class="zx-card"
+            style="text-align: center; color: var(--zx-text-tertiary); padding: 24px"
+          >
+            暂无条目
+          </div>
         </div>
       </template>
     </van-pull-refresh>
@@ -177,37 +185,126 @@ onMounted(loadData);
 </template>
 
 <style scoped>
-.digest-page {
-  background: #f7f8fa;
-  min-height: 100vh;
-}
-
 .empty-state {
   padding-top: 20vh;
 }
 
-.page-content {
-  padding: 12px;
-}
-
 .section-gap {
-  margin-bottom: 12px;
+  margin-bottom: var(--zx-space-base);
 }
 
-.meta-text {
-  margin-left: 8px;
-  color: #969799;
-  font-size: 12px;
+/* ── 概览卡片 ── */
+
+.overview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
+
+.overview-label {
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-tertiary);
+}
+
+.overview-value {
+  display: flex;
+  align-items: center;
+  gap: var(--zx-space-sm);
+}
+
+.overview-summary {
+  margin: var(--zx-space-md) 0 0;
+  padding-top: var(--zx-space-md);
+  border-top: 1px solid var(--zx-border-light);
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-secondary);
+  line-height: 1.6;
+}
+
+/* ── 操作按钮 ── */
 
 .action-buttons {
   display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--zx-space-sm);
 }
 
-.heat-score {
-  color: #ff976a;
-  font-size: 12px;
+/* ── 条目列表 ── */
+
+.item-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zx-space-sm);
+}
+
+.item-card {
+  display: flex;
+  align-items: center;
+  gap: var(--zx-space-md);
+  background: var(--zx-bg-card);
+  border-radius: var(--zx-radius-md);
+  box-shadow: var(--zx-shadow-xs);
+  padding: var(--zx-space-md) var(--zx-space-base);
+  cursor: pointer;
+  transition: box-shadow var(--zx-duration-fast) var(--zx-easing);
+}
+
+.item-card:active {
+  box-shadow: var(--zx-shadow-sm);
+}
+
+.item-index {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--zx-radius-sm);
+  background: var(--zx-accent);
+  color: var(--zx-text-inverse);
+  font-size: var(--zx-text-xs);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.item-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-title {
+  font-size: var(--zx-text-base);
+  font-weight: 500;
+  color: var(--zx-text-primary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--zx-space-sm);
+  margin-top: var(--zx-space-xs);
+  font-size: var(--zx-text-xs);
+  color: var(--zx-text-tertiary);
+}
+
+.item-heat {
+  color: var(--zx-accent);
+  font-weight: 600;
+}
+
+.item-heat::before {
+  content: "热度 ";
+  font-weight: 400;
+}
+
+.item-arrow {
+  color: var(--zx-text-disabled);
+  font-size: 14px;
+  flex-shrink: 0;
 }
 </style>
