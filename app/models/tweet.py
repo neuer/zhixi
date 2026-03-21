@@ -16,7 +16,7 @@ class Tweet(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tweet_id: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
-    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("twitter_accounts.id"))
+    account_id: Mapped[int] = mapped_column(Integer, ForeignKey("twitter_accounts.id"), index=True)
     digest_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     original_text: Mapped[str] = mapped_column(Text, nullable=False)
     media_urls: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -39,5 +39,5 @@ class Tweet(Base):
     topic_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("topics.id"), nullable=True, index=True
     )
-    source: Mapped[str] = mapped_column(String(20), default=TweetSource.AUTO)
+    source: Mapped[TweetSource] = mapped_column(String(20), default=TweetSource.AUTO)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

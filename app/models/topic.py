@@ -6,6 +6,7 @@ from sqlalchemy import Date, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base, _utcnow
+from app.schemas.enums import TopicType
 
 
 class Topic(Base):
@@ -15,7 +16,7 @@ class Topic(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     digest_date: Mapped[date] = mapped_column(Date, nullable=False)
-    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    type: Mapped[TopicType] = mapped_column(String(20), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     topic_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
