@@ -1,6 +1,7 @@
 import api from "@/api";
 import { AUTH_TOKEN_KEY } from "@/constants";
 import type { SetupStatusResponse } from "@zhixi/openapi-client";
+import axios from "axios";
 import {
   type RouteLocationNormalized,
   createRouter,
@@ -83,7 +84,7 @@ const router = createRouter({
 
 const WHITE_LIST = ["/setup", "/login", "/preview"];
 const SETUP_CACHE_TTL_MS = 5 * 60 * 1000;
-let setupCache: { value: boolean; fetchedAt: number } | null = null;
+let setupCache: { needSetup: boolean; fetchedAt: number } | null = null;
 
 function isWhiteListed(to: RouteLocationNormalized): boolean {
   return WHITE_LIST.some((path) => to.path.startsWith(path));
@@ -97,13 +98,17 @@ router.beforeEach(async (to) => {
   if (!setupCache || Date.now() - setupCache.fetchedAt > SETUP_CACHE_TTL_MS) {
     try {
       const { data } = await api.get<SetupStatusResponse>("/setup/status");
-      setupCache = { value: data.need_setup, fetchedAt: Date.now() };
-    } catch {
-      return "/login";
+      setupCache = { needSetup: data.need_setup, fetchedAt: Date.now() };
+    } catch (e: unknown) {
+      if (axios.isAxiosError(e) && e.response?.status === 401) {
+        return "/login";
+      }
+      // 非认证错误：放行导航，让页面自身处理
+      return true;
     }
   }
 
-  if (setupCache.value) {
+  if (setupCache.needSetup) {
     return "/setup";
   }
 

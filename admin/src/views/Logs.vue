@@ -7,9 +7,10 @@ import { useRouter } from "vue-router";
 const router = useRouter();
 
 const loading = ref(false);
+const refreshing = ref(false);
 const finished = ref(false);
 const logs = ref<LogsResponse["logs"]>([]);
-const selectedLevel = ref("INFO");
+const selectedLevel = ref<"DEBUG" | "INFO" | "WARNING" | "ERROR">("INFO");
 const pageVal = ref(1);
 const pageSize = 50;
 
@@ -20,32 +21,22 @@ const levelOptions = [
   { text: "ERROR", value: "ERROR" },
 ];
 
-function levelColor(level: string): string {
-  switch (level) {
-    case "ERROR":
-    case "CRITICAL":
-      return "#ee0a24";
-    case "WARNING":
-      return "#ff976a";
-    default:
-      return "#323233";
-  }
+const levelStyleMap: Record<string, { color: string; bg: string }> = {
+  ERROR: { color: "#ee0a24", bg: "#fff0f0" },
+  CRITICAL: { color: "#ee0a24", bg: "#fff0f0" },
+  WARNING: { color: "#ff976a", bg: "#fffbe8" },
+};
+const levelStyleDefault = { color: "#323233", bg: "transparent" };
+
+function getLevelStyle(level: string) {
+  return levelStyleMap[level] ?? levelStyleDefault;
 }
 
-function levelBg(level: string): string {
-  switch (level) {
-    case "ERROR":
-    case "CRITICAL":
-      return "#fff0f0";
-    case "WARNING":
-      return "#fffbe8";
-    default:
-      return "transparent";
-  }
-}
+let isLoadingMore = false;
 
 async function loadLogs() {
-  if (loading.value || finished.value) return;
+  if (isLoadingMore || finished.value) return;
+  isLoadingMore = true;
   loading.value = true;
   try {
     const resp = await api.get<LogsResponse>("/dashboard/logs", {
@@ -66,10 +57,10 @@ async function loadLogs() {
     }
     pageVal.value += 1;
   } catch {
-    // 拦截器已处理
-    finished.value = true;
+    // 拦截器已处理 toast；不设 finished，允许用户滚动重试
   } finally {
     loading.value = false;
+    isLoadingMore = false;
   }
 }
 
@@ -77,6 +68,7 @@ function resetAndLoad() {
   pageVal.value = 1;
   finished.value = false;
   logs.value = [];
+  refreshing.value = false;
   loadLogs();
 }
 
@@ -97,7 +89,7 @@ onMounted(loadLogs);
       </van-dropdown-menu>
     </div>
 
-    <van-pull-refresh v-model="loading" @refresh="resetAndLoad">
+    <van-pull-refresh v-model="refreshing" @refresh="resetAndLoad">
       <van-list
         v-model:loading="loading"
         :finished="finished"
@@ -112,8 +104,8 @@ onMounted(loadLogs);
             :key="log.timestamp + '-' + idx"
             class="log-entry"
             :style="{
-              color: levelColor(log.level),
-              backgroundColor: levelBg(log.level),
+              color: getLevelStyle(log.level).color,
+              backgroundColor: getLevelStyle(log.level).bg,
             }"
           >
             <div class="log-meta">

@@ -20,8 +20,9 @@ export function useAsyncData<T>(
     error.value = null;
     try {
       data.value = await fetcher();
-    } catch {
-      // 拦截器已处理 toast，此处仅记录状态
+    } catch (e: unknown) {
+      // 拦截器已处理 toast，此处记录错误状态供组件判断
+      error.value = e instanceof Error ? e.message : "请求失败";
     } finally {
       loading.value = false;
     }

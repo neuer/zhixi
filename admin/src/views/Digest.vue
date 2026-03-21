@@ -2,14 +2,17 @@
 import api from "@/api";
 import { filterVisibleItems } from "@/utils/digest";
 import { getStatus } from "@/utils/status";
-import type { TodayResponse } from "@zhixi/openapi-client";
+import type { DigestItemResponse, TodayResponse } from "@zhixi/openapi-client";
 import { showConfirmDialog, showToast } from "vant";
-import { computed, onMounted, ref } from "vue";
+import { type Ref, computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
 const loading = ref(true);
 const data = ref<TodayResponse | null>(null);
+const error = ref<string | null>(null);
+const publishing = ref(false);
+const regenerating = ref(false);
 
 const visibleItems = computed(() => {
   if (!data.value) return [];
@@ -18,52 +21,67 @@ const visibleItems = computed(() => {
 
 async function loadData() {
   loading.value = true;
+  error.value = null;
   try {
     const resp = await api.get<TodayResponse>("/digest/today");
     data.value = resp.data;
   } catch {
-    // 拦截器已处理
+    error.value = "加载失败，下拉刷新重试";
   } finally {
     loading.value = false;
   }
 }
 
-async function handlePublish() {
-  if (!data.value?.digest) return;
+function getItemLabel(item: DigestItemResponse): string {
+  if (item.snapshot_author_handle) return `@${item.snapshot_author_handle}`;
+  if (item.snapshot_topic_type === "aggregated") return "聚合话题";
+  return "";
+}
+
+/** 通用确认后执行函数，减少 handlePublish/handleRegenerate 重复代码。 */
+async function confirmAndExecute(options: {
+  title: string;
+  message: string;
+  apiPath: string;
+  successMsg: string;
+  loadingRef: Ref<boolean>;
+}) {
+  if (!data.value?.digest || options.loadingRef.value) return;
   try {
-    await showConfirmDialog({
-      title: "确认发布",
-      message: "发布后不可编辑，确认发布？",
-    });
+    await showConfirmDialog({ title: options.title, message: options.message });
   } catch {
     return; // 用户取消
   }
+  options.loadingRef.value = true;
   try {
-    await api.post("/digest/mark-published");
-    showToast("发布成功");
-    await loadData();
+    await api.post(options.apiPath);
+    showToast(options.successMsg);
   } catch {
     // API 失败已由拦截器处理
+  } finally {
+    options.loadingRef.value = false;
+    await loadData();
   }
 }
 
-async function handleRegenerate() {
-  if (!data.value?.digest) return;
-  try {
-    await showConfirmDialog({
-      title: "重新生成",
-      message: "将重置所有编辑并重新生成草稿，确认？",
-    });
-  } catch {
-    return; // 用户取消
-  }
-  try {
-    await api.post("/digest/regenerate");
-    showToast("重新生成中...");
-    await loadData();
-  } catch {
-    // API 失败已由拦截器处理
-  }
+function handlePublish() {
+  return confirmAndExecute({
+    title: "确认发布",
+    message: "发布后不可编辑，确认发布？",
+    apiPath: "/digest/mark-published",
+    successMsg: "发布成功",
+    loadingRef: publishing,
+  });
+}
+
+function handleRegenerate() {
+  return confirmAndExecute({
+    title: "重新生成",
+    message: "将重置所有编辑并重新生成草稿，确认？",
+    apiPath: "/digest/regenerate",
+    successMsg: "重新生成中...",
+    loadingRef: regenerating,
+  });
 }
 
 onMounted(loadData);
@@ -89,8 +107,13 @@ onMounted(loadData);
         :text="`今日资讯较少（${data.digest?.item_count ?? 0}条）`"
       />
 
+      <!-- 加载失败 -->
+      <div v-if="!loading && error" class="empty-state">
+        <van-empty :description="error" image="error" />
+      </div>
+
       <!-- 无草稿 -->
-      <div v-if="!loading && !data?.digest" class="empty-state">
+      <div v-else-if="!loading && !data?.digest" class="empty-state">
         <van-empty description="今日草稿尚未生成" />
       </div>
 
@@ -118,10 +141,10 @@ onMounted(loadData);
 
           <!-- 操作按钮 -->
           <div v-if="data.digest.status === 'draft'" class="action-buttons">
-            <van-button type="primary" block @click="handlePublish">
+            <van-button type="primary" block :loading="publishing" :disabled="publishing" @click="handlePublish">
               确认发布
             </van-button>
-            <van-button type="default" block @click="handleRegenerate">
+            <van-button type="default" block :loading="regenerating" :disabled="regenerating" @click="handleRegenerate">
               重新生成
             </van-button>
           </div>
@@ -132,7 +155,7 @@ onMounted(loadData);
               v-for="(item, idx) in visibleItems"
               :key="item.id"
               :title="`${idx + 1}. ${item.snapshot_title || '无标题'}`"
-              :label="item.snapshot_author_handle ? `@${item.snapshot_author_handle}` : item.snapshot_topic_type === 'aggregated' ? '聚合话题' : ''"
+              :label="getItemLabel(item)"
               is-link
               @click="router.push({ name: 'digest-edit', params: { type: item.item_type, id: item.id } })"
             >

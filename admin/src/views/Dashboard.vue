@@ -8,31 +8,21 @@ import { useRouter } from "vue-router";
 const router = useRouter();
 const loading = ref(true);
 const data = ref<DashboardOverviewResponse | null>(null);
+const error = ref<string | null>(null);
 
 async function loadData() {
   loading.value = true;
+  error.value = null;
   try {
     const resp = await api.get<DashboardOverviewResponse>(
       "/dashboard/overview",
     );
     data.value = resp.data;
   } catch {
-    // 错误已由拦截器处理
+    error.value = "加载失败，下拉刷新重试";
   } finally {
     loading.value = false;
   }
-}
-
-function goDigest() {
-  router.push({ name: "digest" });
-}
-
-function goSettings() {
-  router.push({ name: "settings" });
-}
-
-function goAccounts() {
-  router.push({ name: "accounts" });
 }
 
 onMounted(loadData);
@@ -43,6 +33,10 @@ onMounted(loadData);
     <van-nav-bar title="智曦管理后台" />
 
     <van-pull-refresh v-model="loading" @refresh="loadData">
+      <!-- 错误态 -->
+      <van-empty v-if="!loading && error" :description="error" image="error" />
+
+      <template v-else>
       <!-- 告警 -->
       <template v-if="data?.alerts?.length">
         <van-notice-bar
@@ -128,14 +122,14 @@ onMounted(loadData);
           block
           size="large"
           class="section-gap"
-          @click="goDigest"
+          @click="router.push({ name: 'digest' })"
         >
           审核今日内容
         </van-button>
 
         <van-grid :column-num="3" :gutter="10" class="section-gap">
-          <van-grid-item icon="friends-o" text="大V管理" @click="goAccounts" />
-          <van-grid-item icon="setting-o" text="系统设置" @click="goSettings" />
+          <van-grid-item icon="friends-o" text="大V管理" @click="router.push({ name: 'accounts' })" />
+          <van-grid-item icon="setting-o" text="系统设置" @click="router.push({ name: 'settings' })" />
           <van-grid-item icon="description" text="系统日志" @click="router.push({ name: 'logs' })" />
         </van-grid>
 
@@ -161,6 +155,7 @@ onMounted(loadData);
           />
         </van-cell-group>
       </div>
+      </template>
     </van-pull-refresh>
   </div>
 </template>
