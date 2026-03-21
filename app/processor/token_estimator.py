@@ -9,7 +9,7 @@ import json
 import math
 
 # Prompt 模板固定开销（GLOBAL_ANALYSIS_PROMPT 去掉 {tweets_json} 后的 token 数估算）
-_PROMPT_OVERHEAD_TOKENS = 600
+PROMPT_OVERHEAD_TOKENS = 600
 
 
 def _is_cjk(char: str) -> bool:
@@ -60,4 +60,4 @@ def estimate_total_tokens(serialized_tweets: list[dict[str, object]]) -> int:
     加上 GLOBAL_ANALYSIS_PROMPT 模板本身的固定开销。
     """
     text = json.dumps(serialized_tweets, ensure_ascii=False)
-    return estimate_tokens_for_text(text) + _PROMPT_OVERHEAD_TOKENS
+    return estimate_tokens_for_text(text) + PROMPT_OVERHEAD_TOKENS

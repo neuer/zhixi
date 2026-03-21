@@ -1,11 +1,14 @@
 """应用配置 — 环境变量读取、DB 业务配置、时间工具函数。"""
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 
@@ -50,8 +53,7 @@ def get_fetch_window(digest_date: date) -> tuple[datetime, datetime]:
     bj_until = datetime(
         digest_date.year, digest_date.month, digest_date.day, 5, 59, 59, tzinfo=BEIJING_TZ
     )
-    utc = ZoneInfo("UTC")
-    return bj_since.astimezone(utc), bj_until.astimezone(utc)
+    return bj_since.astimezone(UTC), bj_until.astimezone(UTC)
 
 
 async def get_system_config(db: AsyncSession, key: str, default: str = "") -> str:
@@ -61,6 +63,26 @@ async def get_system_config(db: AsyncSession, key: str, default: str = "") -> st
     result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
     config = result.scalar_one_or_none()
     return config.value if config else default
+
+
+async def safe_int_config(db: AsyncSession, key: str, default: int) -> int:
+    """安全读取整数配置，转换失败时返回默认值。"""
+    raw = await get_system_config(db, key, str(default))
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        logger.warning("配置 %s 值 '%s' 无法转为 int，使用默认值 %d", key, raw, default)
+        return default
+
+
+async def safe_float_config(db: AsyncSession, key: str, default: float) -> float:
+    """安全读取浮点配置，转换失败时返回默认值。"""
+    raw = await get_system_config(db, key, str(default))
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        logger.warning("配置 %s 值 '%s' 无法转为 float，使用默认值 %s", key, raw, default)
+        return default
 
 
 def ensure_utc(dt: datetime) -> datetime:

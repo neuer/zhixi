@@ -18,6 +18,8 @@ from app.api.history import router as history_router
 from app.api.manual import router as manual_router
 from app.api.settings import router as settings_router
 from app.api.setup import router as setup_router
+from app.clients.claude_client import ClaudeAPIError
+from app.clients.gemini_client import GeminiAPIError
 from app.clients.x_client import XApiError
 from app.config import settings
 from app.database import engine
@@ -71,6 +73,20 @@ async def handle_x_api_error(_request: Request, exc: XApiError) -> JSONResponse:
         status_code=502,
         content={"detail": f"X API拉取失败: {exc}", "allow_manual": True},
     )
+
+
+@app.exception_handler(ClaudeAPIError)
+async def handle_claude_error(_request: Request, exc: ClaudeAPIError) -> JSONResponse:
+    """Claude API 调用失败 → 502。"""
+    logger.error("Claude API 调用失败: %s", exc, exc_info=True)
+    return JSONResponse(status_code=502, content={"detail": f"AI 服务暂不可用: {exc}"})
+
+
+@app.exception_handler(GeminiAPIError)
+async def handle_gemini_error(_request: Request, exc: GeminiAPIError) -> JSONResponse:
+    """Gemini API 调用失败 → 502。"""
+    logger.error("Gemini API 调用失败: %s", exc, exc_info=True)
+    return JSONResponse(status_code=502, content={"detail": f"图像服务暂不可用: {exc}"})
 
 
 # Vue SPA 静态文件（生产环境）

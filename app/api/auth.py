@@ -38,7 +38,7 @@ async def login(
     if (
         not password_hash
         or body.username != "admin"
-        or not verify_password(body.password, password_hash)
+        or not await verify_password(body.password, password_hash)
     ):
         record_login_failure(body.username)
         raise HTTPException(status_code=401, detail="用户名或密码错误")

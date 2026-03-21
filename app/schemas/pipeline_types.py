@@ -1,6 +1,7 @@
 """Pipeline 主流程编排相关类型定义。"""
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -11,8 +12,8 @@ from app.schemas.processor_types import ProcessResult
 class PipelineResult(BaseModel):
     """Pipeline 执行结果。"""
 
-    status: str
-    """执行状态：completed / failed / skipped。"""
+    status: Literal["completed", "failed", "skipped"]
+    """执行状态。"""
 
     digest_date: date
     """执行日期（北京时间自然日）。"""
@@ -23,8 +24,8 @@ class PipelineResult(BaseModel):
     error_message: str | None = None
     """失败时的错误描述。"""
 
-    failed_step: str | None = None
-    """失败的步骤：fetch / process / digest。"""
+    failed_step: Literal["fetch", "process", "digest"] | None = None
+    """失败的步骤。"""
 
     fetch_result: FetchResult | None = None
     """fetch 步骤执行结果。"""

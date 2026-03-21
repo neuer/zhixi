@@ -10,7 +10,7 @@ from app.models.account import TwitterAccount
 from app.models.tweet import Tweet
 from app.processor.analyzer_prompts import serialize_tweets_for_analysis
 from app.processor.token_estimator import (
-    _PROMPT_OVERHEAD_TOKENS,
+    PROMPT_OVERHEAD_TOKENS,
     estimate_tokens_for_tweet,
 )
 
@@ -65,7 +65,7 @@ def split_into_batches(
         tokens = tweet_tokens[i]
 
         # 当前批加上这条推文是否超限
-        if current_batch and (current_tokens + tokens + _PROMPT_OVERHEAD_TOKENS > token_limit):
+        if current_batch and (current_tokens + tokens + PROMPT_OVERHEAD_TOKENS > token_limit):
             batches.append(current_batch)
             current_batch = []
             current_tokens = 0

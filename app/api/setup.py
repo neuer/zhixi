@@ -47,7 +47,7 @@ async def setup_init(
         raise HTTPException(status_code=422, detail=e.reason) from None
 
     # 写入密码哈希
-    hashed = hash_password(body.password)
+    hashed = await hash_password(body.password)
     result = await db.execute(select(SystemConfig).where(SystemConfig.key == "admin_password_hash"))
     config = result.scalar_one_or_none()
     if config:

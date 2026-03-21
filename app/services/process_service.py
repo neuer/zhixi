@@ -13,8 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeAPIError, ClaudeClient
 from app.config import ensure_utc
+from app.lib.cost_logger import record_api_cost, record_api_cost_failure
 from app.models.account import TwitterAccount
-from app.models.api_cost_log import ApiCostLog
 from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.processor.analyzer import run_global_analysis
@@ -223,7 +223,8 @@ class ProcessService:
                 logger.warning("全局分析第 %d 次尝试失败: %s", attempt + 1, e)
 
         logger.error("全局分析连续失败，中止 pipeline")
-        raise last_error  # type: ignore[misc]
+        assert last_error is not None, "重试循环未执行"
+        raise last_error
 
     async def _run_dedup_with_retry(
         self,
@@ -242,7 +243,8 @@ class ProcessService:
                 logger.warning("去重分析第 %d 次尝试失败: %s", attempt + 1, e)
 
         logger.error("去重分析连续失败，中止 pipeline")
-        raise last_error  # type: ignore[misc]
+        assert last_error is not None, "重试循环未执行"
+        raise last_error
 
     def _apply_filtering(
         self,
@@ -578,28 +580,11 @@ class ProcessService:
         digest_date: date | None,
     ) -> None:
         """记录 API 调用成本。"""
-        cost = ApiCostLog(
-            call_date=digest_date or date.today(),
-            service="claude",
-            call_type=call_type,
-            model=response.model,
-            input_tokens=response.input_tokens,
-            output_tokens=response.output_tokens,
-            estimated_cost=response.estimated_cost,
-            success=True,
-            duration_ms=response.duration_ms,
-        )
-        self._db.add(cost)
+        record_api_cost(self._db, response, call_type, digest_date)
 
     def _record_cost_failure(self, call_type: str, digest_date: date | None) -> None:
         """记录失败的 API 调用。"""
-        cost = ApiCostLog(
-            call_date=digest_date or date.today(),
-            service="claude",
-            call_type=call_type,
-            success=False,
-        )
-        self._db.add(cost)
+        record_api_cost_failure(self._db, call_type, digest_date)
 
 
 # ──────────────────────────────────────────────────

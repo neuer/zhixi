@@ -1,5 +1,6 @@
 """Dashboard 路由 — US-040/US-043/US-044。"""
 
+import asyncio
 import json
 from collections import defaultdict
 from datetime import date, timedelta
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.schemas.enums as enums
 from app.api.deps import get_current_admin
-from app.config import get_system_config, get_today_digest_date
+from app.config import get_today_digest_date, safe_int_config
 from app.database import get_db
 from app.models.api_cost_log import ApiCostLog
 from app.models.digest import DailyDigest
@@ -137,7 +138,8 @@ async def get_logs(
         return LogsResponse(logs=[])
 
     entries: list[LogEntry] = []
-    lines = LOG_FILE_PATH.read_text(encoding="utf-8").splitlines()
+    text = await asyncio.to_thread(LOG_FILE_PATH.read_text, encoding="utf-8")
+    lines = text.splitlines()
 
     # 倒序遍历获取最新日志
     for line in reversed(lines):
@@ -202,7 +204,7 @@ async def _get_digest_status(db: AsyncSession, today: date) -> DigestStatusSumma
     digest = result.scalar_one_or_none()
     if not digest:
         return DigestStatusSummary()
-    min_articles = int(await get_system_config(db, "min_articles", "1"))
+    min_articles = await safe_int_config(db, "min_articles", 1)
     return DigestStatusSummary(
         status=enums.DigestStatus(digest.status),
         digest_id=digest.id,

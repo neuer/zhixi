@@ -63,7 +63,8 @@ class GeminiClient:
         except TimeoutError:
             raise GeminiAPIError(f"Gemini API 超时（{timeout}s）") from None
         except Exception as e:
-            raise GeminiAPIError(str(e)) from None
+            logger.error("Gemini API 调用异常", exc_info=True)
+            raise GeminiAPIError(str(e)) from e
 
         duration_ms = int((time.monotonic() - start) * 1000)
 

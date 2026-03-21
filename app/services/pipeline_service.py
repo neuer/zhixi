@@ -6,14 +6,19 @@
 
 import logging
 from datetime import UTC, date, datetime
+from typing import Literal
 
+import sqlalchemy.exc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import get_claude_client
 from app.clients.notifier import send_alert
 from app.config import get_system_config, get_today_digest_date
 from app.models.job_run import JobRun
+from app.schemas.enums import JobStatus
+from app.schemas.fetcher_types import FetchResult
 from app.schemas.pipeline_types import PipelineResult
+from app.schemas.processor_types import ProcessResult
 from app.services.digest_service import DigestService
 from app.services.fetch_service import FetchService
 from app.services.lock_service import clean_stale_jobs, has_running_job
@@ -96,7 +101,7 @@ async def run_pipeline(
         logger.info("Digest 生成完成")
 
         # ── 成功 ──
-        job_run.status = "completed"
+        job_run.status = JobStatus.COMPLETED
         job_run.finished_at = datetime.now(UTC)
         return PipelineResult(
             status="completed",
@@ -106,11 +111,15 @@ async def run_pipeline(
             process_result=process_result,
         )
 
+    except (sqlalchemy.exc.SQLAlchemyError, OSError) as exc:
+        # 基础设施异常不可恢复，向上传播
+        logger.critical("Pipeline 基础设施异常: %s", exc, exc_info=True)
+        raise
     except Exception as exc:
         failed_step = _determine_failed_step(fetch_result, process_result)
         error_msg = str(exc)[:500]
 
-        job_run.status = "failed"
+        job_run.status = JobStatus.FAILED
         job_run.error_message = error_msg
         job_run.finished_at = datetime.now(UTC)
 
@@ -154,9 +163,9 @@ def _create_job_run(
 
 
 def _determine_failed_step(
-    fetch_result: object | None,
-    process_result: object | None,
-) -> str:
+    fetch_result: FetchResult | None,
+    process_result: ProcessResult | None,
+) -> Literal["fetch", "process", "digest"]:
     """根据已完成的步骤判断失败的步骤。"""
     if fetch_result is None:
         return "fetch"

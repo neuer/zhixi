@@ -21,3 +21,10 @@ class ThirdPartyFetcher(BaseFetcher):
             NotImplementedError: Phase 2 实现前始终抛出
         """
         raise NotImplementedError("第三方数据源抓取功能将在 Phase 2 实现")
+
+    async def fetch_single_tweet(self, tweet_id: str) -> RawTweet:
+        """第三方单条推文抓取（尚未实现）。
+
+        签名需与 BaseFetcher.fetch_single_tweet(tweet_id: str) 保持一致。
+        """
+        raise NotImplementedError("第三方单条推文抓取功能将在 Phase 2 实现")
