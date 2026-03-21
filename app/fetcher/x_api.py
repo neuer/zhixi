@@ -30,6 +30,14 @@ class XApiFetcher(BaseFetcher):
             timeout=30.0,
         )
 
+    async def __aenter__(self) -> "XApiFetcher":
+        """支持 async with 用法。"""
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        """退出时自动关闭 httpx 客户端。"""
+        await self.close()
+
     async def fetch_user_tweets(
         self,
         user_id: str,

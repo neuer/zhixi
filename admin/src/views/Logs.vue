@@ -2,6 +2,9 @@
 import api from "@/api";
 import type { LogsResponse } from "@zhixi/openapi-client";
 import { onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
 
 const loading = ref(true);
 const logs = ref<LogsResponse["logs"]>([]);
@@ -58,7 +61,7 @@ onMounted(loadLogs);
 
 <template>
   <div class="logs-page">
-    <van-nav-bar title="系统日志" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="系统日志" left-arrow @click-left="router.back()" />
 
     <div style="padding: 12px 12px 0">
       <van-dropdown-menu>
@@ -75,7 +78,7 @@ onMounted(loadLogs);
 
         <div
           v-for="(log, idx) in logs"
-          :key="idx"
+          :key="log.timestamp + '-' + idx"
           class="log-entry"
           :style="{
             color: levelColor(log.level),

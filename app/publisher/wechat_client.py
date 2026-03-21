@@ -13,15 +13,15 @@ class WechatClient:
         self.app_id = app_id
         self.app_secret = app_secret
 
-    def get_access_token(self) -> str:
+    async def get_access_token(self) -> str:
         """获取微信 access_token。"""
         raise NotImplementedError(_NOT_IMPLEMENTED_MSG)
 
-    def upload_article(self, title: str, content: str, cover_url: str) -> str:
+    async def upload_article(self, title: str, content: str, cover_url: str) -> str:
         """上传图文素材，返回 media_id。"""
         raise NotImplementedError(_NOT_IMPLEMENTED_MSG)
 
-    def send_mass(self, media_id: str) -> str:
+    async def send_mass(self, media_id: str) -> str:
         """群发消息，返回 msg_id。"""
         raise NotImplementedError(_NOT_IMPLEMENTED_MSG)
 

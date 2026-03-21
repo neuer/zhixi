@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import api from "@/api";
+import { getStatus } from "@/utils/status";
 import type { DashboardOverviewResponse } from "@zhixi/openapi-client";
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
@@ -7,20 +8,6 @@ import { useRouter } from "vue-router";
 const router = useRouter();
 const loading = ref(true);
 const data = ref<DashboardOverviewResponse | null>(null);
-
-const statusMap: Record<string, { text: string; color: string }> = {
-  completed: { text: "已完成", color: "#07c160" },
-  running: { text: "运行中", color: "#1989fa" },
-  failed: { text: "失败", color: "#ee0a24" },
-  skipped: { text: "已跳过", color: "#969799" },
-  draft: { text: "待审核", color: "#ff976a" },
-  published: { text: "已发布", color: "#07c160" },
-};
-
-function getStatus(status: string | null | undefined) {
-  if (!status) return { text: "无记录", color: "#969799" };
-  return statusMap[status] ?? { text: status, color: "#969799" };
-}
 
 async function loadData() {
   loading.value = true;
@@ -75,17 +62,7 @@ onMounted(loadData);
           <van-cell title="Pipeline">
             <template #value>
               <van-tag
-                :type="
-                  getStatus(data?.pipeline_status?.status).color === '#ee0a24'
-                    ? 'danger'
-                    : getStatus(data?.pipeline_status?.status).color ===
-                        '#07c160'
-                      ? 'success'
-                      : getStatus(data?.pipeline_status?.status).color ===
-                          '#1989fa'
-                        ? 'primary'
-                        : 'default'
-                "
+                :type="getStatus(data?.pipeline_status?.status).type"
               >
                 {{ getStatus(data?.pipeline_status?.status).text }}
               </van-tag>
@@ -94,16 +71,7 @@ onMounted(loadData);
           <van-cell title="日报">
             <template #value>
               <van-tag
-                :type="
-                  getStatus(data?.digest_status?.status).color === '#07c160'
-                    ? 'success'
-                    : getStatus(data?.digest_status?.status).color === '#ff976a'
-                      ? 'warning'
-                      : getStatus(data?.digest_status?.status).color ===
-                          '#ee0a24'
-                        ? 'danger'
-                        : 'default'
-                "
+                :type="getStatus(data?.digest_status?.status).type"
               >
                 {{ getStatus(data?.digest_status?.status).text }}
               </van-tag>
@@ -181,15 +149,7 @@ onMounted(loadData);
           >
             <template #value>
               <van-tag
-                :type="
-                  record.status === 'published'
-                    ? 'success'
-                    : record.status === 'draft'
-                      ? 'warning'
-                      : record.status === 'failed'
-                        ? 'danger'
-                        : 'default'
-                "
+                :type="getStatus(record.status).type"
               >
                 {{ getStatus(record.status).text }}
               </van-tag>

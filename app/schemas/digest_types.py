@@ -70,11 +70,11 @@ class TodayResponse(BaseModel):
 class EditItemRequest(BaseModel):
     """编辑单条内容请求（所有字段可选，partial update）。"""
 
-    title: str | None = None
-    translation: str | None = None
-    summary: str | None = None
-    perspectives: str | None = None
-    comment: str | None = None
+    title: str | None = Field(default=None, max_length=200)
+    translation: str | None = Field(default=None, max_length=5000)
+    summary: str | None = Field(default=None, max_length=2000)
+    perspectives: str | None = Field(default=None, max_length=5000)
+    comment: str | None = Field(default=None, max_length=2000)
 
 
 class EditSummaryRequest(BaseModel):

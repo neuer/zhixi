@@ -365,7 +365,7 @@ export type SettingsUpdate = {
     push_days?: (Array<(number)> | null);
     top_n?: (number | null);
     min_articles?: (number | null);
-    publish_mode?: (string | null);
+    publish_mode?: ('manual' | 'api' | null);
     enable_cover_generation?: (boolean | null);
     cover_generation_timeout?: (number | null);
     notification_webhook_url?: (string | null);

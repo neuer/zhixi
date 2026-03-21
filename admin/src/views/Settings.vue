@@ -7,6 +7,9 @@ import type {
 } from "@zhixi/openapi-client";
 import { closeToast, showLoadingToast, showToast } from "vant";
 import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
 
 const loading = ref(true);
 const saving = ref(false);
@@ -17,7 +20,7 @@ const form = ref({
   push_days: [1, 2, 3, 4, 5, 6, 7] as number[],
   top_n: 10,
   min_articles: 1,
-  publish_mode: "manual",
+  publish_mode: "manual" as "manual" | "api",
   enable_cover_generation: false,
   cover_generation_timeout: 30,
   notification_webhook_url: "",
@@ -64,7 +67,7 @@ async function loadSettings() {
       push_days: d.push_days,
       top_n: d.top_n,
       min_articles: d.min_articles,
-      publish_mode: d.publish_mode,
+      publish_mode: d.publish_mode as "manual" | "api",
       enable_cover_generation: d.enable_cover_generation,
       cover_generation_timeout: d.cover_generation_timeout,
       notification_webhook_url: d.notification_webhook_url,
@@ -136,7 +139,7 @@ onMounted(loadSettings);
 
 <template>
   <div class="settings-page">
-    <van-nav-bar title="系统设置" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="系统设置" left-arrow @click-left="router.back()" />
 
     <div style="padding: 12px">
       <!-- 推送配置 -->

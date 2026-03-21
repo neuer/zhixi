@@ -2,12 +2,11 @@
 
 import json
 from collections import defaultdict
-from datetime import date as date_type
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, desc, func, select
+from sqlalchemy import ColumnElement, and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin
@@ -83,7 +82,6 @@ async def get_api_costs_daily(
 ) -> DailyCostsResponse:
     """最近 30 天按日成本趋势。"""
     today = get_today_digest_date()
-    assert isinstance(today, date_type)
     since = today - timedelta(days=30)
 
     result = await db.execute(
@@ -97,7 +95,7 @@ async def get_api_costs_daily(
     )
     rows = result.all()
 
-    by_date: dict[date_type, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    by_date: dict[date, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     for row in rows:
         by_date[row.call_date][row.service] = round(float(row.cost or 0), 6)
 
@@ -174,7 +172,7 @@ async def get_logs(
 # ── 内部辅助函数 ──
 
 
-async def _get_pipeline_status(db: AsyncSession, today: object) -> PipelineStatus:
+async def _get_pipeline_status(db: AsyncSession, today: date) -> PipelineStatus:
     """获取今日最新 pipeline 状态。"""
     result = await db.execute(
         select(JobRun)
@@ -192,7 +190,7 @@ async def _get_pipeline_status(db: AsyncSession, today: object) -> PipelineStatu
     )
 
 
-async def _get_digest_status(db: AsyncSession, today: object) -> DigestStatus:
+async def _get_digest_status(db: AsyncSession, today: date) -> DigestStatus:
     """获取今日 current digest 状态。"""
     result = await db.execute(
         select(DailyDigest)
@@ -212,14 +210,13 @@ async def _get_digest_status(db: AsyncSession, today: object) -> DigestStatus:
     )
 
 
-async def _get_today_cost(db: AsyncSession, today: object) -> CostSummary:
+async def _get_today_cost(db: AsyncSession, today: date) -> CostSummary:
     """聚合今日 API 成本。"""
     return await _aggregate_cost(db, ApiCostLog.call_date == today)
 
 
-async def _get_month_cost(db: AsyncSession, today: object) -> CostSummary:
+async def _get_month_cost(db: AsyncSession, today: date) -> CostSummary:
     """聚合本月 API 成本。"""
-    assert isinstance(today, date_type)
     month_start = today.replace(day=1)
     return await _aggregate_cost(
         db,
@@ -227,7 +224,7 @@ async def _get_month_cost(db: AsyncSession, today: object) -> CostSummary:
     )
 
 
-async def _aggregate_cost(db: AsyncSession, where_clause: object) -> CostSummary:
+async def _aggregate_cost(db: AsyncSession, where_clause: ColumnElement[bool]) -> CostSummary:
     """按 service 聚合成本的通用函数。"""
     result = await db.execute(
         select(
@@ -236,7 +233,7 @@ async def _aggregate_cost(db: AsyncSession, where_clause: object) -> CostSummary
             func.sum(ApiCostLog.input_tokens + ApiCostLog.output_tokens).label("total_tokens"),
             func.sum(ApiCostLog.estimated_cost).label("estimated_cost"),
         )
-        .where(where_clause)  # type: ignore[arg-type]
+        .where(where_clause)
         .group_by(ApiCostLog.service)
     )
     rows = result.all()
@@ -255,12 +252,11 @@ async def _aggregate_cost(db: AsyncSession, where_clause: object) -> CostSummary
     return CostSummary(total_cost=total_cost, by_service=by_service)
 
 
-async def _get_recent_7_days(db: AsyncSession, today: object) -> list[DigestDayRecord]:
+async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRecord]:
     """获取近 7 天推送记录（每天选一条代表版本）。
 
     优先级: published > is_current > max version。
     """
-    assert isinstance(today, date_type)
     since = today - timedelta(days=7)
 
     result = await db.execute(
@@ -271,7 +267,7 @@ async def _get_recent_7_days(db: AsyncSession, today: object) -> list[DigestDayR
     all_digests = result.scalars().all()
 
     # 按日期分组，每天选最优
-    by_date: dict[object, DailyDigest] = {}
+    by_date: dict[date, DailyDigest] = {}
     for d in all_digests:
         existing = by_date.get(d.digest_date)
         if existing is None:
@@ -302,9 +298,8 @@ async def _get_recent_7_days(db: AsyncSession, today: object) -> list[DigestDayR
     return records
 
 
-async def _get_alerts(db: AsyncSession, today: object) -> list[AlertItem]:
+async def _get_alerts(db: AsyncSession, today: date) -> list[AlertItem]:
     """近 7 天 failed 的 pipeline/fetch job_runs。"""
-    assert isinstance(today, date_type)
     since = today - timedelta(days=7)
 
     result = await db.execute(

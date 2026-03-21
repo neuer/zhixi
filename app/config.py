@@ -1,6 +1,6 @@
 """应用配置 — 环境变量读取、DB 业务配置、时间工具函数。"""
 
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from pydantic_settings import BaseSettings
@@ -61,3 +61,10 @@ async def get_system_config(db: AsyncSession, key: str, default: str = "") -> st
     result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
     config = result.scalar_one_or_none()
     return config.value if config else default
+
+
+def ensure_utc(dt: datetime) -> datetime:
+    """确保 datetime 有 UTC 时区信息（SQLite 读回可能丢失 tzinfo）。"""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt

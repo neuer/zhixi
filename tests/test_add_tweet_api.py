@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -150,13 +151,16 @@ async def _seed_environment(db: AsyncSession) -> tuple[TwitterAccount, DailyDige
 
 
 def _make_mock_fetcher(raw_tweet: RawTweet | None = None, error: Exception | None = None):
-    """构造 mock XApiFetcher。"""
+    """构造 mock XApiFetcher（支持 async with 上下文管理器）。"""
     mock = AsyncMock()
     if error:
         mock.fetch_single_tweet = AsyncMock(side_effect=error)
     else:
         mock.fetch_single_tweet = AsyncMock(return_value=raw_tweet or _mock_raw_tweet())
     mock.close = AsyncMock()
+    # 支持 async with 用法
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
     return mock
 
 
@@ -388,7 +392,7 @@ class TestAddTweetApi:
         """T6: X API 抓取失败 → 502。"""
         await _seed_environment(db)
 
-        mock_fetcher = _make_mock_fetcher(error=Exception("X API down"))
+        mock_fetcher = _make_mock_fetcher(error=httpx.HTTPError("X API down"))
 
         async def override_get_db():
             yield db

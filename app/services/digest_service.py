@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
 from app.clients.gemini_client import get_gemini_client
-from app.config import get_system_config, get_today_digest_date
+from app.config import ensure_utc, get_system_config, get_today_digest_date
 from app.digest.cover_generator import generate_cover_image
 from app.digest.renderer import render_markdown
 from app.digest.summary_generator import generate_summary
@@ -34,19 +34,16 @@ _SUMMARY_TOP_N = 5
 _PREVIEW_LINK_HOURS = 24
 
 
-def _ensure_utc(dt: datetime) -> datetime:
-    """确保 datetime 有 UTC 时区信息（SQLite 读回可能丢失 tzinfo）。"""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt
-
-
 class DigestService:
     """草稿组装服务。"""
 
     def __init__(self, db: AsyncSession, claude_client: ClaudeClient) -> None:
         self._db = db
         self._claude = claude_client
+
+    async def check_draft_editable(self, digest_date: date) -> DailyDigest:
+        """检查指定日期是否存在可编辑草稿。"""
+        return await self._get_current_draft(digest_date)
 
     async def generate_daily_digest(
         self, digest_date: date | None = None, *, version: int = 1
@@ -110,7 +107,9 @@ class DigestService:
 
         # 8. 生成导读摘要
         top_items = created_items[:_SUMMARY_TOP_N]
-        summary, cost_response = await generate_summary(self._claude, top_items)
+        summary, cost_response, _degraded = await generate_summary(
+            self._claude, top_items, db=self._db
+        )
         digest.summary = summary
         if cost_response:
             self._record_cost(cost_response, "summary", digest_date)
@@ -498,7 +497,7 @@ class DigestService:
 
         ref_time = get_reference_time(digest_date)
         weight = account.weight if account else 1.0
-        tweet_time = _ensure_utc(tweet.tweet_time)
+        tweet_time = ensure_utc(tweet.tweet_time)
         hours = calculate_hours_since_post(tweet_time, ref_time)
 
         tweet.base_heat_score = calculate_base_score(
@@ -739,7 +738,7 @@ class DigestService:
         if digest.preview_expires_at is None:
             raise PreviewTokenInvalidError
 
-        if _ensure_utc(digest.preview_expires_at) < datetime.now(UTC):
+        if ensure_utc(digest.preview_expires_at) < datetime.now(UTC):
             raise PreviewTokenInvalidError
 
         items_stmt = (

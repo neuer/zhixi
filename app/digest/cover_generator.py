@@ -61,6 +61,28 @@ def _resize_image(image_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
+def _record_cover_cost(
+    db: AsyncSession,
+    digest_date: date,
+    *,
+    estimated_cost: float = 0.0,
+    duration_ms: int = 0,
+    success: bool = False,
+) -> None:
+    """记录封面图生成 API 成本日志。"""
+    cost_log = ApiCostLog(
+        call_date=digest_date,
+        service="gemini",
+        call_type="cover",
+        endpoint="imagen-3.0-generate-002",
+        model="imagen-3.0-generate-002",
+        estimated_cost=estimated_cost,
+        duration_ms=duration_ms,
+        success=success,
+    )
+    db.add(cost_log)
+
+
 async def generate_cover_image(
     gemini_client: GeminiClient,
     top_items: list[DigestItem],
@@ -101,53 +123,23 @@ async def generate_cover_image(
         cover_path.write_bytes(resized_bytes)
 
         # 记录成本
-        cost_log = ApiCostLog(
-            call_date=digest_date,
-            service="gemini",
-            call_type="cover",
-            endpoint="imagen-3.0-generate-002",
-            model="imagen-3.0-generate-002",
+        _record_cover_cost(
+            db,
+            digest_date,
             estimated_cost=response.estimated_cost,
             duration_ms=response.duration_ms,
             success=True,
         )
-        db.add(cost_log)
 
         logger.info("封面图生成成功: %s", cover_path)
         return str(cover_path)
 
     except GeminiAPIError as e:
         logger.warning("封面图生成失败: %s", e)
-
-        # 记录失败成本
-        cost_log = ApiCostLog(
-            call_date=digest_date,
-            service="gemini",
-            call_type="cover",
-            endpoint="imagen-3.0-generate-002",
-            model="imagen-3.0-generate-002",
-            estimated_cost=0.0,
-            duration_ms=0,
-            success=False,
-        )
-        db.add(cost_log)
-
+        _record_cover_cost(db, digest_date)
         return None
 
     except Exception as e:
         logger.warning("封面图生成异常: %s", e, exc_info=True)
-
-        # 记录失败成本
-        cost_log = ApiCostLog(
-            call_date=digest_date,
-            service="gemini",
-            call_type="cover",
-            endpoint="imagen-3.0-generate-002",
-            model="imagen-3.0-generate-002",
-            estimated_cost=0.0,
-            duration_ms=0,
-            success=False,
-        )
-        db.add(cost_log)
-
+        _record_cover_cost(db, digest_date)
         return None

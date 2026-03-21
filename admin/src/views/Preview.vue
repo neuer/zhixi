@@ -2,7 +2,7 @@
 import api from "@/api";
 import ArticlePreview from "@/components/ArticlePreview.vue";
 import type { PreviewResponse } from "@zhixi/openapi-client";
-import type { AxiosError } from "axios";
+import axios from "axios";
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -15,7 +15,8 @@ const error = ref<string | null>(null);
 const isTokenMode = computed(() => !!route.query.token);
 
 async function loadPreview() {
-  const shareToken = route.query.token as string | undefined;
+  const rawToken = route.query.token;
+  const shareToken = Array.isArray(rawToken) ? rawToken[0] : rawToken;
 
   if (shareToken) {
     // 签名链接模式：匿名访问
@@ -26,11 +27,12 @@ async function loadPreview() {
       );
       data.value = resp.data;
     } catch (e) {
-      const axiosErr = e as AxiosError;
-      error.value =
-        axiosErr.response?.status === 403
-          ? "链接已失效或过期"
-          : "暂无可预览的内容";
+      if (axios.isAxiosError(e)) {
+        error.value =
+          e.response?.status === 403 ? "链接已失效或过期" : "暂无可预览的内容";
+      } else {
+        error.value = "暂无可预览的内容";
+      }
     } finally {
       loading.value = false;
     }
@@ -38,13 +40,6 @@ async function loadPreview() {
   }
 
   // 登录态模式（原逻辑）
-  const jwtToken = localStorage.getItem("zhixi_token");
-  if (!jwtToken) {
-    error.value = "请先登录后访问预览";
-    loading.value = false;
-    return;
-  }
-
   loading.value = true;
   try {
     const resp = await api.get<PreviewResponse>("/digest/preview");

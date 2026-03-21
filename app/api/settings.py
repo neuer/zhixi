@@ -49,7 +49,7 @@ def _get_db_size_mb() -> float:
     return 0.0
 
 
-def _parse_config_value(key: str, value: str) -> object:
+def _parse_config_value(key: str, value: str) -> int | bool | str | list[int]:
     """将 DB 字符串值转为对应 Python 类型。"""
     if key == "push_days":
         return [int(x.strip()) for x in value.split(",") if x.strip()] if value else []
@@ -60,7 +60,7 @@ def _parse_config_value(key: str, value: str) -> object:
     return value
 
 
-def _serialize_config_value(key: str, value: object) -> str:
+def _serialize_config_value(key: str, value: int | bool | str | list[int]) -> str:
     """将 Python 类型转为 DB 存储字符串。"""
     if key == "push_days" and isinstance(value, list):
         return ",".join(str(x) for x in value)
