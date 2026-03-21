@@ -90,6 +90,18 @@ function isWhiteListed(to: RouteLocationNormalized): boolean {
   return WHITE_LIST.some((path) => to.path.startsWith(path));
 }
 
+/** 解析 JWT payload 的 exp 字段做本地过期检查（不验证签名，仅做 UX 优化）。 */
+function isTokenValid(): boolean {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 router.beforeEach(async (to) => {
   if (isWhiteListed(to)) {
     return true;
@@ -112,8 +124,8 @@ router.beforeEach(async (to) => {
     return "/setup";
   }
 
-  const token = localStorage.getItem(AUTH_TOKEN_KEY);
-  if (!token) {
+  if (!isTokenValid()) {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
     return "/login";
   }
 

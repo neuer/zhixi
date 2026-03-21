@@ -133,7 +133,7 @@ async def run_pipeline(
                 db,
             )
         except Exception:
-            logger.warning("Pipeline 失败通知发送也失败", exc_info=True)
+            logger.error("Pipeline 失败通知发送也失败", exc_info=True)
 
         return PipelineResult(
             status="failed",

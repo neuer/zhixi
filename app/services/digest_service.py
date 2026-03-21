@@ -85,7 +85,14 @@ class DigestService:
         # 5. 按 heat_score 降序排序
         sortable_items.sort(key=lambda x: x[0], reverse=True)
 
-        # 6. 创建 DailyDigest
+        # 6. 清理同日期旧记录的 is_current 标记
+        await self._db.execute(
+            update(DailyDigest)
+            .where(DailyDigest.digest_date == digest_date, DailyDigest.is_current.is_(True))
+            .values(is_current=False)
+        )
+
+        # 7. 创建 DailyDigest
         digest = DailyDigest(
             digest_date=digest_date,
             version=version,
@@ -141,6 +148,8 @@ class DigestService:
                     db=self._db,
                 )
                 digest.cover_image_path = cover_path
+                if cover_path is None:
+                    logger.warning("封面图生成失败，日报将无封面 (digest_date=%s)", digest_date)
 
         await self._db.flush()
         logger.info(

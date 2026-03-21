@@ -35,7 +35,6 @@ from app.schemas.digest_types import (
 )
 from app.schemas.enums import DigestStatus, ItemType, JobStatus, JobType, PublishMode, TriggerSource
 from app.services.digest_service import (
-    DigestItemNotFoundError,
     DigestNotEditableError,
     DigestNotFoundError,
     DigestService,
@@ -183,16 +182,7 @@ async def edit_item(
 ) -> DigestItemResponse:
     """编辑单条内容的 snapshot 字段。"""
     updates = body.model_dump(exclude_none=True)
-    try:
-        item = await svc.edit_item(item_type, item_ref_id, updates)
-    except DigestNotFoundError:
-        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-    except DigestNotEditableError:
-        raise HTTPException(
-            status_code=409, detail="当前版本不可编辑，请先重新生成新版本"
-        ) from None
-    except DigestItemNotFoundError:
-        raise HTTPException(status_code=404, detail="条目不存在") from None
+    item = await svc.edit_item(item_type, item_ref_id, updates)
     return DigestItemResponse.model_validate(item)
 
 
@@ -206,14 +196,7 @@ async def edit_summary(
     _admin: str = Depends(get_current_admin),
 ) -> MessageResponse:
     """编辑导读摘要并重渲染 Markdown。"""
-    try:
-        await svc.edit_summary(body.summary)
-    except DigestNotFoundError:
-        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-    except DigestNotEditableError:
-        raise HTTPException(
-            status_code=409, detail="当前版本不可编辑，请先重新生成新版本"
-        ) from None
+    await svc.edit_summary(body.summary)
     return MessageResponse(message="导读摘要已更新")
 
 
@@ -228,16 +211,7 @@ async def reorder_items(
 ) -> MessageResponse:
     """调整排序与置顶。"""
     items_input = [item.model_dump() for item in body.items]
-    try:
-        await svc.reorder_items(items_input)
-    except DigestNotFoundError:
-        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-    except DigestNotEditableError:
-        raise HTTPException(
-            status_code=409, detail="当前版本不可编辑，请先重新生成新版本"
-        ) from None
-    except DigestItemNotFoundError:
-        raise HTTPException(status_code=404, detail="条目不存在") from None
+    await svc.reorder_items(items_input)
     return MessageResponse(message="排序已更新")
 
 
@@ -252,16 +226,7 @@ async def exclude_item(
     _admin: str = Depends(get_current_admin),
 ) -> MessageResponse:
     """剔除条目。"""
-    try:
-        await svc.exclude_item(item_type, item_ref_id)
-    except DigestNotFoundError:
-        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-    except DigestNotEditableError:
-        raise HTTPException(
-            status_code=409, detail="当前版本不可编辑，请先重新生成新版本"
-        ) from None
-    except DigestItemNotFoundError:
-        raise HTTPException(status_code=404, detail="条目不存在") from None
+    await svc.exclude_item(item_type, item_ref_id)
     return MessageResponse(message="条目已剔除")
 
 
@@ -273,16 +238,7 @@ async def restore_item(
     _admin: str = Depends(get_current_admin),
 ) -> MessageResponse:
     """恢复条目。"""
-    try:
-        await svc.restore_item(item_type, item_ref_id)
-    except DigestNotFoundError:
-        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-    except DigestNotEditableError:
-        raise HTTPException(
-            status_code=409, detail="当前版本不可编辑，请先重新生成新版本"
-        ) from None
-    except DigestItemNotFoundError:
-        raise HTTPException(status_code=404, detail="条目不存在") from None
+    await svc.restore_item(item_type, item_ref_id)
     return MessageResponse(message="条目已恢复")
 
 

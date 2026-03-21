@@ -35,13 +35,13 @@ _TWEET_URL_PATTERN = re.compile(r"https?://(?:x\.com|twitter\.com)/(\w+)/status/
 
 def _parse_tweet_id(tweet_url: str) -> str | None:
     """从推文 URL 提取 tweet_id。"""
-    match = _TWEET_URL_PATTERN.match(tweet_url.strip())
+    match = _TWEET_URL_PATTERN.search(tweet_url.strip())
     return match.group(2) if match else None
 
 
 def _extract_handle_from_url(tweet_url: str) -> str | None:
     """从推文 URL 提取 handle。"""
-    match = _TWEET_URL_PATTERN.match(tweet_url.strip())
+    match = _TWEET_URL_PATTERN.search(tweet_url.strip())
     return match.group(1) if match else None
 
 

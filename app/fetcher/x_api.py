@@ -86,10 +86,31 @@ class XApiFetcher(BaseFetcher):
             }
 
             # 解析推文列表
-            for raw in payload.get("data", []):
+            page_data = payload.get("data", [])
+            parse_fail_count = 0
+            for raw in page_data:
                 tweet = self._parse_tweet(raw, included_tweets, media_url_map)
                 if tweet is not None:
                     results.append(tweet)
+                else:
+                    parse_fail_count += 1
+
+            if parse_fail_count > 0:
+                if parse_fail_count == len(page_data):
+                    logger.error(
+                        "X API 推文解析全部失败: user_id=%s, page=%d, total=%d",
+                        user_id,
+                        _page + 1,
+                        parse_fail_count,
+                    )
+                else:
+                    logger.warning(
+                        "X API 部分推文解析失败: user_id=%s, page=%d, failed=%d/%d",
+                        user_id,
+                        _page + 1,
+                        parse_fail_count,
+                        len(page_data),
+                    )
 
             # 判断是否有下一页
             next_token = payload.get("meta", {}).get("next_token")

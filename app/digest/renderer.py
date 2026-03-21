@@ -5,11 +5,14 @@
 """
 
 import json
+import logging
 from datetime import date
 
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.schemas.enums import ItemType, TopicType
+
+logger = logging.getLogger(__name__)
 
 
 def render_markdown(
@@ -176,5 +179,5 @@ def _parse_json_list(json_str: str | None) -> list[dict[str, str]]:
         if isinstance(data, list):
             return data
     except (json.JSONDecodeError, TypeError):
-        pass
+        logger.warning("JSON 列表解析失败: %s", json_str[:200] if json_str else json_str)
     return []

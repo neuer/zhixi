@@ -157,7 +157,7 @@ onMounted(loadData);
               :title="`${idx + 1}. ${item.snapshot_title || '无标题'}`"
               :label="getItemLabel(item)"
               is-link
-              @click="router.push({ name: 'digest-edit', params: { type: item.item_type, id: item.id } })"
+              @click="router.push({ name: 'digest-edit', params: { type: item.item_type, id: item.item_ref_id } })"
             >
               <template #value>
                 <span class="heat-score">

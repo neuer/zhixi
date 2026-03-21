@@ -1,2 +1,1 @@
-"""publish_service — 编排层。"""
-# TODO: Phase 2 实现
+"""publish_service — 微信 API 自动发布编排层（待公众号认证后实现）。"""

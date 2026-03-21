@@ -62,7 +62,16 @@ def _parse_bool(value: str) -> bool:
 
 
 def _parse_int_list(value: str) -> list[int]:
-    return [int(x) for x in value.split(",") if x.strip()]
+    result: list[int] = []
+    for x in value.split(","):
+        x = x.strip()
+        if not x:
+            continue
+        try:
+            result.append(int(x))
+        except ValueError:
+            continue
+    return result
 
 
 def _serialize_config_value(key: str, value: int | bool | str | list[int]) -> str:

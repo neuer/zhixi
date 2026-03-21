@@ -104,6 +104,17 @@ class ProcessService:
 
         await self._db.flush()
 
+        # 失败率告警
+        total = processed_count + failed_count
+        if total > 0 and failed_count / total > 0.3:
+            logger.error(
+                "AI 加工失败率过高: %.1f%% (%d/%d), digest_date=%s",
+                failed_count / total * 100,
+                failed_count,
+                total,
+                digest_date,
+            )
+
         return ProcessResult(
             processed_count=processed_count,
             filtered_count=filtered_count,
@@ -641,9 +652,11 @@ def _build_thread_data(
     merged_text: str,
 ) -> dict[str, object]:
     """构建 Thread 加工输入（R.1.5 格式）。"""
+    if not member_tweets:
+        raise ValueError("Thread 成员推文列表为空")
     sorted_tweets = sorted(member_tweets, key=lambda t: t.tweet_time)
-    first_tweet = sorted_tweets[0] if sorted_tweets else member_tweets[0]
-    last_tweet = sorted_tweets[-1] if sorted_tweets else member_tweets[-1]
+    first_tweet = sorted_tweets[0]
+    last_tweet = sorted_tweets[-1]
     account = accounts_map.get(first_tweet.account_id)
 
     return {
