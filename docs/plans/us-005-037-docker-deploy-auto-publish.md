@@ -84,3 +84,41 @@ WechatClient 类：
 uv run ruff check . && uv run ruff format --check . && uv run lint-imports && uv run pyright && uv run pytest
 docker compose config --quiet
 ```
+
+## 执行结果
+
+### 交付物清单
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `Dockerfile` | 新建 | 42 |
+| `docker-compose.yml` | 新建 | 37 |
+| `Caddyfile` | 新建 | 9 |
+| `app/publisher/wechat_client.py` | 重写 | 37 |
+| `app/api/digest.py` | 修改 | +11/-3 |
+| `tests/test_publisher.py` | 新建 | 100 |
+| `docs/spec/user-stories.md` | 修改 | 2 行状态更新 |
+| `docs/plans/us-005-037-docker-deploy-auto-publish.md` | 新建 | 计划文件 |
+
+### 偏离项
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | Dockerfile COPY data/default_cover.png | 跳过此行 | data/default_cover.png 不存在且代码中无引用 |
+| 2 | docker-compose.yml 直接调用 alembic/uvicorn | 改用 uv run 前缀 | 容器内 uv sync --no-dev 安装的包在 .venv 中，需要 uv run 执行 |
+
+### 问题与修复
+| 问题 | 解决 |
+|------|------|
+| test_publisher.py 有未使用的 import（UTC, datetime） | 删除多余 import |
+| ruff format 格式不一致 | ruff format 自动修复 |
+
+### 质量门禁
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 128 files already formatted |
+| lint-imports | ✅ 4 contracts kept, 0 broken |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 479 passed |
+
+### PR 链接
+https://github.com/neuer/zhixi/pull/24
