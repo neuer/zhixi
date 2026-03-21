@@ -3,11 +3,12 @@
 import json
 
 import httpx
+import pytest
 import respx
 from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.clients.notifier import send_alert
+from app.clients.notifier import _validate_webhook_url, send_alert
 from app.models.config import SystemConfig
 
 WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key"
@@ -115,3 +116,37 @@ async def test_send_alert_logs_on_timeout(db: AsyncSession) -> None:
 
     # 不应抛出异常
     await send_alert("告警", "消息", db)
+
+
+# ── SSRF 防护测试 ────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://0.0.0.0/hook",
+        "https://[::]/hook",
+        "https://0177.0.0.1/hook",
+        "https://0x7f.0.0.1/hook",
+        "https://0x7f000001/hook",
+        "https://2130706433/hook",
+        "https://[::1]/hook",
+        "https://[::ffff:127.0.0.1]/hook",
+        "https://localhost/hook",
+        "https://127.0.0.1/hook",
+    ],
+)
+def test_validate_webhook_url_blocks_ssrf_variants(url: str) -> None:
+    """SSRF 变形地址均被拦截。"""
+    assert _validate_webhook_url(url) is False
+
+
+def test_validate_webhook_url_allows_public() -> None:
+    """公网域名 URL 允许通过。"""
+    assert _validate_webhook_url("https://qyapi.weixin.qq.com/cgi-bin/webhook/send") is True
+
+
+def test_validate_webhook_url_blocks_private_ip() -> None:
+    """RFC 1918 私有 IP 被拦截。"""
+    assert _validate_webhook_url("https://10.0.0.1/hook") is False
+    assert _validate_webhook_url("https://192.168.1.1/hook") is False

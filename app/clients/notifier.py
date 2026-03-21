@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 
 WEBHOOK_CONFIG_KEY = "notification_webhook_url"
 
+# I-22: 连续失败计数与阈值
+_consecutive_failures: int = 0
+_FAILURE_THRESHOLD: int = 3
+
 
 def _validate_webhook_url(url: str) -> bool:
     """校验 webhook URL，禁止内网地址以防 SSRF 攻击。
@@ -30,8 +34,21 @@ def _validate_webhook_url(url: str) -> bool:
     if not hostname:
         return False
 
-    # 禁止 localhost
-    if hostname in ("localhost", "127.0.0.1", "::1"):
+    # 禁止 localhost 及常见变形地址
+    _blocked_hostnames = {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        "0.0.0.0",  # noqa: S104 — SSRF 防护需要显式列出
+        "::",
+        "0177.0.0.1",  # 八进制 127.0.0.1
+        "0x7f.0.0.1",  # 十六进制 127.0.0.1
+        "0x7f000001",  # 十六进制整数 127.0.0.1
+        "2130706433",  # 十进制整数 127.0.0.1
+        "[::1]",
+        "[::ffff:127.0.0.1]",
+    }
+    if hostname.lower() in _blocked_hostnames:
         return False
 
     try:
@@ -40,8 +57,14 @@ def _validate_webhook_url(url: str) -> bool:
         # 不是 IP 地址（域名），允许通过
         return True
 
-    # 禁止私有/保留/回环/链路本地地址
-    return not (addr.is_private or addr.is_reserved or addr.is_loopback or addr.is_link_local)
+    # 禁止私有/保留/回环/链路本地/未指定地址
+    return not (
+        addr.is_private
+        or addr.is_reserved
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_unspecified
+    )
 
 
 async def send_alert(title: str, message: str, db: AsyncSession) -> None:
@@ -71,12 +94,29 @@ async def send_alert(title: str, message: str, db: AsyncSession) -> None:
         "text": {"content": content},
     }
 
+    global _consecutive_failures  # noqa: PLW0603
+
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             logger.info("告警发送成功: title=%s", title)
+            _consecutive_failures = 0
     except httpx.HTTPError:
+        _consecutive_failures += 1
         logger.warning("告警发送失败（不影响主流程）: title=%s", title, exc_info=True)
+        if _consecutive_failures >= _FAILURE_THRESHOLD:
+            logger.critical(
+                "告警系统连续失败 %d 次，请检查 webhook 配置: url=%s",
+                _consecutive_failures,
+                url,
+            )
     except Exception:
+        _consecutive_failures += 1
         logger.warning("告警发送异常（不影响主流程）: title=%s", title, exc_info=True)
+        if _consecutive_failures >= _FAILURE_THRESHOLD:
+            logger.critical(
+                "告警系统连续失败 %d 次，请检查 webhook 配置: url=%s",
+                _consecutive_failures,
+                url,
+            )

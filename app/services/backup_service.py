@@ -1,5 +1,6 @@
 """backup_service — SQLite 备份与清理编排层。"""
 
+import asyncio
 import logging
 import sqlite3
 import time
@@ -64,14 +65,9 @@ class BackupService:
         Path(backup_dir).mkdir(parents=True, exist_ok=True)
         backup_path = str(Path(backup_dir) / backup_filename)
 
-        source_conn: sqlite3.Connection | None = None
-        target_conn: sqlite3.Connection | None = None
         try:
-            # 2. 执行在线备份（sqlite3 阻塞调用，MVP CLI 场景可接受）
-            source_conn = sqlite3.connect(db_path)
-            target_conn = sqlite3.connect(backup_path)
-            with source_conn, target_conn:
-                source_conn.backup(target_conn)
+            # 2. 执行在线备份（通过 asyncio.to_thread 避免阻塞事件循环）
+            await asyncio.to_thread(self._sync_backup, db_path, backup_path)
 
             # 3. 成功
             job.status = JobStatus.COMPLETED
@@ -96,6 +92,17 @@ class BackupService:
                     cleanup_err,
                 )
             return BackupResult(success=False, error=error_msg)
+
+    @staticmethod
+    def _sync_backup(db_path: str, backup_path: str) -> None:
+        """同步执行 SQLite 在线备份（在线程池中调用）。"""
+        source_conn: sqlite3.Connection | None = None
+        target_conn: sqlite3.Connection | None = None
+        try:
+            source_conn = sqlite3.connect(db_path)
+            target_conn = sqlite3.connect(backup_path)
+            with source_conn, target_conn:
+                source_conn.backup(target_conn)
         finally:
             if target_conn:
                 target_conn.close()

@@ -339,3 +339,59 @@ class TestParseTweetEdgeCases:
         assert result is not None
         assert isinstance(result, RawTweet)
         assert result.tweet_id == "1001"
+
+
+# ──────────────────────────────────────────────────
+# 10. 5xx HTTP 错误重试
+# ──────────────────────────────────────────────────
+
+
+@respx.mock
+async def test_retry_on_5xx_then_success():
+    """5xx 服务端错误应纳入重试，后续成功则正常返回。"""
+    tweet_data = make_tweet_data(tweet_id="6001", author_id="u6")
+    api_resp = make_api_response([tweet_data])
+
+    route = respx.get(TWEETS_URL)
+    route.side_effect = [
+        httpx.Response(502, text="Bad Gateway"),
+        httpx.Response(200, json=api_resp),
+    ]
+
+    fetcher = XApiFetcher(bearer_token="test_token")
+    tweets = await fetcher.fetch_user_tweets(USER_ID, SINCE, UNTIL)
+    await fetcher.close()
+
+    assert len(tweets) == 1
+    assert tweets[0].tweet_id == "6001"
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_retry_on_5xx_exhausted():
+    """5xx 持续失败耗尽重试 → 抛出 HTTPStatusError。"""
+    route = respx.get(TWEETS_URL)
+    route.side_effect = [
+        httpx.Response(503, text="Service Unavailable"),
+        httpx.Response(503, text="Service Unavailable"),
+        httpx.Response(503, text="Service Unavailable"),
+        httpx.Response(503, text="Service Unavailable"),
+    ]
+
+    fetcher = XApiFetcher(bearer_token="test_token")
+    with pytest.raises(httpx.HTTPStatusError):
+        await fetcher.fetch_user_tweets(USER_ID, SINCE, UNTIL)
+    await fetcher.close()
+
+
+@respx.mock
+async def test_4xx_not_retried():
+    """4xx 客户端错误（非 429）不重试，立即抛出。"""
+    respx.get(TWEETS_URL).mock(return_value=httpx.Response(403, text="Forbidden"))
+
+    fetcher = XApiFetcher(bearer_token="test_token")
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await fetcher.fetch_user_tweets(USER_ID, SINCE, UNTIL)
+    await fetcher.close()
+
+    assert exc_info.value.response.status_code == 403
