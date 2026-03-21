@@ -8,16 +8,18 @@ import { useRouter } from "vue-router";
 const router = useRouter();
 const loading = ref(true);
 const data = ref<DashboardOverviewResponse | null>(null);
+const error = ref<string | null>(null);
 
 async function loadData() {
   loading.value = true;
+  error.value = null;
   try {
     const resp = await api.get<DashboardOverviewResponse>(
       "/dashboard/overview",
     );
     data.value = resp.data;
   } catch {
-    // 错误已由拦截器处理
+    error.value = "加载失败，下拉刷新重试";
   } finally {
     loading.value = false;
   }
@@ -43,6 +45,10 @@ onMounted(loadData);
     <van-nav-bar title="智曦管理后台" />
 
     <van-pull-refresh v-model="loading" @refresh="loadData">
+      <!-- 错误态 -->
+      <van-empty v-if="!loading && error" :description="error" image="error" />
+
+      <template v-else>
       <!-- 告警 -->
       <template v-if="data?.alerts?.length">
         <van-notice-bar
@@ -161,6 +167,7 @@ onMounted(loadData);
           />
         </van-cell-group>
       </div>
+      </template>
     </van-pull-refresh>
   </div>
 </template>

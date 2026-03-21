@@ -1,6 +1,7 @@
 import api from "@/api";
 import { AUTH_TOKEN_KEY } from "@/constants";
 import type { SetupStatusResponse } from "@zhixi/openapi-client";
+import axios from "axios";
 import {
   type RouteLocationNormalized,
   createRouter,
@@ -98,8 +99,12 @@ router.beforeEach(async (to) => {
     try {
       const { data } = await api.get<SetupStatusResponse>("/setup/status");
       setupCache = { value: data.need_setup, fetchedAt: Date.now() };
-    } catch {
-      return "/login";
+    } catch (e: unknown) {
+      if (axios.isAxiosError(e) && e.response?.status === 401) {
+        return "/login";
+      }
+      // 非认证错误：放行导航，让页面自身处理
+      return true;
     }
   }
 

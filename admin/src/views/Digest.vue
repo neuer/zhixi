@@ -10,6 +10,7 @@ import { useRouter } from "vue-router";
 const router = useRouter();
 const loading = ref(true);
 const data = ref<TodayResponse | null>(null);
+const error = ref<string | null>(null);
 
 const visibleItems = computed(() => {
   if (!data.value) return [];
@@ -18,11 +19,12 @@ const visibleItems = computed(() => {
 
 async function loadData() {
   loading.value = true;
+  error.value = null;
   try {
     const resp = await api.get<TodayResponse>("/digest/today");
     data.value = resp.data;
   } catch {
-    // 拦截器已处理
+    error.value = "加载失败，下拉刷新重试";
   } finally {
     loading.value = false;
   }
@@ -89,8 +91,13 @@ onMounted(loadData);
         :text="`今日资讯较少（${data.digest?.item_count ?? 0}条）`"
       />
 
+      <!-- 加载失败 -->
+      <div v-if="!loading && error" class="empty-state">
+        <van-empty :description="error" image="error" />
+      </div>
+
       <!-- 无草稿 -->
-      <div v-if="!loading && !data?.digest" class="empty-state">
+      <div v-else-if="!loading && !data?.digest" class="empty-state">
         <van-empty description="今日草稿尚未生成" />
       </div>
 

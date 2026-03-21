@@ -13,6 +13,7 @@ const router = useRouter();
 const loading = ref(false);
 const refreshing = ref(false);
 const finished = ref(false);
+const error = ref<string | null>(null);
 const items = ref<HistoryListItem[]>([]);
 const page = ref(1);
 const pageSize = 20;
@@ -23,6 +24,7 @@ async function loadMore() {
   if (isLoadingMore || finished.value) return;
   isLoadingMore = true;
   loading.value = true;
+  error.value = null;
 
   try {
     const resp = await api.get<HistoryListResponse>("/history", {
@@ -41,7 +43,7 @@ async function loadMore() {
     }
     page.value += 1;
   } catch {
-    // 拦截器已处理，不置 finished 以便用户可重试
+    error.value = "加载失败，下拉刷新重试";
   } finally {
     loading.value = false;
     isLoadingMore = false;
@@ -52,8 +54,8 @@ async function onRefresh() {
   page.value = 1;
   finished.value = false;
   items.value = [];
-  refreshing.value = false;
   await loadMore();
+  refreshing.value = false;
 }
 
 function goDetail(id: number) {
@@ -98,7 +100,8 @@ onMounted(loadMore);
           </template>
         </van-cell>
 
-        <van-empty v-if="!loading && items.length === 0" description="暂无历史记录" />
+        <van-empty v-if="!loading && error" :description="error" image="error" />
+        <van-empty v-else-if="!loading && items.length === 0" description="暂无历史记录" />
       </van-list>
     </van-pull-refresh>
   </div>
