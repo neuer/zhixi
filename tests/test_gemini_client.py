@@ -81,34 +81,20 @@ class TestGeminiClient:
 
 
 class TestGetGeminiClient:
-    """get_gemini_client 工厂函数测试。"""
+    """get_gemini_client 异步工厂函数测试。"""
 
-    def test_returns_none_without_key(self) -> None:
-        """GEMINI_API_KEY 为空时返回 None。"""
-        import app.clients.gemini_client as mod
+    async def test_returns_none_without_key(self) -> None:
+        """DB 和 .env 都无 key 时返回 None。"""
+        from app.clients.gemini_client import get_gemini_client
 
-        with patch("app.clients.gemini_client.settings") as mock_settings:
-            mock_settings.GEMINI_API_KEY = ""
-            mod._client_instance = None
-            mod._initialized = False
-
-            result = mod.get_gemini_client()
+        with patch("app.clients.gemini_client.get_secret_config", return_value=""):
+            result = await get_gemini_client(MagicMock())
             assert result is None
-            # 清理
-            mod._client_instance = None
-            mod._initialized = False
 
-    def test_returns_client_with_key(self) -> None:
-        """GEMINI_API_KEY 有值时返回 GeminiClient。"""
-        import app.clients.gemini_client as mod
+    async def test_returns_client_with_key(self) -> None:
+        """有 key 时返回 GeminiClient。"""
+        from app.clients.gemini_client import get_gemini_client
 
-        with patch("app.clients.gemini_client.settings") as mock_settings:
-            mock_settings.GEMINI_API_KEY = "test-gemini-key"
-            mod._client_instance = None
-            mod._initialized = False
-
-            result = mod.get_gemini_client()
+        with patch("app.clients.gemini_client.get_secret_config", return_value="test-gemini-key"):
+            result = await get_gemini_client(MagicMock())
             assert isinstance(result, GeminiClient)
-            # 清理
-            mod._client_instance = None
-            mod._initialized = False

@@ -139,7 +139,7 @@ class DigestService:
         # 11. 封面图生成（可选，不阻塞）
         enable_cover = await get_system_config(self._db, "enable_cover_generation", "false")
         if enable_cover.lower() == "true":
-            gemini_client = get_gemini_client()
+            gemini_client = await get_gemini_client(self._db)
             if gemini_client:
                 cover_timeout = await safe_float_config(self._db, "cover_generation_timeout", 30.0)
                 cover_path = await generate_cover_image(
@@ -244,7 +244,7 @@ class DigestService:
         items_result = await self._db.execute(items_stmt)
         items = list(items_result.scalars())
 
-        gemini_client = get_gemini_client()
+        gemini_client = await get_gemini_client(self._db)
         if gemini_client is None:
             return None
 

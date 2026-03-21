@@ -83,7 +83,9 @@ def _patch_pipeline(
         patch(f"{_MODULE}.DigestService", _make_service_class(mock_digest, "generate_daily_digest"))
     )
     stack.enter_context(patch(f"{_MODULE}.send_alert", mock_alert))
-    stack.enter_context(patch(f"{_MODULE}.get_claude_client", return_value=AsyncMock()))
+    stack.enter_context(
+        patch("app.clients.claude_client.get_claude_client", AsyncMock(return_value=AsyncMock()))
+    )
     return stack
 
 

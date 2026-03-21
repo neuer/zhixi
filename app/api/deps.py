@@ -4,7 +4,6 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import InvalidTokenError, verify_jwt
-from app.clients.claude_client import get_claude_client
 from app.config import get_today_digest_date
 from app.database import get_db
 from app.services.account_service import AccountService
@@ -46,14 +45,18 @@ async def get_process_service(
     db: AsyncSession = Depends(get_db),
 ) -> ProcessService:
     """构造 ProcessService 并注入 DB Session + ClaudeClient。"""
-    return ProcessService(db, claude_client=get_claude_client())
+    from app.clients.claude_client import get_claude_client
+
+    return ProcessService(db, claude_client=await get_claude_client(db))
 
 
 async def get_digest_service(
     db: AsyncSession = Depends(get_db),
 ) -> DigestService:
     """构造 DigestService 并注入 DB Session + ClaudeClient。"""
-    return DigestService(db, claude_client=get_claude_client())
+    from app.clients.claude_client import get_claude_client
+
+    return DigestService(db, claude_client=await get_claude_client(db))
 
 
 async def require_no_pipeline_lock(

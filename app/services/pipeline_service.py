@@ -11,7 +11,6 @@ from typing import Literal
 import sqlalchemy.exc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.clients.claude_client import get_claude_client
 from app.clients.notifier import send_alert
 from app.config import get_system_config, get_today_digest_date
 from app.models.job_run import JobRun
@@ -86,7 +85,9 @@ async def run_pipeline(
         logger.info("Fetch 完成: new_tweets=%d", fetch_result.new_tweets_count)
 
         # Step B: Process
-        claude = get_claude_client()
+        from app.clients.claude_client import get_claude_client
+
+        claude = await get_claude_client(db)
         process_svc = ProcessService(db, claude_client=claude)
         process_result = await process_svc.run_daily_process(digest_date)
         logger.info(

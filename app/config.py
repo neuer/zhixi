@@ -16,8 +16,8 @@ BEIJING_TZ = ZoneInfo("Asia/Shanghai")
 class Settings(BaseSettings):
     """从 .env 读取的系统配置。"""
 
-    X_API_BEARER_TOKEN: str
-    ANTHROPIC_API_KEY: str
+    X_API_BEARER_TOKEN: str = ""
+    ANTHROPIC_API_KEY: str = ""
     CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
     CLAUDE_INPUT_PRICE_PER_MTOK: float = 3.0
     CLAUDE_OUTPUT_PRICE_PER_MTOK: float = 15.0
@@ -102,3 +102,51 @@ def ensure_utc(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
     return dt
+
+
+# ---- 密钥配置：DB 优先 + .env fallback ----
+
+# 支持通过 UI 管理的密钥配置项
+SECRET_CONFIG_KEYS = frozenset(
+    {
+        "x_api_bearer_token",
+        "anthropic_api_key",
+        "gemini_api_key",
+        "wechat_app_id",
+        "wechat_app_secret",
+    }
+)
+
+# .env 字段名映射（小写 key → Settings 属性名）
+_ENV_ATTR_MAP: dict[str, str] = {
+    "x_api_bearer_token": "X_API_BEARER_TOKEN",
+    "anthropic_api_key": "ANTHROPIC_API_KEY",
+    "gemini_api_key": "GEMINI_API_KEY",
+    "wechat_app_id": "WECHAT_APP_ID",
+    "wechat_app_secret": "WECHAT_APP_SECRET",
+}
+
+
+async def get_secret_config(db: AsyncSession, key: str) -> str:
+    """读取密钥配置：DB 优先（解密），fallback .env。"""
+    from app.crypto import decrypt_secret
+
+    db_key = f"secret:{key}"
+    db_value = await get_system_config(db, db_key)
+    if db_value:
+        decrypted = decrypt_secret(db_value)
+        if decrypted:
+            return decrypted
+
+    # fallback .env
+    env_attr = _ENV_ATTR_MAP.get(key, key.upper())
+    return str(getattr(settings, env_attr, ""))
+
+
+def mask_secret(value: str) -> str:
+    """掩码处理：首4尾4，中间****。短于12字符只显示****。"""
+    if not value:
+        return ""
+    if len(value) < 12:
+        return "****"
+    return f"{value[:4]}****{value[-4:]}"

@@ -157,17 +157,48 @@ class TestClaudeClient:
 
 
 class TestGetClaudeClient:
-    """get_claude_client() 惰性单例。"""
+    """get_claude_client() 异步工厂函数。"""
 
-    def test_singleton(self):
-        import app.clients.claude_client as mod
-        from app.clients.claude_client import get_claude_client
+    async def test_returns_client_when_key_configured(self):
+        from unittest.mock import AsyncMock, patch
 
-        mod._client = None
+        from app.clients.claude_client import ClaudeClient, get_claude_client
 
-        c1 = get_claude_client()
-        c2 = get_claude_client()
-        assert c1 is c2
+        mock_db = AsyncMock()
+        with (
+            patch(
+                "app.clients.claude_client.get_secret_config",
+                new_callable=AsyncMock,
+                return_value="sk-test-key",
+            ),
+            patch(
+                "app.clients.claude_client.get_system_config",
+                new_callable=AsyncMock,
+                return_value="claude-sonnet",
+            ),
+            patch(
+                "app.clients.claude_client.safe_float_config",
+                new_callable=AsyncMock,
+                return_value=3.0,
+            ),
+        ):
+            client = await get_claude_client(mock_db)
+            assert isinstance(client, ClaudeClient)
 
-        # 清理
-        mod._client = None
+    async def test_raises_when_key_missing(self):
+        from unittest.mock import AsyncMock, patch
+
+        import pytest
+
+        from app.clients.claude_client import ClaudeAPIError, get_claude_client
+
+        mock_db = AsyncMock()
+        with (
+            patch(
+                "app.clients.claude_client.get_secret_config",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            pytest.raises(ClaudeAPIError, match="API Key 未配置"),
+        ):
+            await get_claude_client(mock_db)

@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.notifier import send_alert
 from app.clients.x_client import XApiError
-from app.config import get_fetch_window, get_today_digest_date, settings
+from app.config import get_fetch_window, get_secret_config, get_today_digest_date
 from app.fetcher import get_fetcher
 from app.fetcher.base import BaseFetcher
 from app.fetcher.tweet_classifier import classify_tweet
@@ -91,7 +91,7 @@ class FetchService:
         new_tweets_total = 0
         errors: list[dict[str, str]] = []
 
-        async with get_fetcher(settings.X_API_BEARER_TOKEN) as fetcher:
+        async with get_fetcher(await get_secret_config(self.db, "x_api_bearer_token")) as fetcher:
             for idx, account in enumerate(accounts):
                 # 跳过无 twitter_user_id 的账号
                 if not account.twitter_user_id:
@@ -259,7 +259,7 @@ class FetchService:
             raise TweetAlreadyExistsError
 
         # X API 抓取
-        async with get_fetcher(settings.X_API_BEARER_TOKEN) as fetcher:
+        async with get_fetcher(await get_secret_config(self.db, "x_api_bearer_token")) as fetcher:
             raw = await fetcher.fetch_single_tweet(tweet_id)
 
         # 记录 API 成本

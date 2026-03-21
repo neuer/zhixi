@@ -10,8 +10,9 @@ import logging
 import time
 
 from google import genai
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import get_secret_config
 from app.schemas.client_types import GeminiImageResponse
 
 logger = logging.getLogger(__name__)
@@ -83,16 +84,9 @@ class GeminiClient:
         )
 
 
-# 模块级惰性单例
-_client_instance: GeminiClient | None = None
-_initialized = False
-
-
-def get_gemini_client() -> GeminiClient | None:
-    """获取 GeminiClient 单例。GEMINI_API_KEY 为空时返回 None。"""
-    global _client_instance, _initialized
-    if not _initialized:
-        if settings.GEMINI_API_KEY:
-            _client_instance = GeminiClient(api_key=settings.GEMINI_API_KEY)
-        _initialized = True
-    return _client_instance
+async def get_gemini_client(db: AsyncSession) -> GeminiClient | None:
+    """从 DB / .env 读取 API Key，构建 GeminiClient。Key 为空时返回 None。"""
+    api_key = await get_secret_config(db, "gemini_api_key")
+    if not api_key:
+        return None
+    return GeminiClient(api_key=api_key)

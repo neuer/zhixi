@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.x_client import lookup_user
-from app.config import settings
+from app.config import get_secret_config
 from app.models.account import TwitterAccount
 from app.schemas.account_types import (
     AccountCreate,
@@ -92,7 +92,8 @@ class AccountService:
             account.avatar_url = data.avatar_url
         else:
             # 自动模式：调用 X API 拉取
-            profile = await lookup_user(settings.X_API_BEARER_TOKEN, handle)
+            token = await get_secret_config(self._db, "x_api_bearer_token")
+            profile = await lookup_user(token, handle)
             account.twitter_user_id = profile.twitter_user_id
             account.display_name = profile.display_name
             account.bio = profile.bio

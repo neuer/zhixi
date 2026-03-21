@@ -188,14 +188,7 @@ async def test_api_status_unconfigured(
     authed_client: AsyncClient,
 ) -> None:
     """所有 key 为空 → unconfigured。"""
-    with (
-        patch("app.api.settings.settings") as mock_settings,
-    ):
-        mock_settings.X_API_BEARER_TOKEN = ""
-        mock_settings.ANTHROPIC_API_KEY = ""
-        mock_settings.GEMINI_API_KEY = ""
-        mock_settings.WECHAT_APP_ID = ""
-
+    with patch("app.api.settings.get_secret_config", AsyncMock(return_value="")):
         resp = await authed_client.get("/api/settings/api-status")
 
     assert resp.status_code == 200
@@ -211,6 +204,10 @@ async def test_api_status_mock_ping(
     authed_client: AsyncClient,
 ) -> None:
     """mock httpx/anthropic → ok + latency。"""
+
+    async def _mock_secret(db: object, key: str) -> str:
+        return {"x_api_bearer_token": "test-token", "anthropic_api_key": "test-key"}.get(key, "")
+
     mock_httpx_resp = MagicMock()
     mock_httpx_resp.status_code = 200
     mock_httpx_client = AsyncMock()
@@ -223,15 +220,10 @@ async def test_api_status_mock_ping(
     mock_anthropic.models.list = AsyncMock(return_value=[])
 
     with (
-        patch("app.api.settings.settings") as mock_settings,
+        patch("app.api.settings.get_secret_config", side_effect=_mock_secret),
         patch("app.api.settings.httpx.AsyncClient", return_value=mock_httpx_client),
         patch("app.api.settings.anthropic.AsyncAnthropic", return_value=mock_anthropic),
     ):
-        mock_settings.X_API_BEARER_TOKEN = "test-token"
-        mock_settings.ANTHROPIC_API_KEY = "test-key"
-        mock_settings.GEMINI_API_KEY = ""
-        mock_settings.WECHAT_APP_ID = ""
-
         resp = await authed_client.get("/api/settings/api-status")
 
     assert resp.status_code == 200

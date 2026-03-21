@@ -109,7 +109,7 @@ async def manual_generate_cover(
         raise HTTPException(status_code=400, detail="封面图功能未开启")
 
     # 检查 Gemini API Key
-    gemini_client = get_gemini_client()
+    gemini_client = await get_gemini_client(db)
     if gemini_client is None:
         raise HTTPException(status_code=400, detail="Gemini API Key 未配置")
 

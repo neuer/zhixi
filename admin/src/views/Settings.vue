@@ -6,7 +6,12 @@ import type {
   SettingsResponse,
   SettingsUpdate,
 } from "@zhixi/openapi-client";
-import { closeToast, showLoadingToast, showToast } from "vant";
+import {
+  closeToast,
+  showConfirmDialog,
+  showLoadingToast,
+  showToast,
+} from "vant";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
@@ -55,6 +60,20 @@ const apiEntries = computed(() => {
     { label: "微信 API", data: apiStatus.value.wechat_api },
   ].filter((e) => e.data != null);
 });
+
+// 密钥管理
+interface SecretItem {
+  key: string;
+  label: string;
+  configured: boolean;
+  masked: string;
+  source: "db" | "env" | "none";
+}
+
+const secretsStatus = ref<SecretItem[]>([]);
+const showSecretDialog = ref(false);
+const editingSecret = ref({ key: "", label: "", value: "" });
+const savingSecret = ref(false);
 
 // 时间选择器
 const showTimePicker = ref(false);
@@ -130,10 +149,69 @@ async function checkApiStatus() {
     closeToast();
   } catch {
     closeToast();
-    // 拦截器会弹新的错误 toast
   } finally {
     checkingApi.value = false;
   }
+}
+
+// ---- 密钥管理 ----
+
+async function loadSecretsStatus() {
+  try {
+    const resp = await api.get<{ items: SecretItem[] }>(
+      "/settings/secrets-status",
+    );
+    secretsStatus.value = resp.data.items;
+  } catch {
+    // 静默失败
+  }
+}
+
+function openSecretDialog(item: SecretItem) {
+  editingSecret.value = { key: item.key, label: item.label, value: "" };
+  showSecretDialog.value = true;
+}
+
+async function saveSecret() {
+  if (!editingSecret.value.value.trim()) {
+    showToast("请输入密钥值");
+    return;
+  }
+  savingSecret.value = true;
+  try {
+    await api.put("/settings/secrets", {
+      [editingSecret.value.key]: editingSecret.value.value.trim(),
+    });
+    showToast("密钥已保存");
+    showSecretDialog.value = false;
+    await loadSecretsStatus();
+    await checkApiStatus();
+  } catch {
+    // 拦截器已处理
+  } finally {
+    savingSecret.value = false;
+  }
+}
+
+async function clearSecret(item: SecretItem) {
+  try {
+    await showConfirmDialog({
+      title: "清除密钥",
+      message: `确定清除 ${item.label} 的 DB 配置？将恢复使用 .env 中的值（如有）。`,
+    });
+    await api.delete(`/settings/secrets/${item.key}`);
+    showToast("密钥已清除");
+    await loadSecretsStatus();
+    await checkApiStatus();
+  } catch {
+    // 用户取消或请求失败
+  }
+}
+
+function getSourceLabel(source: string): string {
+  if (source === "db") return "后台配置";
+  if (source === "env") return "环境变量";
+  return "";
 }
 
 function onTimeConfirm({ selectedValues }: { selectedValues: string[] }) {
@@ -157,7 +235,9 @@ function formatBackupTime(dt: string | null): string {
   return new Date(dt).toLocaleString("zh-CN");
 }
 
-onMounted(loadSettings);
+onMounted(async () => {
+  await Promise.all([loadSettings(), loadSecretsStatus()]);
+});
 </script>
 
 <template>
@@ -236,7 +316,50 @@ onMounted(loadSettings);
         />
       </van-cell-group>
 
-      <!-- API 状态 -->
+      <!-- API 密钥管理 -->
+      <van-cell-group inset title="API 密钥" style="margin-bottom: 12px">
+        <van-cell
+          v-for="item in secretsStatus"
+          :key="item.key"
+          :title="item.label"
+        >
+          <template #value>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end">
+              <template v-if="item.configured">
+                <span style="color: #323233; font-family: monospace; font-size: 12px">
+                  {{ item.masked }}
+                </span>
+                <van-tag
+                  :type="item.source === 'db' ? 'primary' : 'default'"
+                  size="medium"
+                >
+                  {{ getSourceLabel(item.source) }}
+                </van-tag>
+                <van-button size="mini" type="primary" plain @click="openSecretDialog(item)">
+                  修改
+                </van-button>
+                <van-button
+                  v-if="item.source === 'db'"
+                  size="mini"
+                  type="warning"
+                  plain
+                  @click="clearSecret(item)"
+                >
+                  清除
+                </van-button>
+              </template>
+              <template v-else>
+                <span style="color: #969799">未配置</span>
+                <van-button size="mini" type="primary" @click="openSecretDialog(item)">
+                  配置
+                </van-button>
+              </template>
+            </div>
+          </template>
+        </van-cell>
+      </van-cell-group>
+
+      <!-- API 状态检测 -->
       <van-cell-group inset title="API 状态" style="margin-bottom: 12px">
         <van-button
           size="small"
@@ -297,5 +420,25 @@ onMounted(loadSettings);
         @cancel="showTimePicker = false"
       />
     </van-popup>
+
+    <!-- 密钥编辑弹窗 -->
+    <van-dialog
+      v-model:show="showSecretDialog"
+      :title="`配置 ${editingSecret.label}`"
+      show-cancel-button
+      :confirm-button-text="savingSecret ? '保存中...' : '保存'"
+      :confirm-button-disabled="savingSecret"
+      @confirm="saveSecret"
+      :before-close="(action: string) => action === 'cancel' || !savingSecret"
+    >
+      <div style="padding: 16px">
+        <van-field
+          v-model="editingSecret.value"
+          type="password"
+          placeholder="输入新的密钥值"
+          clearable
+        />
+      </div>
+    </van-dialog>
   </div>
 </template>
