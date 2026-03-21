@@ -1,0 +1,39 @@
+services:
+  web:
+    build: .
+    command: >
+      sh -c "uv run alembic upgrade head &&
+             uv run uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  scheduler:
+    build: .
+    command: supercronic /app/crontab
+    volumes:
+      - ./data:/app/data
+    env_file:
+      - .env
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
