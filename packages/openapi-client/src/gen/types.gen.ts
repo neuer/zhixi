@@ -451,6 +451,43 @@ export type ReorderRequest = {
 };
 
 /**
+ * 密钥状态响应。
+ */
+export type SecretsStatusResponse = {
+    items: Array<SecretStatusItem>;
+};
+
+/**
+ * 单个密钥状态。
+ */
+export type SecretStatusItem = {
+    key: string;
+    label: string;
+    configured: boolean;
+    masked: string;
+    source: 'db' | 'env' | 'none';
+};
+
+export type source = 'db' | 'env' | 'none';
+
+export const source = {
+    DB: 'db',
+    ENV: 'env',
+    NONE: 'none'
+} as const;
+
+/**
+ * 密钥更新请求（所有字段可选）。
+ */
+export type SecretsUpdateRequest = {
+    x_api_bearer_token?: (string | null);
+    anthropic_api_key?: (string | null);
+    gemini_api_key?: (string | null);
+    wechat_app_id?: (string | null);
+    wechat_app_secret?: (string | null);
+};
+
+/**
  * 单个服务的成本摘要。
  */
 export type ServiceCostItem = {
