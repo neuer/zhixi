@@ -280,6 +280,71 @@ cd admin && bunx vue-tsc --noEmit
 
 ---
 
-## 执行结果（完成后回填）
+## 执行结果
 
-> 待实施完成后回填：交付物清单、偏离项表格、问题与修复、质量门禁详表、PR 链接
+### 交付物清单
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `app/fetcher/base.py` | 修改 | 添加 `__aenter__`/`__aexit__` 异步上下文管理器 |
+| `app/fetcher/x_api.py` | 修改 | 添加 `__aenter__`/`__aexit__`，委托 `close()` |
+| `app/services/fetch_service.py` | 修改 | `try/finally/close()` → `async with` |
+| `app/schemas/settings_types.py` | 修改 | SettingsUpdate 值域校验（push_time/push_days/top_n/publish_mode） |
+| `app/schemas/digest_types.py` | 修改 | EditItemRequest 字段 max_length 限制 |
+| `app/schemas/auth_types.py` | 修改 | password max_length=128 |
+| `app/api/dashboard.py` | 修改 | `object` → `date`，删除 assert，`ColumnElement[bool]` |
+| `app/config.py` | 修改 | 新增共享 `ensure_utc()` 函数 |
+| `app/services/digest_service.py` | 修改 | 删除本地 `_ensure_utc`，新增 `check_draft_editable` 公共方法 |
+| `app/services/process_service.py` | 修改 | 删除本地 `_ensure_utc`，改为导入 |
+| `app/api/digest.py` | 修改 | 私有方法 → 公共方法，异常收窄，错误消息脱敏 |
+| `app/api/settings.py` | 修改 | `object` → 联合类型 |
+| `app/api/manual.py` | 修改 | 非 except 块 `from None` 清理，错误消息脱敏 |
+| `app/digest/cover_generator.py` | 修改 | 成本记录代码提取 `_record_cover_cost` |
+| `app/digest/summary_generator.py` | 修改 | 增加降级告警 + `degraded` 返回标志 |
+| `app/publisher/wechat_client.py` | 修改 | 占位方法改 `async def` |
+| `app/logging_config.py` | 修改 | `os.path` → `pathlib.Path` |
+| `app/processor/json_validator.py` | 修改 | 类型标注微调 |
+| `admin/src/utils/status.ts` | 新建 | 统一 statusMap/getStatus 共享模块 |
+| `admin/src/utils/format.ts` | 新建 | formatDate/safeHref 共享模块 |
+| `admin/src/views/Dashboard.vue` | 修改 | statusMap 去重，嵌套三元重构 |
+| `admin/src/views/Digest.vue` | 修改 | statusMap 去重 |
+| `admin/src/views/History.vue` | 修改 | statusMap/formatDate 去重 |
+| `admin/src/views/Preview.vue` | 修改 | 类型安全修复，删除冗余 token 检查 |
+| `admin/src/views/Settings.vue` | 修改 | `$router` → `useRouter()` |
+| `admin/src/views/ApiCosts.vue` | 修改 | `$router` → `useRouter()` |
+| `admin/src/views/Logs.vue` | 修改 | `$router` → `useRouter()`，v-for key 修复 |
+| `admin/src/components/ArticlePreview.vue` | 修改 | `computed` + `safeHref` + `rel` 修复 |
+| `tests/test_add_tweet_api.py` | 修改 | mock 支持 async with + httpx.HTTPError |
+| `tests/test_publisher.py` | 修改 | async WechatClient 方法 |
+| `tests/test_summary_generator.py` | 修改 | 适配 3 元组返回值 |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | Round 4: 测试辅助函数去重（14 个文件） | 跳过 | 机械性大量改动，建议单独 PR |
+| 2 | json_validator 类型标注 `dict[str, object]` | 回退为 bare `dict` | 引入下游 pyright 错误 8 个（analyzer/batch_merger），收益不大 |
+| 3 | BaseFetcher 无 `__aenter__`/`__aexit__` | 添加到 BaseFetcher 基类 | 计划只改 XApiFetcher，但 pyright 要求基类也实现 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| `async with get_fetcher()` 导致 test_add_tweet_api mock 失败 | mock 添加 `__aenter__`/`__aexit__` |
+| WechatClient 改 async 导致 test_publisher 3 个同步测试失败 | 测试改为 `async def` + `await` |
+| json_validator 改 `dict[str, object]` 导致 analyzer/batch_merger 8 个 pyright 错误 | 回退为 bare `dict` |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| `uv run ruff check .` | All checks passed |
+| `uv run ruff format --check .` | 135 files already formatted |
+| `uv run pyright` | 0 errors, 0 warnings |
+| `uv run pytest` | 537 passed |
+| `bunx vue-tsc --noEmit` | 通过 |
+| `bunx biome check .` | 通过（41 warnings，均为 Vue template 误报） |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/29
