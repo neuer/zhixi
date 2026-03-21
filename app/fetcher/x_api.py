@@ -70,20 +70,7 @@ class XApiFetcher(BaseFetcher):
             )
             payload = response.json()
 
-            # 构建辅助索引：includes.tweets → author_id 映射
-            includes = payload.get("includes", {})
-            included_tweets: dict[str, str] = {
-                t["id"]: t["author_id"]
-                for t in includes.get("tweets", [])
-                if "id" in t and "author_id" in t
-            }
-
-            # 构建辅助索引：media_key → url 映射
-            media_url_map: dict[str, str] = {
-                m["media_key"]: m["url"]
-                for m in includes.get("media", [])
-                if "media_key" in m and "url" in m
-            }
+            included_tweets, media_url_map = self._build_includes_index(payload)
 
             # 解析推文列表
             page_data = payload.get("data", [])
@@ -96,13 +83,13 @@ class XApiFetcher(BaseFetcher):
                     parse_fail_count += 1
 
             if parse_fail_count > 0:
-                if parse_fail_count == len(page_data):
-                    logger.error(
-                        "X API 推文解析全部失败: user_id=%s, page=%d, total=%d",
-                        user_id,
-                        _page + 1,
-                        parse_fail_count,
+                if parse_fail_count == len(page_data) and len(page_data) > 0:
+                    msg = (
+                        f"X API 推文解析全部失败: user_id={user_id}, "
+                        f"page={_page + 1}, total={parse_fail_count}"
                     )
+                    logger.error(msg)
+                    raise XApiError(msg)
                 else:
                     logger.warning(
                         "X API 部分推文解析失败: user_id=%s, page=%d, failed=%d/%d",
@@ -118,6 +105,33 @@ class XApiFetcher(BaseFetcher):
                 break
 
         return results
+
+    def _build_includes_index(
+        self,
+        payload: dict[str, object],
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """从 API 响应的 includes 字段构建辅助索引。
+
+        Returns:
+            (included_tweets, media_url_map):
+            - included_tweets: tweet_id -> author_id 映射
+            - media_url_map: media_key -> url 映射
+        """
+        includes = payload.get("includes", {})
+        if not isinstance(includes, dict):
+            return {}, {}
+
+        included_tweets: dict[str, str] = {
+            t["id"]: t["author_id"]
+            for t in includes.get("tweets", [])
+            if isinstance(t, dict) and "id" in t and "author_id" in t
+        }
+        media_url_map: dict[str, str] = {
+            m["media_key"]: m["url"]
+            for m in includes.get("media", [])
+            if isinstance(m, dict) and "media_key" in m and "url" in m
+        }
+        return included_tweets, media_url_map
 
     def _parse_tweet(
         self,
@@ -240,7 +254,11 @@ class XApiFetcher(BaseFetcher):
                     request=response.request,
                     response=response,
                 )
-            except httpx.HTTPStatusError:
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code >= 500:
+                    last_error = e
+                    logger.warning("X API 5xx 服务端错误: status=%d", e.response.status_code)
+                    continue
                 raise
             except httpx.HTTPError as e:
                 last_error = e
@@ -277,17 +295,7 @@ class XApiFetcher(BaseFetcher):
             msg = f"推文不存在: {tweet_id}"
             raise ValueError(msg)
 
-        includes = payload.get("includes", {})
-        included_tweets: dict[str, str] = {
-            t["id"]: t["author_id"]
-            for t in includes.get("tweets", [])
-            if "id" in t and "author_id" in t
-        }
-        media_url_map: dict[str, str] = {
-            m["media_key"]: m["url"]
-            for m in includes.get("media", [])
-            if "media_key" in m and "url" in m
-        }
+        included_tweets, media_url_map = self._build_includes_index(payload)
 
         tweet = self._parse_tweet(data, included_tweets, media_url_map)
         if tweet is None:

@@ -30,7 +30,7 @@ def render_markdown(
     # 1. 过滤 excluded
     active_items = [i for i in items if not i.is_excluded]
 
-    # 2. 按 display_order 排序（pinned 自然在前，因 display_order 更小）
+    # 2. 按 display_order 排序
     active_items.sort(key=lambda i: i.display_order)
 
     # 3. 取前 top_n 条
@@ -179,5 +179,5 @@ def _parse_json_list(json_str: str | None) -> list[dict[str, str]]:
         if isinstance(data, list):
             return data
     except (json.JSONDecodeError, TypeError):
-        logger.warning("JSON 列表解析失败: %s", json_str[:200] if json_str else json_str)
+        logger.error("JSON 列表解析失败: %s", json_str[:200] if json_str else json_str)
     return []

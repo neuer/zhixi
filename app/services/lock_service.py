@@ -15,7 +15,7 @@ STALE_THRESHOLD_HOURS = 2
 """running 超过此时长视为残留，自动标记 failed。"""
 
 
-async def has_running_job(db: AsyncSession, job_type: str, digest_date: date) -> bool:
+async def has_running_job(db: AsyncSession, job_type: JobType, digest_date: date) -> bool:
     """基本锁：检查当日指定 job_type 是否存在 running 的任务。"""
     result = await db.execute(
         select(JobRun.id)

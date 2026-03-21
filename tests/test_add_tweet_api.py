@@ -19,7 +19,7 @@ from app.models.digest_item import DigestItem
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
 from app.schemas.fetcher_types import PublicMetrics, RawTweet
-from app.services.fetch_service import _parse_tweet_id
+from app.services.fetch_service import _parse_tweet_url
 
 DIGEST_DATE = date(2026, 3, 21)
 TWEET_URL = "https://x.com/testuser/status/999888777"
@@ -181,26 +181,30 @@ def _make_mock_claude(success: bool = True):
 # ──────────────────────────────────────────────────
 
 
-class TestParseTweetId:
-    """_parse_tweet_id 单元测试。"""
+class TestParseTweetUrl:
+    """_parse_tweet_url 单元测试。"""
 
     def test_x_com_url(self):
-        assert _parse_tweet_id("https://x.com/elonmusk/status/123456") == "123456"
+        result = _parse_tweet_url("https://x.com/elonmusk/status/123456")
+        assert result == ("elonmusk", "123456")
 
     def test_twitter_com_url(self):
-        assert _parse_tweet_id("https://twitter.com/elonmusk/status/789012") == "789012"
+        result = _parse_tweet_url("https://twitter.com/elonmusk/status/789012")
+        assert result == ("elonmusk", "789012")
 
     def test_with_query_params(self):
-        assert _parse_tweet_id("https://x.com/user/status/111?s=20&t=abc") == "111"
+        result = _parse_tweet_url("https://x.com/user/status/111?s=20&t=abc")
+        assert result == ("user", "111")
 
     def test_invalid_url_no_status(self):
-        assert _parse_tweet_id("https://x.com/elonmusk") is None
+        assert _parse_tweet_url("https://x.com/elonmusk") is None
 
     def test_invalid_url_random(self):
-        assert _parse_tweet_id("not a url") is None
+        assert _parse_tweet_url("not a url") is None
 
     def test_with_trailing_whitespace(self):
-        assert _parse_tweet_id("  https://x.com/user/status/555  ") == "555"
+        result = _parse_tweet_url("  https://x.com/user/status/555  ")
+        assert result == ("user", "555")
 
 
 # ──────────────────────────────────────────────────
@@ -227,7 +231,7 @@ class TestAddTweetApi:
         headers = {"Authorization": f"Bearer {token}"}
 
         with (
-            patch("app.api.digest.get_claude_client", return_value=mock_claude),
+            patch("app.api.deps.get_claude_client", return_value=mock_claude),
             patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
             patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
             patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
@@ -273,7 +277,7 @@ class TestAddTweetApi:
         headers = {"Authorization": f"Bearer {token}"}
 
         with (
-            patch("app.api.digest.get_claude_client", return_value=_make_mock_claude()),
+            patch("app.api.deps.get_claude_client", return_value=_make_mock_claude()),
             patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
             patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
         ):
@@ -304,7 +308,7 @@ class TestAddTweetApi:
         mock_fetcher = _make_mock_fetcher()
 
         with (
-            patch("app.api.digest.get_claude_client", return_value=_make_mock_claude()),
+            patch("app.api.deps.get_claude_client", return_value=_make_mock_claude()),
             patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
             patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
             patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
@@ -338,7 +342,7 @@ class TestAddTweetApi:
         headers = {"Authorization": f"Bearer {token}"}
 
         with (
-            patch("app.api.digest.get_claude_client", return_value=_make_mock_claude()),
+            patch("app.api.deps.get_claude_client", return_value=_make_mock_claude()),
             patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
             patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
         ):
@@ -374,7 +378,7 @@ class TestAddTweetApi:
         headers = {"Authorization": f"Bearer {token}"}
 
         with (
-            patch("app.api.digest.get_claude_client", return_value=_make_mock_claude()),
+            patch("app.api.deps.get_claude_client", return_value=_make_mock_claude()),
             patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
             patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
         ):
@@ -402,7 +406,7 @@ class TestAddTweetApi:
         headers = {"Authorization": f"Bearer {token}"}
 
         with (
-            patch("app.api.digest.get_claude_client", return_value=_make_mock_claude()),
+            patch("app.api.deps.get_claude_client", return_value=_make_mock_claude()),
             patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
             patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
             patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
@@ -433,7 +437,7 @@ class TestAddTweetApi:
         headers = {"Authorization": f"Bearer {token}"}
 
         with (
-            patch("app.api.digest.get_claude_client", return_value=mock_claude),
+            patch("app.api.deps.get_claude_client", return_value=mock_claude),
             patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
             patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
             patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
@@ -518,7 +522,7 @@ class TestAddTweetApi:
         headers = {"Authorization": f"Bearer {token}"}
 
         with (
-            patch("app.api.digest.get_claude_client", return_value=mock_claude),
+            patch("app.api.deps.get_claude_client", return_value=mock_claude),
             patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
             patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
             patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),

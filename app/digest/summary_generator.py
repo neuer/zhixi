@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def _serialize_top_items(items: list[DigestItem]) -> str:
-    """将 digest_items 序列化为 R.1.1b 导读摘要输入 JSON。
+    """将 digest_items 序列化为 R.1.6 导读摘要输入 JSON。
 
     type 组合规则：
     - item_type="tweet" → "tweet"
@@ -76,8 +76,8 @@ async def generate_summary(
         if db is not None:
             await send_alert("摘要生成降级", "Claude API 调用失败，已使用默认导读摘要", db)
         return DEFAULT_SUMMARY, None, True
-    except Exception:
-        logger.warning("导读摘要生成异常，使用默认导读摘要", exc_info=True)
+    except (TimeoutError, OSError):
+        logger.warning("导读摘要生成异常（网络/IO 错误），使用默认导读摘要", exc_info=True)
         if db is not None:
-            await send_alert("摘要生成降级", "导读摘要生成异常，已使用默认导读摘要", db)
+            await send_alert("摘要生成降级", "导读摘要生成异常（网络/IO），已使用默认导读摘要", db)
         return DEFAULT_SUMMARY, None, True

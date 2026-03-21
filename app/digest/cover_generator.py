@@ -115,8 +115,8 @@ async def generate_cover_image(
     try:
         response = await gemini_client.generate_image(prompt, timeout=timeout)
 
-        # 裁切/缩放
-        resized_bytes = _resize_image(response.image_bytes)
+        # 裁切/缩放（通过 asyncio.to_thread 避免 Pillow CPU 阻塞事件循环）
+        resized_bytes = await asyncio.to_thread(_resize_image, response.image_bytes)
 
         # 保存文件
         _COVERS_DIR.mkdir(parents=True, exist_ok=True)
@@ -137,11 +137,11 @@ async def generate_cover_image(
         return str(cover_path)
 
     except GeminiAPIError as e:
-        logger.warning("封面图生成失败: %s", e)
+        logger.warning("封面图生成失败（API 错误）: %s", e)
         _record_cover_cost(db, digest_date)
         return None
 
-    except Exception as e:
-        logger.warning("封面图生成异常: %s", e, exc_info=True)
+    except (TimeoutError, OSError) as e:
+        logger.warning("封面图生成失败（网络/IO 错误）: %s", e, exc_info=True)
         _record_cover_cost(db, digest_date)
         return None

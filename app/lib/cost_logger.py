@@ -15,7 +15,7 @@ def record_api_cost(
     response: ClaudeResponse,
     call_type: str,
     digest_date: date | None,
-    service: str = ServiceType.CLAUDE,
+    service: ServiceType = ServiceType.CLAUDE,
 ) -> None:
     """记录成功的 API 调用成本。"""
     db.add(
@@ -37,7 +37,7 @@ def record_api_cost_failure(
     db: AsyncSession,
     call_type: str,
     digest_date: date | None,
-    service: str = ServiceType.CLAUDE,
+    service: ServiceType = ServiceType.CLAUDE,
 ) -> None:
     """记录失败的 API 调用。"""
     db.add(

@@ -23,6 +23,7 @@ from app.config import (
 from app.digest.cover_generator import generate_cover_image
 from app.digest.renderer import render_markdown
 from app.digest.summary_generator import generate_summary
+from app.lib.account_helpers import get_accounts_map_by_ids
 from app.lib.cost_logger import record_api_cost
 from app.models.account import TwitterAccount
 from app.models.digest import DailyDigest
@@ -30,6 +31,7 @@ from app.models.digest_item import DigestItem
 from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
+from app.schemas.digest_types import ReorderInput
 from app.schemas.enums import DigestStatus, ItemType, TopicType
 
 logger = logging.getLogger(__name__)
@@ -103,7 +105,7 @@ class DigestService:
         self._db.add(digest)
         await self._db.flush()
 
-        # 7. 创建 DigestItem 快照
+        # 8. 创建 DigestItem 快照
         created_items: list[DigestItem] = []
         for order, (_score, item_type, source_obj, extra) in enumerate(sortable_items, start=1):
             item = self._create_digest_item(
@@ -119,7 +121,7 @@ class DigestService:
 
         await self._db.flush()
 
-        # 8. 生成导读摘要
+        # 9. 生成导读摘要
         top_items = created_items[:_SUMMARY_TOP_N]
         summary, cost_response, degraded = await generate_summary(
             self._claude, top_items, db=self._db
@@ -130,11 +132,11 @@ class DigestService:
         if cost_response:
             self._record_cost(cost_response, "summary", digest_date)
 
-        # 9. 渲染 Markdown
+        # 10. 渲染 Markdown
         top_n = await safe_int_config(self._db, "top_n", 10)
         digest.content_markdown = render_markdown(digest, created_items, top_n)
 
-        # 10. 封面图生成（可选，不阻塞）
+        # 11. 封面图生成（可选，不阻塞）
         enable_cover = await get_system_config(self._db, "enable_cover_generation", "false")
         if enable_cover.lower() == "true":
             gemini_client = get_gemini_client()
@@ -161,7 +163,107 @@ class DigestService:
         return digest
 
     # ──────────────────────────────────────────────────
-    # 查询方法
+    # 公开查询方法（供路由层调用）
+    # ──────────────────────────────────────────────────
+
+    async def get_today_digest(
+        self, digest_date: date
+    ) -> tuple[DailyDigest | None, list[DigestItem]]:
+        """查询指定日期 is_current=true 的 digest 及其 items。
+
+        Returns:
+            (digest, items)。digest 为 None 时 items 为空列表。
+        """
+        stmt = select(DailyDigest).where(
+            DailyDigest.digest_date == digest_date,
+            DailyDigest.is_current.is_(True),
+        )
+        result = await self._db.execute(stmt)
+        digest = result.scalar_one_or_none()
+
+        if digest is None:
+            return None, []
+
+        items_stmt = (
+            select(DigestItem)
+            .where(DigestItem.digest_id == digest.id)
+            .order_by(DigestItem.display_order)
+        )
+        items_result = await self._db.execute(items_stmt)
+        items = list(items_result.scalars().all())
+        return digest, items
+
+    async def get_markdown_content(self, digest_date: date) -> str:
+        """获取指定日期 is_current=true digest 的 Markdown 内容。
+
+        Raises:
+            DigestNotFoundError: 无当日草稿。
+        """
+        digest = await self._get_current_digest_or_none(digest_date)
+        if digest is None:
+            raise DigestNotFoundError
+        return digest.content_markdown or ""
+
+    async def mark_as_published(self, digest_date: date) -> None:
+        """标记指定日期的 current digest 为已发布。
+
+        Raises:
+            DigestNotFoundError: 无当日草稿。
+            DigestAlreadyPublishedError: 已发布。
+        """
+        digest = await self._get_current_digest_or_none(digest_date)
+        if digest is None:
+            raise DigestNotFoundError
+        if digest.status == DigestStatus.PUBLISHED:
+            raise DigestAlreadyPublishedError
+        digest.status = DigestStatus.PUBLISHED
+        digest.published_at = datetime.now(UTC)
+
+    async def generate_cover(self, digest_date: date) -> str | None:
+        """生成封面图并关联到 digest。
+
+        Raises:
+            DigestNotFoundError: 无当日草稿。
+
+        Returns:
+            封面图路径，失败时为 None。
+        """
+        digest = await self._get_current_digest_or_none(digest_date)
+        if digest is None:
+            raise DigestNotFoundError
+
+        # 查询 digest_items
+        items_stmt = (
+            select(DigestItem)
+            .where(
+                DigestItem.digest_id == digest.id,
+                DigestItem.is_excluded.is_(False),
+            )
+            .order_by(DigestItem.display_order)
+        )
+        items_result = await self._db.execute(items_stmt)
+        items = list(items_result.scalars())
+
+        gemini_client = get_gemini_client()
+        if gemini_client is None:
+            return None
+
+        cover_timeout = await safe_float_config(self._db, "cover_generation_timeout", 30.0)
+        cover_path = await generate_cover_image(
+            gemini_client=gemini_client,
+            top_items=items[:_SUMMARY_TOP_N],
+            digest_date=digest_date,
+            timeout=cover_timeout,
+            db=self._db,
+        )
+
+        if cover_path is not None:
+            digest.cover_image_path = cover_path
+
+        return cover_path
+
+    # ──────────────────────────────────────────────────
+    # 内部查询方法
     # ──────────────────────────────────────────────────
 
     async def _get_standalone_tweets(self, digest_date: date) -> list[Tweet]:
@@ -180,29 +282,41 @@ class DigestService:
         return list(result.scalars().all())
 
     async def _get_topics_with_members(self, digest_date: date) -> list[tuple[Topic, list[Tweet]]]:
-        """查询当日话题及各话题的成员推文。"""
+        """查询当日话题及各话题的成员推文（批量查询避免 N+1）。"""
         topic_stmt = select(Topic).where(Topic.digest_date == digest_date)
         topic_result = await self._db.execute(topic_stmt)
         topics = list(topic_result.scalars().all())
 
+        if not topics:
+            return []
+
+        # 批量查询所有话题的成员推文
+        topic_ids = [t.id for t in topics]
+        member_stmt = (
+            select(Tweet)
+            .where(Tweet.topic_id.in_(topic_ids))
+            .order_by(Tweet.topic_id, Tweet.tweet_time.asc())
+        )
+        member_result = await self._db.execute(member_stmt)
+        all_members = list(member_result.scalars().all())
+
+        # 按 topic_id 分组（IN 查询保证 topic_id 非 None）
+        members_by_topic: dict[int, list[Tweet]] = {}
+        for tweet in all_members:
+            tid = tweet.topic_id
+            if tid is not None:
+                members_by_topic.setdefault(tid, []).append(tweet)
+
         result: list[tuple[Topic, list[Tweet]]] = []
         for topic in topics:
-            member_stmt = (
-                select(Tweet).where(Tweet.topic_id == topic.id).order_by(Tweet.tweet_time.asc())
-            )
-            member_result = await self._db.execute(member_stmt)
-            members = list(member_result.scalars().all())
+            members = members_by_topic.get(topic.id, [])
             if members:  # 过滤空成员话题（regenerate 后旧话题无成员）
                 result.append((topic, members))
         return result
 
     async def _get_accounts_map(self, account_ids: set[int]) -> dict[int, TwitterAccount]:
-        """批量查询账号信息。"""
-        if not account_ids:
-            return {}
-        stmt = select(TwitterAccount).where(TwitterAccount.id.in_(account_ids))
-        result = await self._db.execute(stmt)
-        return {acct.id: acct for acct in result.scalars().all()}
+        """批量查询账号信息（委托共享函数）。"""
+        return await get_accounts_map_by_ids(self._db, account_ids)
 
     # ──────────────────────────────────────────────────
     # 构建排序项
@@ -213,18 +327,18 @@ class DigestService:
         standalone_tweets: list[Tweet],
         topics_with_members: list[tuple[Topic, list[Tweet]]],
         accounts_map: dict[int, TwitterAccount],
-    ) -> list[tuple[float, str, Tweet | Topic, dict[str, object]]]:
+    ) -> list[tuple[float, ItemType, Tweet | Topic, dict[str, object]]]:
         """构建 (heat_score, item_type, source_obj, extra_data) 元组列表。"""
-        items: list[tuple[float, str, Tweet | Topic, dict[str, object]]] = []
+        items: list[tuple[float, ItemType, Tweet | Topic, dict[str, object]]] = []
 
         # 独立推文
         for tweet in standalone_tweets:
-            items.append((tweet.heat_score, "tweet", tweet, {}))
+            items.append((tweet.heat_score, ItemType.TWEET, tweet, {}))
 
         # 话题
         for topic, members in topics_with_members:
             extra: dict[str, object] = {"members": members}
-            items.append((topic.heat_score, "topic", topic, extra))
+            items.append((topic.heat_score, ItemType.TOPIC, topic, extra))
 
         return items
 
@@ -237,18 +351,20 @@ class DigestService:
         *,
         digest_id: int,
         display_order: int,
-        item_type: str,
+        item_type: ItemType,
         source_obj: Tweet | Topic,
         accounts_map: dict[int, TwitterAccount],
         extra: dict[str, object],
     ) -> DigestItem:
         """根据源对象类型创建 DigestItem 并填充 snapshot。"""
-        if item_type == "tweet" and isinstance(source_obj, Tweet):
+        if item_type == ItemType.TWEET and isinstance(source_obj, Tweet):
             return self._create_tweet_item(digest_id, display_order, source_obj, accounts_map)
 
-        if item_type == "topic" and isinstance(source_obj, Topic):
+        if item_type == ItemType.TOPIC and isinstance(source_obj, Topic):
             members = extra.get("members", [])
-            assert isinstance(members, list)
+            if not isinstance(members, list):
+                msg = f"members 必须是 list，实际类型: {type(members)}"
+                raise TypeError(msg)
             return self._create_topic_item(
                 digest_id, display_order, source_obj, members, accounts_map
             )
@@ -327,8 +443,11 @@ class DigestService:
         members: list[Tweet],
         accounts_map: dict[int, TwitterAccount],
     ) -> DigestItem:
-        """创建 thread topic 的 DigestItem。"""
-        # Thread 作者 = 第一条推文的作者（members 已按 tweet_time ASC 排序）
+        """创建 thread topic 的 DigestItem。
+
+        前置条件: members 已按 tweet_time ASC 排序，第一条即为 Thread 起始推文。
+        """
+        # Thread 作者 = 第一条推文的作者
         first_tweet = members[0] if members else None
         first_account = accounts_map.get(first_tweet.account_id) if first_tweet else None
         return DigestItem(
@@ -556,11 +675,11 @@ class DigestService:
         digest = result.scalar_one_or_none()
         if digest is None:
             raise DigestNotFoundError
-        if digest.status != "draft":
+        if digest.status != DigestStatus.DRAFT:
             raise DigestNotEditableError
         return digest
 
-    async def _find_item(self, digest_id: int, item_type: str, item_ref_id: int) -> DigestItem:
+    async def _find_item(self, digest_id: int, item_type: ItemType, item_ref_id: int) -> DigestItem:
         """通过 (digest_id, item_type, item_ref_id) 定位 digest_item。"""
         stmt = select(DigestItem).where(
             DigestItem.digest_id == digest_id,
@@ -587,7 +706,7 @@ class DigestService:
 
     async def edit_item(
         self,
-        item_type: str,
+        item_type: ItemType,
         item_ref_id: int,
         updates: dict[str, str],
         digest_date: date | None = None,
@@ -632,7 +751,7 @@ class DigestService:
 
     async def reorder_items(
         self,
-        items_input: list[dict[str, object]],
+        items_input: list[ReorderInput],
         digest_date: date | None = None,
     ) -> None:
         """调整排序与置顶（US-033）。"""
@@ -641,25 +760,28 @@ class DigestService:
 
         digest = await self._get_current_draft(digest_date)
 
+        # 批量查询所有相关 DigestItem，避免 N+1
+        item_ids = [entry.id for entry in items_input]
+        stmt = select(DigestItem).where(
+            DigestItem.id.in_(item_ids),
+            DigestItem.digest_id == digest.id,
+        )
+        result = await self._db.execute(stmt)
+        items_map = {item.id: item for item in result.scalars().all()}
+
         for entry in items_input:
-            item_id = entry["id"]
-            stmt = select(DigestItem).where(
-                DigestItem.id == item_id,
-                DigestItem.digest_id == digest.id,
-            )
-            result = await self._db.execute(stmt)
-            item = result.scalar_one_or_none()
+            item = items_map.get(entry.id)
             if item is None:
                 raise DigestItemNotFoundError
-            item.display_order = entry["display_order"]  # type: ignore[assignment]
-            item.is_pinned = entry.get("is_pinned", False)  # type: ignore[assignment]
+            item.display_order = entry.display_order
+            item.is_pinned = entry.is_pinned
 
         await self._rerender_markdown(digest)
         await self._db.flush()
 
     async def exclude_item(
         self,
-        item_type: str,
+        item_type: ItemType,
         item_ref_id: int,
         digest_date: date | None = None,
     ) -> None:
@@ -675,7 +797,7 @@ class DigestService:
 
     async def restore_item(
         self,
-        item_type: str,
+        item_type: ItemType,
         item_ref_id: int,
         digest_date: date | None = None,
     ) -> None:
@@ -736,16 +858,12 @@ class DigestService:
         result = await self._db.execute(stmt)
         digest = result.scalar_one_or_none()
 
-        if digest is None:
-            raise PreviewTokenInvalidError
-
-        if not digest.is_current:
-            raise PreviewTokenInvalidError
-
-        if digest.preview_expires_at is None:
-            raise PreviewTokenInvalidError
-
-        if ensure_utc(digest.preview_expires_at) < datetime.now(UTC):
+        if (
+            digest is None
+            or not digest.is_current
+            or digest.preview_expires_at is None
+            or ensure_utc(digest.preview_expires_at) < datetime.now(UTC)
+        ):
             raise PreviewTokenInvalidError
 
         items_stmt = (
@@ -769,6 +887,10 @@ class DigestNotEditableError(Exception):
 
 class DigestItemNotFoundError(Exception):
     """指定的 digest_item 不存在。"""
+
+
+class DigestAlreadyPublishedError(Exception):
+    """该版本已发布。"""
 
 
 class PreviewTokenInvalidError(Exception):

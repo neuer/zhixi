@@ -48,8 +48,8 @@ class BaseFetcher(ABC):
             RawTweet
 
         Raises:
-            httpx.HTTPStatusError: API 错误（含 404 推文不存在）
-            ValueError: 解析失败
+            ValueError: 推文 ID 无效或响应解析失败
+            httpx.HTTPStatusError: X API 返回非 2xx 状态码（含 404 推文不存在）
         """
         ...
 

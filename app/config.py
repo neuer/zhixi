@@ -65,6 +65,18 @@ async def get_system_config(db: AsyncSession, key: str, default: str = "") -> st
     return config.value if config else default
 
 
+async def upsert_system_config(db: AsyncSession, key: str, value: str) -> None:
+    """写入或更新 system_config 表中的配置项。"""
+    from app.models.config import SystemConfig
+
+    result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
+    config = result.scalar_one_or_none()
+    if config:
+        config.value = value
+    else:
+        db.add(SystemConfig(key=key, value=value))
+
+
 async def safe_int_config(db: AsyncSession, key: str, default: int) -> int:
     """安全读取整数配置，转换失败时返回默认值。"""
     raw = await get_system_config(db, key, str(default))

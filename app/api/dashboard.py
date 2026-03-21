@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -140,7 +140,8 @@ async def get_logs(
 
     all_entries: list[LogEntry] = []
     text = await asyncio.to_thread(LOG_FILE_PATH.read_text, encoding="utf-8")
-    lines = text.splitlines()
+    # 只保留最后 5000 行，避免大文件全量加载到内存
+    lines = deque(text.splitlines(), maxlen=5000)
 
     # 倒序遍历获取最新日志
     for line in reversed(lines):

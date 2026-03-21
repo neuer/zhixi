@@ -6,13 +6,17 @@
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import date
+from typing import TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeAPIError, ClaudeClient
+from app.clients.notifier import send_alert
 from app.config import ensure_utc
+from app.lib.account_helpers import get_accounts_map
 from app.lib.cost_logger import record_api_cost, record_api_cost_failure
 from app.models.account import TwitterAccount
 from app.models.topic import Topic
@@ -37,6 +41,8 @@ from app.processor.translator import (
 from app.schemas.client_types import ClaudeResponse
 from app.schemas.enums import TopicType
 from app.schemas.processor_types import AnalysisResult, ProcessResult
+
+_T = TypeVar("_T")
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +121,15 @@ class ProcessService:
                 digest_date,
             )
 
+        # C-2: 有失败时发送告警通知
+        if failed_count > 0:
+            await send_alert(
+                "AI 加工部分失败",
+                f"日期={digest_date}, 失败={failed_count}/{total}, "
+                f"成功={processed_count}, 过滤={filtered_count}",
+                self._db,
+            )
+
         return ProcessResult(
             processed_count=processed_count,
             filtered_count=filtered_count,
@@ -158,13 +173,41 @@ class ProcessService:
         return list((await self._db.execute(stmt)).scalars().all())
 
     async def _get_accounts_map(self, tweets: list[Tweet]) -> dict[int, TwitterAccount]:
-        """构建 account_id → TwitterAccount 映射。"""
-        account_ids = {t.account_id for t in tweets}
-        if not account_ids:
-            return {}
-        stmt = select(TwitterAccount).where(TwitterAccount.id.in_(account_ids))
-        accounts = (await self._db.execute(stmt)).scalars().all()
-        return {a.id: a for a in accounts}
+        """构建 account_id -> TwitterAccount 映射（委托共享函数）。"""
+        return await get_accounts_map(self._db, tweets)
+
+    async def _retry_ai_call(
+        self,
+        fn: Callable[[], Awaitable[_T]],
+        max_retries: int,
+        label: str,
+    ) -> _T:
+        """通用 AI 调用重试。
+
+        Args:
+            fn: 无参异步函数，成功时返回结果
+            max_retries: 最大重试次数（0 表示只尝试一次）
+            label: 日志标识
+
+        Returns:
+            fn 的返回值
+
+        Raises:
+            ClaudeAPIError | JsonValidationError: 所有重试耗尽后抛出最后一次异常
+        """
+        last_error: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                return await fn()
+            except (ClaudeAPIError, JsonValidationError) as e:
+                last_error = e
+                logger.warning("%s 第 %d 次尝试失败: %s", label, attempt + 1, e)
+
+        logger.error("%s 连续失败", label)
+        if last_error is None:
+            msg = "重试循环未执行"
+            raise RuntimeError(msg)
+        raise last_error
 
     async def _run_analysis_with_retry(
         self,
@@ -219,24 +262,18 @@ class ProcessService:
         digest_date: date,
     ) -> AnalysisResult:
         """单批全局分析（含重试），从原 _run_analysis_with_retry 提取。"""
-        last_error: Exception | None = None
-        for attempt in range(_ANALYSIS_MAX_RETRIES + 1):
-            try:
-                analysis, response = await run_global_analysis(self._claude, tweets_json)
-                self._record_cost(response, "global_analysis", digest_date)
-                logger.info(
-                    "全局分析完成: filtered=%d, topics=%d",
-                    len(analysis.filtered_ids),
-                    len(analysis.topics),
-                )
-                return analysis
-            except (ClaudeAPIError, JsonValidationError) as e:
-                last_error = e
-                logger.warning("全局分析第 %d 次尝试失败: %s", attempt + 1, e)
 
-        logger.error("全局分析连续失败，中止 pipeline")
-        assert last_error is not None, "重试循环未执行"
-        raise last_error
+        async def _call() -> AnalysisResult:
+            analysis, response = await run_global_analysis(self._claude, tweets_json)
+            self._record_cost(response, "global_analysis", digest_date)
+            logger.info(
+                "全局分析完成: filtered=%d, topics=%d",
+                len(analysis.filtered_ids),
+                len(analysis.topics),
+            )
+            return analysis
+
+        return await self._retry_ai_call(_call, _ANALYSIS_MAX_RETRIES, "全局分析")
 
     async def _run_dedup_with_retry(
         self,
@@ -244,19 +281,13 @@ class ProcessService:
         digest_date: date,
     ) -> AnalysisResult:
         """去重 AI 调用（含重试）。"""
-        last_error: Exception | None = None
-        for attempt in range(_ANALYSIS_MAX_RETRIES + 1):
-            try:
-                deduped, response = await run_dedup_analysis(self._claude, merged_data)
-                self._record_cost(response, "dedup_analysis", digest_date)
-                return deduped
-            except (ClaudeAPIError, JsonValidationError) as e:
-                last_error = e
-                logger.warning("去重分析第 %d 次尝试失败: %s", attempt + 1, e)
 
-        logger.error("去重分析连续失败，中止 pipeline")
-        assert last_error is not None, "重试循环未执行"
-        raise last_error
+        async def _call() -> AnalysisResult:
+            deduped, response = await run_dedup_analysis(self._claude, merged_data)
+            self._record_cost(response, "dedup_analysis", digest_date)
+            return deduped
+
+        return await self._retry_ai_call(_call, _ANALYSIS_MAX_RETRIES, "去重分析")
 
     def _apply_filtering(
         self,
@@ -437,26 +468,20 @@ class ProcessService:
         """单条推文加工（含重试）。"""
         tweet_data = _build_single_tweet_data(tweet, account)
 
-        for attempt in range(_ITEM_MAX_RETRIES + 1):
-            try:
-                result, response = await process_single_tweet(self._claude, tweet_data)
-                tweet.title = str(result["title"])
-                tweet.translated_text = str(result["translation"])
-                tweet.ai_comment = str(result["comment"])
-                tweet.is_processed = True
-                self._record_cost(response, "single_process", digest_date)
-                return True
-            except (ClaudeAPIError, JsonValidationError) as e:
-                logger.warning(
-                    "单条加工 %s 第 %d 次失败: %s",
-                    tweet.tweet_id,
-                    attempt + 1,
-                    e,
-                )
+        async def _call() -> bool:
+            result, response = await process_single_tweet(self._claude, tweet_data)
+            tweet.title = str(result["title"])
+            tweet.translated_text = str(result["translation"])
+            tweet.ai_comment = str(result["comment"])
+            tweet.is_processed = True
+            self._record_cost(response, "single_process", digest_date)
+            return True
 
-        logger.error("单条加工 %s 连续失败，跳过", tweet.tweet_id)
-        self._record_cost_failure("single_process", digest_date)
-        return False
+        try:
+            return await self._retry_ai_call(_call, _ITEM_MAX_RETRIES, f"单条加工 {tweet.tweet_id}")
+        except (ClaudeAPIError, JsonValidationError):
+            self._record_cost_failure("single_process", digest_date)
+            return False
 
     async def _process_aggregated_with_retry(
         self,
@@ -469,32 +494,26 @@ class ProcessService:
         tweets_data = _build_aggregated_tweets_data(member_tweets, accounts_map)
         tweets_json = json.dumps(tweets_data, ensure_ascii=False)
 
-        for attempt in range(_ITEM_MAX_RETRIES + 1):
-            try:
-                result, response = await process_aggregated_topic(
-                    self._claude,
-                    tweets_json,
-                )
-                topic.title = str(result["title"])
-                topic.summary = str(result["summary"])
-                topic.perspectives = json.dumps(
-                    result["perspectives"],
-                    ensure_ascii=False,
-                )
-                topic.ai_comment = str(result["comment"])
-                self._record_cost(response, "topic_process", digest_date)
-                return True
-            except (ClaudeAPIError, JsonValidationError) as e:
-                logger.warning(
-                    "聚合加工 topic %d 第 %d 次失败: %s",
-                    topic.id,
-                    attempt + 1,
-                    e,
-                )
+        async def _call() -> bool:
+            result, response = await process_aggregated_topic(
+                self._claude,
+                tweets_json,
+            )
+            topic.title = str(result["title"])
+            topic.summary = str(result["summary"])
+            topic.perspectives = json.dumps(
+                result["perspectives"],
+                ensure_ascii=False,
+            )
+            topic.ai_comment = str(result["comment"])
+            self._record_cost(response, "topic_process", digest_date)
+            return True
 
-        logger.error("聚合加工 topic %d 连续失败，跳过", topic.id)
-        self._record_cost_failure("topic_process", digest_date)
-        return False
+        try:
+            return await self._retry_ai_call(_call, _ITEM_MAX_RETRIES, f"聚合加工 topic {topic.id}")
+        except (ClaudeAPIError, JsonValidationError):
+            self._record_cost_failure("topic_process", digest_date)
+            return False
 
     async def _process_thread_with_retry(
         self,
@@ -507,25 +526,23 @@ class ProcessService:
         """Thread 加工（含重试）。"""
         thread_data = _build_thread_data(topic, member_tweets, accounts_map, merged_text)
 
-        for attempt in range(_ITEM_MAX_RETRIES + 1):
-            try:
-                result, response = await process_thread(self._claude, thread_data)
-                topic.title = str(result["title"])
-                topic.summary = str(result["translation"])  # translation → summary
-                topic.ai_comment = str(result["comment"])
-                self._record_cost(response, "thread_process", digest_date)
-                return True
-            except (ClaudeAPIError, JsonValidationError) as e:
-                logger.warning(
-                    "Thread 加工 topic %d 第 %d 次失败: %s",
-                    topic.id,
-                    attempt + 1,
-                    e,
-                )
+        async def _call() -> bool:
+            result, response = await process_thread(self._claude, thread_data)
+            topic.title = str(result["title"])
+            topic.summary = str(
+                result["translation"]
+            )  # Thread prompt 返回 "translation" 字段，映射到 topic.summary（与单推文一致）
+            topic.ai_comment = str(result["comment"])
+            self._record_cost(response, "thread_process", digest_date)
+            return True
 
-        logger.error("Thread 加工 topic %d 连续失败，跳过", topic.id)
-        self._record_cost_failure("thread_process", digest_date)
-        return False
+        try:
+            return await self._retry_ai_call(
+                _call, _ITEM_MAX_RETRIES, f"Thread 加工 topic {topic.id}"
+            )
+        except (ClaudeAPIError, JsonValidationError):
+            self._record_cost_failure("thread_process", digest_date)
+            return False
 
     def _calculate_all_heat_scores(
         self,
@@ -570,20 +587,18 @@ class ProcessService:
         for topic in topics:
             all_raw_scores.append(topic_raw_scores.get(topic.id, 0.0))
 
-        # 归一化
+        # 归一化（normalized 与 all_raw_scores 等长、同序：先 single_tweets 后 topics）
         normalized = normalize_scores(all_raw_scores)
 
-        # 分配归一化后的分数
-        idx = 0
+        # 分配归一化后的分数：使用 zip 保证索引对齐
+        norm_iter = iter(normalized)
         for t in single_tweets:
-            norm_score = normalized[idx] if idx < len(normalized) else 50.0
+            norm_score = next(norm_iter, 50.0)
             t.heat_score = calculate_heat_score(norm_score, t.ai_importance_score)
-            idx += 1
 
         for topic in topics:
-            norm_score = normalized[idx] if idx < len(normalized) else 50.0
+            norm_score = next(norm_iter, 50.0)
             topic.heat_score = calculate_heat_score(norm_score, topic.ai_importance_score)
-            idx += 1
 
     def _record_cost(
         self,

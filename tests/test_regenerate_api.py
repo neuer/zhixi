@@ -8,6 +8,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_digest_service
+from app.main import app
 from app.models.digest import DailyDigest
 from app.models.job_run import JobRun
 
@@ -61,17 +63,14 @@ class TestRegenerateSuccess:
 
         mock_digest = _mock_regenerate_digest()
 
-        with (
-            patch(
-                "app.api.digest.get_claude_client",
-                return_value=AsyncMock(),
-            ),
-            patch(
-                "app.api.digest.DigestService",
-                return_value=AsyncMock(regenerate_digest=AsyncMock(return_value=mock_digest)),
-            ),
-        ):
+        mock_svc = AsyncMock()
+        mock_svc.regenerate_digest = AsyncMock(return_value=mock_digest)
+
+        app.dependency_overrides[get_digest_service] = lambda: mock_svc
+        try:
             resp = await authed_client.post("/api/digest/regenerate")
+        finally:
+            app.dependency_overrides.pop(get_digest_service, None)
 
         assert resp.status_code == 200
         data = resp.json()
@@ -131,12 +130,12 @@ class TestRegenerateFailure:
         mock_svc = AsyncMock()
         mock_svc.regenerate_digest = AsyncMock(side_effect=RuntimeError("AI 超时"))
 
-        with (
-            patch("app.api.digest.get_claude_client", return_value=AsyncMock()),
-            patch("app.api.digest.DigestService", return_value=mock_svc),
-            patch("app.api.digest.send_alert", AsyncMock()),
-        ):
-            resp = await authed_client.post("/api/digest/regenerate")
+        app.dependency_overrides[get_digest_service] = lambda: mock_svc
+        try:
+            with patch("app.api.digest.send_alert", AsyncMock()):
+                resp = await authed_client.post("/api/digest/regenerate")
+        finally:
+            app.dependency_overrides.pop(get_digest_service, None)
 
         assert resp.status_code == 500
         assert "重新生成失败" in resp.json()["detail"]

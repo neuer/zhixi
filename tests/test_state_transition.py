@@ -5,6 +5,7 @@ failed→regenerate→new draft、failed→重试发布→published、
 已published不可修改、is_current 切换、regenerate 失败回滚。
 """
 
+from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -15,6 +16,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_digest_service
+from app.main import app
 from app.models.config import SystemConfig
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
@@ -127,6 +130,16 @@ async def _query_digest(
     return result.scalar_one()
 
 
+@contextmanager
+def _override_digest_service(mock_svc: Any):  # noqa: ANN204
+    """临时覆盖 get_digest_service 依赖。"""
+    app.dependency_overrides[get_digest_service] = lambda: mock_svc
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_digest_service, None)
+
+
 def _make_regenerate_patches(
     db: AsyncSession,
     new_version: int,
@@ -165,8 +178,8 @@ def _make_regenerate_patches(
     mock_svc.regenerate_digest = mock_regenerate
 
     return (
-        patch("app.api.digest.get_claude_client", return_value=AsyncMock()),
-        patch("app.api.digest.DigestService", return_value=mock_svc),
+        _override_digest_service(mock_svc),
+        patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
     )
 
 
@@ -176,8 +189,8 @@ def _make_regenerate_failure_patches() -> tuple[Any, Any, Any]:
     mock_svc.regenerate_digest = AsyncMock(side_effect=RuntimeError("AI 超时"))
 
     return (
-        patch("app.api.digest.get_claude_client", return_value=AsyncMock()),
-        patch("app.api.digest.DigestService", return_value=mock_svc),
+        _override_digest_service(mock_svc),
+        patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
         patch("app.api.digest.send_alert", AsyncMock()),
     )
 

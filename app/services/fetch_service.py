@@ -4,12 +4,13 @@ import asyncio
 import json
 import logging
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.clients.notifier import send_alert
 from app.clients.x_client import XApiError
 from app.config import get_fetch_window, get_today_digest_date, settings
 from app.fetcher import get_fetcher
@@ -33,16 +34,12 @@ class TweetAlreadyExistsError(Exception):
 _TWEET_URL_PATTERN = re.compile(r"https?://(?:x\.com|twitter\.com)/(\w+)/status/(\d+)")
 
 
-def _parse_tweet_id(tweet_url: str) -> str | None:
-    """从推文 URL 提取 tweet_id。"""
+def _parse_tweet_url(tweet_url: str) -> tuple[str, str] | None:
+    """从推文 URL 提取 (handle, tweet_id)，无法匹配时返回 None。"""
     match = _TWEET_URL_PATTERN.search(tweet_url.strip())
-    return match.group(2) if match else None
-
-
-def _extract_handle_from_url(tweet_url: str) -> str | None:
-    """从推文 URL 提取 handle。"""
-    match = _TWEET_URL_PATTERN.search(tweet_url.strip())
-    return match.group(1) if match else None
+    if not match:
+        return None
+    return match.group(1), match.group(2)
 
 
 class FetchService:
@@ -78,8 +75,9 @@ class FetchService:
                 total_accounts=0,
             )
 
-        # 查询已有 tweet_id 用于去重
-        existing_ids_stmt = select(Tweet.tweet_id)
+        # 查询近 7 天已有 tweet_id 用于去重（限定范围避免全表扫描）
+        dedup_since = datetime.now(UTC) - timedelta(days=7)
+        existing_ids_stmt = select(Tweet.tweet_id).where(Tweet.created_at >= dedup_since)
         existing_tweet_ids: set[str] = {
             row for row in (await self.db.execute(existing_ids_stmt)).scalars().all()
         }
@@ -162,6 +160,15 @@ class FetchService:
         self.db.add(fetch_log)
         await self.db.flush()
 
+        # I-21: 抓取失败时发送告警通知
+        if fail_count > 0:
+            await send_alert(
+                "推文抓取部分失败",
+                f"日期={digest_date}, 失败={fail_count}/{total_accounts}, "
+                f"新增推文={new_tweets_total}",
+                self.db,
+            )
+
         return FetchResult(
             new_tweets_count=new_tweets_total,
             fail_count=fail_count,
@@ -240,10 +247,11 @@ class FetchService:
             TweetAlreadyExistsError: 推文已存在
             httpx.HTTPStatusError: X API 调用失败
         """
-        tweet_id = _parse_tweet_id(tweet_url)
-        if not tweet_id:
+        parsed = _parse_tweet_url(tweet_url)
+        if not parsed:
             msg = "无效的推文URL"
             raise ValueError(msg)
+        _handle_from_url, tweet_id = parsed
 
         # 去重检查
         existing = await self.db.execute(select(Tweet).where(Tweet.tweet_id == tweet_id))
@@ -292,7 +300,8 @@ class FetchService:
             return account
 
         # 从 URL 提取 handle，按 handle 查找
-        handle = _extract_handle_from_url(tweet_url)
+        parsed = _parse_tweet_url(tweet_url)
+        handle = parsed[0] if parsed else None
         if handle:
             stmt2 = select(TwitterAccount).where(TwitterAccount.twitter_handle == handle)
             result2 = await self.db.execute(stmt2)

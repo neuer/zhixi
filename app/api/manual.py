@@ -5,19 +5,16 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin, require_no_pipeline_lock
+from app.api.deps import get_current_admin, get_digest_service, require_no_pipeline_lock
 from app.clients.gemini_client import get_gemini_client
 from app.config import get_system_config, get_today_digest_date
 from app.database import get_db
-from app.digest.cover_generator import generate_cover_image
-from app.models.digest import DailyDigest
-from app.models.digest_item import DigestItem
 from app.models.job_run import JobRun
 from app.schemas.enums import JobStatus, JobType, TriggerSource
 from app.schemas.pipeline_types import ManualCoverResponse, ManualFetchResponse
+from app.services.digest_service import DigestNotFoundError, DigestService
 from app.services.fetch_service import FetchService
 from app.services.lock_service import has_running_job
 
@@ -95,6 +92,7 @@ async def manual_fetch(
 @router.post("/generate-cover", response_model=ManualCoverResponse)
 async def manual_generate_cover(
     db: AsyncSession = Depends(get_db),
+    svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
 ) -> ManualCoverResponse | JSONResponse:
     """手动触发封面图生成（US-026）。
@@ -115,38 +113,11 @@ async def manual_generate_cover(
     if gemini_client is None:
         raise HTTPException(status_code=400, detail="Gemini API Key 未配置")
 
-    # 查找当日草稿
     digest_date = get_today_digest_date()
-    stmt = select(DailyDigest).where(
-        DailyDigest.digest_date == digest_date,
-        DailyDigest.is_current.is_(True),
-    )
-    result = await db.execute(stmt)
-    digest = result.scalar_one_or_none()
-    if digest is None:
-        raise HTTPException(status_code=404, detail="当日无可编辑草稿")
-
-    # 查询 digest_items
-    items_stmt = (
-        select(DigestItem)
-        .where(
-            DigestItem.digest_id == digest.id,
-            DigestItem.is_excluded.is_(False),
-        )
-        .order_by(DigestItem.display_order)
-    )
-    items_result = await db.execute(items_stmt)
-    items = list(items_result.scalars())
-
-    # 生成封面图
-    cover_timeout = float(await get_system_config(db, "cover_generation_timeout", "30"))
-    cover_path = await generate_cover_image(
-        gemini_client=gemini_client,
-        top_items=items[:5],
-        digest_date=digest_date,
-        timeout=cover_timeout,
-        db=db,
-    )
+    try:
+        cover_path = await svc.generate_cover(digest_date)
+    except DigestNotFoundError:
+        raise HTTPException(status_code=404, detail="当日无可编辑草稿") from None
 
     if cover_path is None:
         return JSONResponse(
@@ -154,6 +125,5 @@ async def manual_generate_cover(
             content={"detail": "封面图生成失败"},
         )
 
-    digest.cover_image_path = cover_path
     logger.info("手动封面图生成成功: %s", cover_path)
     return ManualCoverResponse(message="封面图生成成功", cover_path=cover_path)
