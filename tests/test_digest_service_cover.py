@@ -77,11 +77,18 @@ class TestDigestServiceCoverIntegration:
 
         svc = DigestService(db, claude_client=mock_claude)
 
-        with patch(
-            "app.services.digest_service.generate_cover_image",
-            new_callable=AsyncMock,
-            return_value="data/covers/cover_20260319.png",
-        ) as mock_cover:
+        mock_gemini = AsyncMock()
+        with (
+            patch(
+                "app.services.digest_service.get_gemini_client",
+                return_value=mock_gemini,
+            ),
+            patch(
+                "app.services.digest_service.generate_cover_image",
+                new_callable=AsyncMock,
+                return_value="data/covers/cover_20260319.png",
+            ) as mock_cover,
+        ):
             digest = await svc.generate_daily_digest(digest_date)
 
             mock_cover.assert_called_once()
@@ -179,10 +186,17 @@ class TestDigestServiceCoverIntegration:
 
         svc = DigestService(db, claude_client=mock_claude)
 
-        with patch(
-            "app.services.digest_service.generate_cover_image",
-            new_callable=AsyncMock,
-            return_value=None,
+        mock_gemini = AsyncMock()
+        with (
+            patch(
+                "app.services.digest_service.get_gemini_client",
+                return_value=mock_gemini,
+            ),
+            patch(
+                "app.services.digest_service.generate_cover_image",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             digest = await svc.generate_daily_digest(digest_date)
 
