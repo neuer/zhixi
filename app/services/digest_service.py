@@ -443,8 +443,11 @@ class DigestService:
         members: list[Tweet],
         accounts_map: dict[int, TwitterAccount],
     ) -> DigestItem:
-        """创建 thread topic 的 DigestItem。"""
-        # Thread 作者 = 第一条推文的作者（members 已按 tweet_time ASC 排序）
+        """创建 thread topic 的 DigestItem。
+
+        前置条件: members 已按 tweet_time ASC 排序，第一条即为 Thread 起始推文。
+        """
+        # Thread 作者 = 第一条推文的作者
         first_tweet = members[0] if members else None
         first_account = accounts_map.get(first_tweet.account_id) if first_tweet else None
         return DigestItem(
@@ -855,16 +858,12 @@ class DigestService:
         result = await self._db.execute(stmt)
         digest = result.scalar_one_or_none()
 
-        if digest is None:
-            raise PreviewTokenInvalidError
-
-        if not digest.is_current:
-            raise PreviewTokenInvalidError
-
-        if digest.preview_expires_at is None:
-            raise PreviewTokenInvalidError
-
-        if ensure_utc(digest.preview_expires_at) < datetime.now(UTC):
+        if (
+            digest is None
+            or not digest.is_current
+            or digest.preview_expires_at is None
+            or ensure_utc(digest.preview_expires_at) < datetime.now(UTC)
+        ):
             raise PreviewTokenInvalidError
 
         items_stmt = (

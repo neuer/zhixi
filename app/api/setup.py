@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import WeakPasswordError, hash_password, validate_password_strength
+from app.config import upsert_system_config
 from app.database import get_db
 from app.models.config import SystemConfig
 from app.schemas.auth_types import SetupInitRequest, SetupStatusResponse
@@ -48,28 +49,11 @@ async def setup_init(
 
     # 写入密码哈希
     hashed = await hash_password(body.password)
-    result = await db.execute(select(SystemConfig).where(SystemConfig.key == "admin_password_hash"))
-    config = result.scalar_one_or_none()
-    if config:
-        config.value = hashed
-    else:
-        db.add(SystemConfig(key="admin_password_hash", value=hashed))
+    await upsert_system_config(db, "admin_password_hash", hashed)
 
     # 写入 webhook（如果有）
     if body.notification_webhook_url is not None:
-        result = await db.execute(
-            select(SystemConfig).where(SystemConfig.key == "notification_webhook_url")
-        )
-        webhook_config = result.scalar_one_or_none()
-        if webhook_config:
-            webhook_config.value = body.notification_webhook_url
-        else:
-            db.add(
-                SystemConfig(
-                    key="notification_webhook_url",
-                    value=body.notification_webhook_url,
-                )
-            )
+        await upsert_system_config(db, "notification_webhook_url", body.notification_webhook_url)
 
     await db.flush()
     return MessageResponse(message="初始化完成")

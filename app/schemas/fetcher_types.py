@@ -19,8 +19,20 @@ class TweetType(StrEnum):
 KEEP_TYPES = {TweetType.ORIGINAL, TweetType.SELF_REPLY, TweetType.QUOTE}
 
 
+class ReferenceType(StrEnum):
+    """X API 推文引用类型。已知值: retweeted, quoted, replied_to。"""
+
+    RETWEETED = "retweeted"
+    QUOTED = "quoted"
+    REPLIED_TO = "replied_to"
+
+
 class ReferencedTweet(BaseModel):
-    """被引用推文信息。"""
+    """被引用推文信息。
+
+    type 字段为 str 而非 ReferenceType 枚举，因为 X API 可能返回未知引用类型，
+    分类器需要能容错处理（记录 warning 后兜底为 ORIGINAL）。
+    """
 
     type: str
     id: str

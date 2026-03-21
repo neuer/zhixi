@@ -531,7 +531,7 @@ class ProcessService:
             topic.title = str(result["title"])
             topic.summary = str(
                 result["translation"]
-            )  # translation -> summary: Thread prompt 返回字段名是 translation
+            )  # Thread prompt 返回 "translation" 字段，映射到 topic.summary（与单推文一致）
             topic.ai_comment = str(result["comment"])
             self._record_cost(response, "thread_process", digest_date)
             return True

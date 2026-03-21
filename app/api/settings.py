@@ -12,7 +12,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin
-from app.config import settings
+from app.config import settings, upsert_system_config
 from app.database import get_db
 from app.models.config import SystemConfig
 from app.models.job_run import JobRun
@@ -43,8 +43,11 @@ _EDITABLE_KEYS = {
 
 
 def _get_db_size_mb() -> float:
-    """获取 SQLite 数据库文件大小（MB）。"""
-    db_path = settings.DATABASE_URL.replace("sqlite:///", "")
+    """获取 SQLite 数据库文件大小（MB）。非 SQLite 数据库返回 0.0。"""
+    db_url = settings.DATABASE_URL
+    if not db_url.startswith("sqlite"):
+        return 0.0
+    db_path = db_url.replace("sqlite+aiosqlite:///", "").replace("sqlite:///", "")
     if os.path.exists(db_path):
         return round(os.path.getsize(db_path) / (1024 * 1024), 2)
     return 0.0
@@ -130,12 +133,7 @@ async def update_settings(
         if key not in _EDITABLE_KEYS:
             continue
         db_value = _serialize_config_value(key, value)
-        result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
-        config = result.scalar_one_or_none()
-        if config:
-            config.value = db_value
-        else:
-            db.add(SystemConfig(key=key, value=db_value))
+        await upsert_system_config(db, key, db_value)
 
     return MessageResponse(message="配置已更新")
 
