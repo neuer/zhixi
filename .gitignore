@@ -25,6 +25,11 @@ data/
 .env
 .env.local
 
+# Playwright
+admin/test-results/
+admin/playwright-report/
+.playwright-mcp/
+
 # IDE
 .vscode/
 .idea/
