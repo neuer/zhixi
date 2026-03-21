@@ -34,11 +34,12 @@ def unlock() -> None:
 async def _run_pipeline() -> None:
     """执行每日主流程并根据结果输出状态。"""
     from app.database import async_session_factory
+    from app.schemas.enums import TriggerSource
     from app.services.pipeline_service import run_pipeline
 
     async with async_session_factory() as db:
         try:
-            result = await run_pipeline(db, trigger_source="cron")
+            result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
             await db.commit()
 
             if result.status == "skipped":

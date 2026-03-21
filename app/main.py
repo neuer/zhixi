@@ -71,7 +71,7 @@ async def handle_x_api_error(_request: Request, exc: XApiError) -> JSONResponse:
     logger.error("X API 调用失败: %s", exc, exc_info=True)
     return JSONResponse(
         status_code=502,
-        content={"detail": f"X API拉取失败: {exc}", "allow_manual": True},
+        content={"detail": "X API 拉取失败，请稍后重试", "allow_manual": True},
     )
 
 
@@ -79,14 +79,14 @@ async def handle_x_api_error(_request: Request, exc: XApiError) -> JSONResponse:
 async def handle_claude_error(_request: Request, exc: ClaudeAPIError) -> JSONResponse:
     """Claude API 调用失败 → 502。"""
     logger.error("Claude API 调用失败: %s", exc, exc_info=True)
-    return JSONResponse(status_code=502, content={"detail": f"AI 服务暂不可用: {exc}"})
+    return JSONResponse(status_code=502, content={"detail": "AI 服务暂不可用，请稍后重试"})
 
 
 @app.exception_handler(GeminiAPIError)
 async def handle_gemini_error(_request: Request, exc: GeminiAPIError) -> JSONResponse:
     """Gemini API 调用失败 → 502。"""
     logger.error("Gemini API 调用失败: %s", exc, exc_info=True)
-    return JSONResponse(status_code=502, content={"detail": f"图像服务暂不可用: {exc}"})
+    return JSONResponse(status_code=502, content={"detail": "图像服务暂不可用，请稍后重试"})
 
 
 # Vue SPA 静态文件（生产环境）

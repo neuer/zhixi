@@ -29,10 +29,11 @@ from app.schemas.digest_types import (
     MessageResponse,
     PreviewLinkResponse,
     PreviewResponse,
+    RegenerateResponse,
     ReorderRequest,
     TodayResponse,
 )
-from app.schemas.enums import DigestStatus, JobStatus
+from app.schemas.enums import DigestStatus, ItemType, JobStatus, JobType, PublishMode, TriggerSource
 from app.services.digest_service import (
     DigestItemNotFoundError,
     DigestNotEditableError,
@@ -174,7 +175,7 @@ async def get_preview_by_token(
 
 @router.put("/item/{item_type}/{item_ref_id}", response_model=DigestItemResponse)
 async def edit_item(
-    item_type: str,
+    item_type: ItemType,
     item_ref_id: int,
     body: EditItemRequest,
     svc: DigestService = Depends(get_digest_service),
@@ -245,7 +246,7 @@ async def reorder_items(
 
 @router.post("/exclude/{item_type}/{item_ref_id}", response_model=MessageResponse)
 async def exclude_item(
-    item_type: str,
+    item_type: ItemType,
     item_ref_id: int,
     svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
@@ -266,7 +267,7 @@ async def exclude_item(
 
 @router.post("/restore/{item_type}/{item_ref_id}", response_model=MessageResponse)
 async def restore_item(
-    item_type: str,
+    item_type: ItemType,
     item_ref_id: int,
     svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
@@ -288,12 +289,12 @@ async def restore_item(
 # ── US-035: 重新生成草稿 ──
 
 
-@router.post("/regenerate", response_model=None)
+@router.post("/regenerate", response_model=RegenerateResponse)
 async def regenerate_digest(
     db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
     _lock: None = Depends(require_no_pipeline_lock),
-) -> dict[str, object] | JSONResponse:
+) -> RegenerateResponse | JSONResponse:
     """重新生成草稿（同步执行，可能耗时数分钟）。
 
     流程：重置推文 → M2 全量重跑 → M3 新版本。
@@ -303,10 +304,10 @@ async def regenerate_digest(
 
     # 创建 job_run
     job_run = JobRun(
-        job_type="pipeline",
+        job_type=JobType.PIPELINE,
         digest_date=digest_date,
-        trigger_source="regenerate",
-        status="running",
+        trigger_source=TriggerSource.REGENERATE,
+        status=JobStatus.RUNNING,
         started_at=datetime.now(UTC),
     )
     db.add(job_run)
@@ -319,13 +320,13 @@ async def regenerate_digest(
         job_run.status = JobStatus.COMPLETED
         job_run.finished_at = datetime.now(UTC)
 
-        return {
-            "message": "重新生成完成",
-            "digest_id": new_digest.id,
-            "version": new_digest.version,
-            "item_count": new_digest.item_count,
-            "job_run_id": job_run.id,
-        }
+        return RegenerateResponse(
+            message="重新生成完成",
+            digest_id=new_digest.id,
+            version=new_digest.version,
+            item_count=new_digest.item_count,
+            job_run_id=job_run.id,
+        )
 
     except Exception as exc:
         error_msg = str(exc)[:500]
@@ -379,7 +380,7 @@ async def mark_published(
     """标记当前草稿为已发布。根据 publish_mode 分支：manual 直接标记，api 返回 501。"""
     # 检查 publish_mode
     publish_mode = await get_system_config(db, "publish_mode", "manual")
-    if publish_mode == "api":
+    if publish_mode == PublishMode.API:
         return JSONResponse(
             status_code=501,
             content={"detail": "微信API自动发布功能将在公众号认证后实现"},
@@ -395,7 +396,7 @@ async def mark_published(
 
     if digest is None:
         raise HTTPException(status_code=404, detail="今日草稿不存在") from None
-    if digest.status == "published":
+    if digest.status == DigestStatus.PUBLISHED:
         raise HTTPException(status_code=409, detail="该版本已发布") from None
 
     digest.status = DigestStatus.PUBLISHED

@@ -9,6 +9,21 @@ from app.schemas.fetcher_types import FetchResult
 from app.schemas.processor_types import ProcessResult
 
 
+class ManualFetchResponse(BaseModel):
+    """手动抓取响应。"""
+
+    message: str
+    job_run_id: int
+    new_tweets: int
+
+
+class ManualCoverResponse(BaseModel):
+    """手动封面图生成响应。"""
+
+    message: str
+    cover_path: str
+
+
 class PipelineResult(BaseModel):
     """Pipeline 执行结果。"""
 

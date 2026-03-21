@@ -16,7 +16,8 @@ from app.digest.cover_generator import generate_cover_image
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.models.job_run import JobRun
-from app.schemas.enums import JobStatus
+from app.schemas.enums import JobStatus, JobType, TriggerSource
+from app.schemas.pipeline_types import ManualCoverResponse, ManualFetchResponse
 from app.services.fetch_service import FetchService
 from app.services.lock_service import has_running_job
 
@@ -25,12 +26,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/fetch", response_model=None)
+@router.post("/fetch", response_model=ManualFetchResponse)
 async def manual_fetch(
     db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
     _lock: None = Depends(require_no_pipeline_lock),
-) -> dict[str, object] | JSONResponse:
+) -> ManualFetchResponse | JSONResponse:
     """手动触发抓取（仅 fetch，不触发 process/digest）。
 
     成功: 200 {"message": "抓取完成", "job_run_id": N, "new_tweets": N}
@@ -41,7 +42,7 @@ async def manual_fetch(
     digest_date = get_today_digest_date()
 
     # 基本锁：同日 fetch 已 running → 409
-    if await has_running_job(db, "fetch", digest_date):
+    if await has_running_job(db, JobType.FETCH, digest_date):
         raise HTTPException(
             status_code=409,
             detail="当前有任务在运行中，请稍后再试",
@@ -49,10 +50,10 @@ async def manual_fetch(
 
     # 创建 job_run
     job_run = JobRun(
-        job_type="fetch",
+        job_type=JobType.FETCH,
         digest_date=digest_date,
-        trigger_source="manual",
-        status="running",
+        trigger_source=TriggerSource.MANUAL,
+        status=JobStatus.RUNNING,
         started_at=datetime.now(UTC),
     )
     db.add(job_run)
@@ -70,11 +71,11 @@ async def manual_fetch(
             result.new_tweets_count,
             job_run.id,
         )
-        return {
-            "message": "抓取完成",
-            "job_run_id": job_run.id,
-            "new_tweets": result.new_tweets_count,
-        }
+        return ManualFetchResponse(
+            message="抓取完成",
+            job_run_id=job_run.id,
+            new_tweets=result.new_tweets_count,
+        )
 
     except Exception as exc:
         error_msg = str(exc)[:500]
@@ -91,11 +92,11 @@ async def manual_fetch(
         )
 
 
-@router.post("/generate-cover", response_model=None)
+@router.post("/generate-cover", response_model=ManualCoverResponse)
 async def manual_generate_cover(
     db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
-) -> dict[str, str] | JSONResponse:
+) -> ManualCoverResponse | JSONResponse:
     """手动触发封面图生成（US-026）。
 
     成功: 200 {"message": "封面图生成成功", "cover_path": "..."}
@@ -155,4 +156,4 @@ async def manual_generate_cover(
 
     digest.cover_image_path = cover_path
     logger.info("手动封面图生成成功: %s", cover_path)
-    return {"message": "封面图生成成功", "cover_path": cover_path}
+    return ManualCoverResponse(message="封面图生成成功", cover_path=cover_path)

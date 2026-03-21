@@ -166,3 +166,16 @@ class AddTweetResponse(BaseModel):
 
     message: str
     item: DigestItemResponse
+
+
+# ── US-035: 重新生成响应 ──
+
+
+class RegenerateResponse(BaseModel):
+    """重新生成草稿响应。"""
+
+    message: str
+    digest_id: int
+    version: int
+    item_count: int
+    job_run_id: int

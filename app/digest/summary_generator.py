@@ -14,6 +14,7 @@ from app.digest.summary_prompts import (
 )
 from app.models.digest_item import DigestItem
 from app.schemas.client_types import ClaudeResponse
+from app.schemas.enums import ItemType
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ def _serialize_top_items(items: list[DigestItem]) -> str:
     """
     articles: list[dict[str, object]] = []
     for item in items:
-        if item.item_type == "tweet":
+        if item.item_type == ItemType.TWEET:
             article_type = "tweet"
         else:
             article_type = f"topic_{item.snapshot_topic_type or 'aggregated'}"

@@ -35,6 +35,7 @@ from app.processor.translator import (
     process_thread,
 )
 from app.schemas.client_types import ClaudeResponse
+from app.schemas.enums import TopicType
 from app.schemas.processor_types import AnalysisResult, ProcessResult
 
 logger = logging.getLogger(__name__)
@@ -293,7 +294,7 @@ class ProcessService:
                     tweet.topic_id = topic.id
 
             # Thread: 缓存 merged_text
-            if topic_result.type == "thread" and topic_result.merged_text:
+            if topic_result.type == TopicType.THREAD and topic_result.merged_text:
                 merged_texts[topic.id] = topic_result.merged_text
 
             topics.append(topic)
@@ -361,7 +362,7 @@ class ProcessService:
 
             member_tweets = [t for t in tweet_map.values() if t.topic_id == topic.id]
 
-            if topic.type == "aggregated":
+            if topic.type == TopicType.AGGREGATED:
                 success = await self._process_aggregated_with_retry(
                     topic,
                     member_tweets,

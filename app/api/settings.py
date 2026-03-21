@@ -17,7 +17,7 @@ from app.database import get_db
 from app.models.config import SystemConfig
 from app.models.job_run import JobRun
 from app.schemas.digest_types import MessageResponse
-from app.schemas.enums import PublishMode
+from app.schemas.enums import JobStatus, JobType, PublishMode
 from app.schemas.settings_types import (
     ApiStatusItem,
     ApiStatusResponse,
@@ -86,7 +86,7 @@ async def get_settings(
     # 查询最近 backup
     backup_result = await db.execute(
         select(JobRun)
-        .where(JobRun.job_type == "backup", JobRun.status == "completed")
+        .where(JobRun.job_type == JobType.BACKUP, JobRun.status == JobStatus.COMPLETED)
         .order_by(desc(JobRun.finished_at))
         .limit(1)
     )

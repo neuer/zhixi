@@ -15,6 +15,7 @@ from app.schemas.digest_types import (
     HistoryListItem,
     HistoryListResponse,
 )
+from app.schemas.enums import DigestStatus
 
 router = APIRouter()
 
@@ -32,7 +33,7 @@ async def list_history(
     """
     # 使用 ROW_NUMBER 窗口函数，每个 digest_date 选出优先级最高的版本
     priority_published = case(
-        (DailyDigest.status == "published", 0),
+        (DailyDigest.status == DigestStatus.PUBLISHED, 0),
         else_=1,
     )
     priority_current = case(

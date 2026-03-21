@@ -17,6 +17,7 @@ from app.clients.gemini_client import GeminiAPIError, GeminiClient
 from app.digest.cover_prompts import build_cover_prompt
 from app.models.api_cost_log import ApiCostLog
 from app.models.digest_item import DigestItem
+from app.schemas.enums import ServiceType
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def _record_cover_cost(
     """记录封面图生成 API 成本日志。"""
     cost_log = ApiCostLog(
         call_date=digest_date,
-        service="gemini",
+        service=ServiceType.GEMINI,
         call_type="cover",
         endpoint="imagen-3.0-generate-002",
         model="imagen-3.0-generate-002",

@@ -6,6 +6,7 @@ from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, Stri
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base, _utcnow
+from app.schemas.enums import TweetSource
 
 
 class Tweet(Base):
@@ -38,5 +39,5 @@ class Tweet(Base):
     topic_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("topics.id"), nullable=True, index=True
     )
-    source: Mapped[str] = mapped_column(String(20), default="auto")
+    source: Mapped[str] = mapped_column(String(20), default=TweetSource.AUTO)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
