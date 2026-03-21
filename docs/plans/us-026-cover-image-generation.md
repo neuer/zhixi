@@ -148,3 +148,50 @@ uv run lint-imports
 uv run pyright
 uv run pytest
 ```
+
+## 执行结果
+
+### 交付物清单
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `pyproject.toml` | 修改 | +3/-1 |
+| `app/schemas/client_types.py` | 修改 | +8 |
+| `app/clients/gemini_client.py` | 重写 | +98/-1 |
+| `app/digest/cover_prompts.py` | 重写 | +35/-1 |
+| `app/digest/cover_generator.py` | 重写 | +154/-1 |
+| `app/services/digest_service.py` | 修改 | +19 |
+| `app/api/manual.py` | 修改 | +76 |
+| `data/default_cover.png` | 新增 | 二进制 |
+| `tests/test_gemini_client.py` | 新增 | 120 |
+| `tests/test_cover_prompts.py` | 新增 | 47 |
+| `tests/test_cover_generator.py` | 新增 | 153 |
+| `tests/test_digest_service_cover.py` | 新增 | 147 |
+| `tests/test_manual_generate_cover_api.py` | 新增 | 104 |
+| `docs/spec/user-stories.md` | 修改 | +1/-1 |
+
+### 偏离项
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | 使用 `google-generativeai>=0.8` | 迁移到 `google-genai>=1.0` | `google-generativeai` 已弃用，`from google import genai` 只在新 SDK 可用 |
+| 2 | pyright 报 `Image.LANCZOS` 错误 | 改用 `Image.Resampling.LANCZOS` | pyright 不识别旧式枚举访问 |
+| 3 | 计划使用默认封面 fallback | 失败时返回 None | 简化逻辑，默认封面仅供 Docker/部署使用 |
+
+### 问题与修复
+| 问题 | 解决 |
+|------|------|
+| `google-generativeai` 包不支持 `from google import genai` | 迁移到 `google-genai>=1.0` 新 SDK |
+| pyright 报 `image_bytes` 可能为 None | 添加类型窄化 + `type: ignore[union-attr]` |
+| `data/` 在 .gitignore 中 | `git add -f data/default_cover.png` 强制追踪 |
+| `asyncio.TimeoutError` → ruff UP041 | 改用内置 `TimeoutError` |
+
+### 质量门禁
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 135 files formatted |
+| lint-imports | ✅ 4 contracts kept, 0 broken |
+| pyright | ✅ 0 errors |
+| pytest | ✅ 537 passed |
+
+### PR 链接
+https://github.com/neuer/zhixi/pull/28
