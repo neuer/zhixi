@@ -331,13 +331,21 @@ async def get_markdown(
     return MarkdownResponse(content_markdown=digest.content_markdown or "")
 
 
-@router.post("/mark-published", response_model=MessageResponse)
+@router.post("/mark-published", response_model=None)
 async def mark_published(
     db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
     _lock: None = Depends(require_no_pipeline_lock),
-) -> MessageResponse:
-    """标记当前草稿为已发布（手动发布模式）。"""
+) -> MessageResponse | JSONResponse:
+    """标记当前草稿为已发布。根据 publish_mode 分支：manual 直接标记，api 返回 501。"""
+    # 检查 publish_mode
+    publish_mode = await get_system_config(db, "publish_mode", "manual")
+    if publish_mode == "api":
+        return JSONResponse(
+            status_code=501,
+            content={"detail": "微信API自动发布功能将在公众号认证后实现"},
+        )
+
     digest_date = get_today_digest_date()
     stmt = select(DailyDigest).where(
         DailyDigest.digest_date == digest_date,
