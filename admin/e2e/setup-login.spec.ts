@@ -72,11 +72,44 @@ test.describe("Setup 首次设置", () => {
     await page
       .getByRole("textbox", { name: "密码", exact: true })
       .fill("Test1234!");
-    await page.getByRole("textbox", { name: "确认密码" }).fill("Different!");
+    await page.getByRole("textbox", { name: "确认密码" }).fill("Different1");
     await page.getByRole("button", { name: "下一步" }).click();
-    await page.getByRole("button", { name: "完成设置" }).click();
 
     await expect(page.getByText("两次密码不一致")).toBeVisible();
+  });
+
+  test("纯小写密码被前端拦截（密码强度校验）", async ({ page }) => {
+    await page.goto("/setup");
+
+    await page
+      .getByRole("textbox", { name: "密码", exact: true })
+      .fill("test1234");
+    await page.getByRole("textbox", { name: "确认密码" }).fill("test1234");
+    await page.getByRole("button", { name: "下一步" }).click();
+
+    await expect(page.getByText("密码必须包含大写字母")).toBeVisible();
+  });
+
+  test("无数字密码被前端拦截", async ({ page }) => {
+    await page.goto("/setup");
+
+    await page
+      .getByRole("textbox", { name: "密码", exact: true })
+      .fill("TestTest");
+    await page.getByRole("textbox", { name: "确认密码" }).fill("TestTest");
+    await page.getByRole("button", { name: "下一步" }).click();
+
+    await expect(page.getByText("密码必须包含数字")).toBeVisible();
+  });
+
+  test("短密码被前端拦截", async ({ page }) => {
+    await page.goto("/setup");
+
+    await page.getByRole("textbox", { name: "密码", exact: true }).fill("Aa1");
+    await page.getByRole("textbox", { name: "确认密码" }).fill("Aa1");
+    await page.getByRole("button", { name: "下一步" }).click();
+
+    await expect(page.getByText("密码长度至少 8 位")).toBeVisible();
   });
 
   test("Setup 完成后跳转到 Dashboard", async ({ page }) => {

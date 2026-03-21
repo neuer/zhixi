@@ -35,6 +35,17 @@ const isTopic = computed(
 async function loadItem() {
   loading.value = true;
   error.value = null;
+
+  if (
+    !itemType.value ||
+    Number.isNaN(itemRefId.value) ||
+    itemRefId.value <= 0
+  ) {
+    error.value = "无效的条目参数";
+    loading.value = false;
+    return;
+  }
+
   try {
     const resp = await api.get<TodayResponse>("/digest/today");
     digestStatus.value = resp.data.digest?.status ?? null;
@@ -56,7 +67,7 @@ async function loadItem() {
       comment: found.snapshot_comment ?? "",
     };
   } catch {
-    error.value = "加载失败";
+    error.value = "加载失败，下拉刷新重试";
   } finally {
     loading.value = false;
   }

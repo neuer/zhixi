@@ -47,11 +47,16 @@ async function loadAccounts() {
 }
 
 async function handleAdd() {
-  const handle = addForm.value.twitter_handle.trim();
+  const handle = addForm.value.twitter_handle.trim().replace(/^@/, "");
   if (!handle) {
     showToast("请输入 Twitter 用户名");
     return;
   }
+  if (handle.length > 50) {
+    showToast("用户名长度不能超过 50");
+    return;
+  }
+  addForm.value.twitter_handle = handle;
 
   adding.value = true;
   addError.value = "";
@@ -336,7 +341,7 @@ onMounted(loadAccounts);
             :type="editingAccount.is_active ? 'warning' : 'success'"
             block
             plain
-            @click="toggleActive(editingAccount); showEditDialog = false"
+            @click="toggleActive(editingAccount).then(() => { showEditDialog = false })"
           >
             {{ editingAccount.is_active ? "停用账号" : "启用账号" }}
           </van-button>

@@ -24,6 +24,7 @@ async function handleLogin() {
       password: password.value,
     });
     localStorage.setItem(AUTH_TOKEN_KEY, resp.data.token);
+    password.value = "";
     showToast("登录成功");
     router.replace({ name: "dashboard" });
   } catch {

@@ -30,7 +30,7 @@ async function loadDetail() {
     if (axios.isAxiosError(e) && e.response?.status === 404) {
       error.value = "记录不存在";
     } else {
-      error.value = "加载失败，请稍后重试";
+      error.value = "加载失败，下拉刷新重试";
     }
   } finally {
     loading.value = false;
