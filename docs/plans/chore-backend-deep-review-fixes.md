@@ -749,19 +749,77 @@ cd admin && bunx vue-tsc --noEmit && bunx biome check .
 
 ---
 
-## 执行结果（待回填）
+## 执行结果
 
 ### 交付物清单
-_待回填_
+
+| 类别 | 文件 | 变更说明 |
+|------|------|----------|
+| 新增 | `app/lib/__init__.py` | 公共库包初始化 |
+| 新增 | `app/lib/cost_logger.py` | API 调用成本记录公共函数 |
+| 修改 | `app/api/dashboard.py` | 异步日志读取 + safe_int_config |
+| 修改 | `app/api/digest.py` | 枚举常量 + DI 一致性 + safe_int_config + 删重复锁检查 |
+| 修改 | `app/api/manual.py` | 枚举常量 |
+| 修改 | `app/api/settings.py` | 专用解析函数替代 _parse_config_value，消除 type: ignore |
+| 修改 | `app/api/setup.py` | bcrypt await |
+| 修改 | `app/api/auth.py` | bcrypt await |
+| 修改 | `app/auth.py` | bcrypt 异步包装 + 登录限流条件简化 |
+| 修改 | `app/clients/claude_client.py` | from e + 空响应检查 |
+| 修改 | `app/clients/gemini_client.py` | from e + 日志记录 |
+| 修改 | `app/config.py` | safe_int_config/safe_float_config + UTC 常量 |
+| 修改 | `app/digest/cover_generator.py` | 异步文件写入 |
+| 修改 | `app/fetcher/third_party.py` | 补充 fetch_single_tweet |
+| 修改 | `app/fetcher/x_api.py` | 重试逻辑增强 + 删除冗余 __aenter__/__aexit__ |
+| 修改 | `app/main.py` | 全局 ClaudeAPIError/GeminiAPIError 处理器 |
+| 修改 | `app/processor/batch_strategy.py` | PROMPT_OVERHEAD_TOKENS 重命名 |
+| 修改 | `app/processor/heat_calculator.py` | 从 config 导入 BEIJING_TZ |
+| 修改 | `app/processor/token_estimator.py` | PROMPT_OVERHEAD_TOKENS 重命名 |
+| 修改 | `app/schemas/pipeline_types.py` | status/failed_step Literal 化 |
+| 修改 | `app/services/backup_service.py` | 枚举常量 |
+| 修改 | `app/services/digest_service.py` | 公共 cost_logger + safe_int_config + 降级标志传播 |
+| 修改 | `app/services/fetch_service.py` | 401/403 立即中止 |
+| 修改 | `app/services/lock_service.py` | CursorResult cast + 枚举常量 |
+| 修改 | `app/services/pipeline_service.py` | 基础设施异常区分 + 枚举常量 + FetchResult 类型 |
+| 修改 | `app/services/process_service.py` | assert + get_today_digest_date + 公共 cost_logger |
+| 修改 | `app/crud.py` | Phase 2 标注 |
+| 修改 | `app/services/notification_service.py` | Phase 2 标注 |
+| 修改 | `app/services/publish_service.py` | Phase 2 标注 |
+| 修改 | `app/schemas/report_types.py` | Phase 2 标注 |
+| 修改 | `tests/test_auth.py` | bcrypt 异步化适配 |
 
 ### 偏离项表格
-_待回填_
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| D-1 | lock_service 用 `int(result.rowcount)` | 用 `cast(CursorResult[Any], result).rowcount` | pyright `Result[Any]` 无 `rowcount` 属性，需 cast |
+| D-2 | auth.py 删除冗余第二个 if 分支 | 保留条件检查但简化逻辑 | 无条件 pop 会清零 fail_count 导致锁定失效 |
+| D-3 | I-5 单例改造 | 不修复 | 计划中已评估：单进程 uvicorn 下可接受 |
+| D-4 | I-11 TypedDict 改造 | 不修复 | 计划中已评估：需改 5+ prompt 模板，投入产出比低 |
+| D-5 | Task 16 get_current_digest_with_items | 仅实施全局异常处理器 | 消除重复查询需改动测试较多，风险超出本次 chore 范围 |
 
 ### 问题与修复
-_待回填_
+
+| 问题 | 修复 |
+|------|------|
+| `ruff format` 2 文件需格式化 | `ruff format` 自动修复 |
+| `ruff check` import 排序错误 | `ruff check --fix` 自动修复 |
+| `ruff check` TCH006 cast 引号 | `ruff check --fix` 自动修复 |
+| auth.py 简化导致 test_login_lockout 失败 | 恢复条件检查，只在锁定过期时 pop |
+| cost_logger.py 错误导入 ClaudeResponse | 修正为 `app.schemas.client_types` |
+| PipelineResult Literal 化导致 _determine_failed_step 返回类型不匹配 | 同步修改返回类型为 Literal |
+| uv sync 后 pytest 未安装 | `uv pip install pytest pytest-asyncio` |
 
 ### 质量门禁详表
-_待回填_
+
+| 门禁 | 结果 |
+|------|------|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 137 files already formatted |
+| `pyright` | 0 errors, 0 warnings |
+| `pytest tests/ -q` | 537 passed |
+| `vue-tsc --noEmit` | 通过 |
+| `biome check .` (admin) | 43 warnings（预存问题，非本次引入） |
 
 ### PR 链接
-_待回填_
+
+https://github.com/neuer/zhixi/pull/31
