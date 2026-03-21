@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { filterVisibleItems } from "@/utils/digest";
 import { formatDate, safeHref } from "@/utils/format";
 import type {
   DigestBriefResponse,
@@ -11,26 +12,22 @@ const props = defineProps<{
   items: DigestItemResponse[];
 }>();
 
-/** 过滤掉已剔除的条目，按 display_order 排序。 */
-const visibleItems = computed(() => {
-  return props.items
-    .filter((item) => !item.is_excluded)
-    .sort((a, b) => a.display_order - b.display_order);
-});
+const visibleItems = computed(() => filterVisibleItems(props.items));
 
-/** 解析 perspectives JSON。 */
+/** 解析 perspectives JSON（带元素类型守卫）。 */
 function parsePerspectives(raw: string | null): string[] {
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed as string[];
+    if (Array.isArray(parsed))
+      return parsed.filter((x): x is string => typeof x === "string");
   } catch {
     /* 忽略解析失败 */
   }
   return [];
 }
 
-/** 解析 source_tweets JSON。 */
+/** 解析 source_tweets JSON（带元素类型守卫）。 */
 function parseSourceTweets(
   raw: string | null,
 ): { author: string; url: string }[] {
@@ -38,7 +35,13 @@ function parseSourceTweets(
   try {
     const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed))
-      return parsed as { author: string; url: string }[];
+      return parsed.filter(
+        (item): item is { author: string; url: string } =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as Record<string, unknown>).author === "string" &&
+          typeof (item as Record<string, unknown>).url === "string",
+      );
   } catch {
     /* 忽略解析失败 */
   }

@@ -4,6 +4,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.enums import DigestStatus, ItemType, TopicType
+
 
 class ReorderInput(BaseModel):
     """排序请求条目。"""
@@ -23,7 +25,7 @@ class DigestItemResponse(BaseModel):
     """日报条目响应。"""
 
     id: int
-    item_type: str
+    item_type: ItemType
     item_ref_id: int
     display_order: int
     is_pinned: bool
@@ -38,7 +40,7 @@ class DigestItemResponse(BaseModel):
     snapshot_author_handle: str | None
     snapshot_tweet_url: str | None
     snapshot_source_tweets: str | None
-    snapshot_topic_type: str | None
+    snapshot_topic_type: TopicType | None
     snapshot_tweet_time: datetime | None
 
     model_config = ConfigDict(from_attributes=True)
@@ -50,7 +52,7 @@ class DigestBriefResponse(BaseModel):
     id: int
     digest_date: date
     version: int
-    status: str
+    status: DigestStatus
     summary: str | None
     item_count: int
     content_markdown: str | None
@@ -125,7 +127,7 @@ class HistoryListItem(BaseModel):
     id: int
     digest_date: date
     version: int
-    status: str
+    status: DigestStatus
     summary: str | None
     item_count: int
     published_at: datetime | None

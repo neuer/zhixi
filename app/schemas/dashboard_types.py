@@ -4,6 +4,9 @@ from datetime import date, datetime
 
 from pydantic import BaseModel
 
+import app.schemas.enums as enums
+from app.schemas.enums import JobStatus, JobType
+
 
 class ServiceCostItem(BaseModel):
     """单个服务的成本摘要。"""
@@ -24,15 +27,15 @@ class CostSummary(BaseModel):
 class PipelineStatus(BaseModel):
     """今日 Pipeline 状态。"""
 
-    status: str | None = None
+    status: JobStatus | None = None
     started_at: datetime | None = None
     error_message: str | None = None
 
 
-class DigestStatus(BaseModel):
+class DigestStatusSummary(BaseModel):
     """今日 Digest 状态。"""
 
-    status: str | None = None
+    status: enums.DigestStatus | None = None
     digest_id: int | None = None
     item_count: int = 0
     version: int = 0
@@ -43,7 +46,7 @@ class DigestDayRecord(BaseModel):
     """近 7 天推送记录单条。"""
 
     date: date
-    status: str
+    status: enums.DigestStatus
     item_count: int
     version: int
 
@@ -51,8 +54,8 @@ class DigestDayRecord(BaseModel):
 class AlertItem(BaseModel):
     """告警条目。"""
 
-    job_type: str
-    status: str
+    job_type: JobType
+    status: JobStatus
     error_message: str | None = None
     started_at: datetime
 
@@ -61,7 +64,7 @@ class DashboardOverviewResponse(BaseModel):
     """Dashboard 概览响应。"""
 
     pipeline_status: PipelineStatus
-    digest_status: DigestStatus
+    digest_status: DigestStatusSummary
     today_cost: CostSummary
     recent_7_days: list[DigestDayRecord]
     alerts: list[AlertItem]

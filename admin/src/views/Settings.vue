@@ -2,11 +2,12 @@
 import api from "@/api";
 import type {
   ApiStatusResponse,
+  PublishMode,
   SettingsResponse,
   SettingsUpdate,
 } from "@zhixi/openapi-client";
 import { closeToast, showLoadingToast, showToast } from "vant";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
@@ -20,7 +21,7 @@ const form = ref({
   push_days: [1, 2, 3, 4, 5, 6, 7] as number[],
   top_n: 10,
   min_articles: 1,
-  publish_mode: "manual" as "manual" | "api",
+  publish_mode: "manual" as PublishMode,
   enable_cover_generation: false,
   cover_generation_timeout: 30,
   notification_webhook_url: "",
@@ -33,6 +34,16 @@ const lastBackupAt = ref<string | null>(null);
 // API 状态
 const apiStatus = ref<ApiStatusResponse | null>(null);
 const checkingApi = ref(false);
+
+const apiEntries = computed(() => {
+  if (!apiStatus.value) return [];
+  return [
+    { label: "X API", data: apiStatus.value.x_api },
+    { label: "Claude API", data: apiStatus.value.claude_api },
+    { label: "Gemini API", data: apiStatus.value.gemini_api },
+    { label: "微信 API", data: apiStatus.value.wechat_api },
+  ];
+});
 
 // 时间选择器
 const showTimePicker = ref(false);
@@ -67,7 +78,7 @@ async function loadSettings() {
       push_days: d.push_days,
       top_n: d.top_n,
       min_articles: d.min_articles,
-      publish_mode: d.publish_mode as "manual" | "api",
+      publish_mode: d.publish_mode,
       enable_cover_generation: d.enable_cover_generation,
       cover_generation_timeout: d.cover_generation_timeout,
       notification_webhook_url: d.notification_webhook_url,
@@ -224,60 +235,23 @@ onMounted(loadSettings);
         >
           检测 API 状态
         </van-button>
-        <template v-if="apiStatus">
-          <van-cell title="X API">
-            <template #value>
-              <span :style="{ color: apiStatusColor(apiStatus.x_api.status) }">
-                {{ apiStatusText(apiStatus.x_api.status) }}
-              </span>
-              <span
-                v-if="apiStatus.x_api.latency_ms != null"
-                style="color: #969799; margin-left: 4px; font-size: 12px"
-              >
-                {{ apiStatus.x_api.latency_ms }}ms
-              </span>
-            </template>
-          </van-cell>
-          <van-cell title="Claude API">
-            <template #value>
-              <span
-                :style="{
-                  color: apiStatusColor(apiStatus.claude_api.status),
-                }"
-              >
-                {{ apiStatusText(apiStatus.claude_api.status) }}
-              </span>
-              <span
-                v-if="apiStatus.claude_api.latency_ms != null"
-                style="color: #969799; margin-left: 4px; font-size: 12px"
-              >
-                {{ apiStatus.claude_api.latency_ms }}ms
-              </span>
-            </template>
-          </van-cell>
-          <van-cell title="Gemini API">
-            <template #value>
-              <span
-                :style="{
-                  color: apiStatusColor(apiStatus.gemini_api.status),
-                }"
-              >
-                {{ apiStatusText(apiStatus.gemini_api.status) }}
-              </span>
-            </template>
-          </van-cell>
-          <van-cell title="微信 API">
-            <template #value>
-              <span
-                :style="{
-                  color: apiStatusColor(apiStatus.wechat_api.status),
-                }"
-              >
-                {{ apiStatusText(apiStatus.wechat_api.status) }}
-              </span>
-            </template>
-          </van-cell>
-        </template>
+        <van-cell
+          v-for="entry in apiEntries"
+          :key="entry.label"
+          :title="entry.label"
+        >
+          <template #value>
+            <span :style="{ color: apiStatusColor(entry.data.status) }">
+              {{ apiStatusText(entry.data.status) }}
+            </span>
+            <span
+              v-if="entry.data.latency_ms != null"
+              style="color: #969799; margin-left: 4px; font-size: 12px"
+            >
+              {{ entry.data.latency_ms }}ms
+            </span>
+          </template>
+        </van-cell>
       </van-cell-group>
 
       <!-- 数据库信息 -->

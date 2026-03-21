@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.enums import PublishMode
+
 
 class SettingsResponse(BaseModel):
     """系统设置响应（不含密钥）。"""
@@ -14,7 +16,7 @@ class SettingsResponse(BaseModel):
     push_days: list[int]
     top_n: int
     min_articles: int
-    publish_mode: str
+    publish_mode: PublishMode
     enable_cover_generation: bool
     cover_generation_timeout: int
     notification_webhook_url: str

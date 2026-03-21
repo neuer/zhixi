@@ -1,4 +1,6 @@
 import api from "@/api";
+import { AUTH_TOKEN_KEY } from "@/constants";
+import type { SetupStatusResponse } from "@zhixi/openapi-client";
 import {
   type RouteLocationNormalized,
   createRouter,
@@ -80,7 +82,8 @@ const router = createRouter({
 });
 
 const WHITE_LIST = ["/setup", "/login", "/preview"];
-let setupStatus: boolean | null = null;
+const SETUP_CACHE_TTL_MS = 5 * 60 * 1000;
+let setupCache: { value: boolean; fetchedAt: number } | null = null;
 
 function isWhiteListed(to: RouteLocationNormalized): boolean {
   return WHITE_LIST.some((path) => to.path.startsWith(path));
@@ -91,20 +94,20 @@ router.beforeEach(async (to) => {
     return true;
   }
 
-  if (setupStatus === null) {
+  if (!setupCache || Date.now() - setupCache.fetchedAt > SETUP_CACHE_TTL_MS) {
     try {
-      const { data } = await api.get<{ need_setup: boolean }>("/setup/status");
-      setupStatus = data.need_setup;
+      const { data } = await api.get<SetupStatusResponse>("/setup/status");
+      setupCache = { value: data.need_setup, fetchedAt: Date.now() };
     } catch {
       return "/login";
     }
   }
 
-  if (setupStatus) {
+  if (setupCache.value) {
     return "/setup";
   }
 
-  const token = localStorage.getItem("zhixi_token");
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
   if (!token) {
     return "/login";
   }
@@ -116,5 +119,5 @@ export default router;
 
 /** 重置 setup 缓存（设置完成后调用）。 */
 export function resetSetupCache(): void {
-  setupStatus = null;
+  setupCache = null;
 }

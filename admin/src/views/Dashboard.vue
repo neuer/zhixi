@@ -24,15 +24,15 @@ async function loadData() {
 }
 
 function goDigest() {
-  router.push("/digest");
+  router.push({ name: "digest" });
 }
 
 function goSettings() {
-  router.push("/settings");
+  router.push({ name: "settings" });
 }
 
 function goAccounts() {
-  router.push("/accounts");
+  router.push({ name: "accounts" });
 }
 
 onMounted(loadData);
@@ -52,13 +52,13 @@ onMounted(loadData);
           background="#fff0f0"
           left-icon="warning-o"
           :text="`[${alert.job_type}] ${alert.error_message || '任务失败'}`"
-          style="margin-bottom: 4px"
+          class="alert-gap"
         />
       </template>
 
-      <div style="padding: 12px">
+      <div class="page-content">
         <!-- Pipeline 状态 -->
-        <van-cell-group inset title="今日状态" style="margin-bottom: 12px">
+        <van-cell-group inset title="今日状态" class="section-gap">
           <van-cell title="Pipeline">
             <template #value>
               <van-tag
@@ -77,7 +77,7 @@ onMounted(loadData);
               </van-tag>
               <span
                 v-if="data?.digest_status?.item_count"
-                style="margin-left: 8px; color: #969799; font-size: 12px"
+                class="meta-text"
               >
                 {{ data.digest_status.item_count }}条 v{{
                   data.digest_status.version
@@ -94,15 +94,15 @@ onMounted(loadData);
           background="#fffbe8"
           left-icon="info-o"
           :text="`今日资讯较少（${data.digest_status.item_count}条）`"
-          style="margin-bottom: 12px"
+          class="section-gap"
         />
 
         <!-- 成本卡片 -->
-        <van-cell-group inset title="今日 API 成本" style="margin-bottom: 12px">
+        <van-cell-group inset title="今日 API 成本" class="section-gap">
           <template #title>
-            <div style="display: flex; justify-content: space-between; align-items: center">
+            <div class="cost-title">
               <span>今日 API 成本</span>
-              <span style="color: #1989fa; font-size: 12px; cursor: pointer" @click="router.push('/costs')">查看详情 &gt;</span>
+              <span class="cost-detail-link" @click="router.push({ name: 'costs' })">查看详情 &gt;</span>
             </div>
           </template>
           <van-cell
@@ -114,7 +114,7 @@ onMounted(loadData);
             :key="svc.service"
             :title="svc.service"
             :label="`${svc.call_count}次调用 · ${svc.total_tokens} tokens`"
-            :value="`$${svc.estimated_cost.toFixed(4)}`"
+            :value="`$${(svc.estimated_cost ?? 0).toFixed(4)}`"
           />
           <van-cell
             v-if="!data?.today_cost?.by_service?.length"
@@ -127,16 +127,16 @@ onMounted(loadData);
           type="primary"
           block
           size="large"
-          style="margin-bottom: 12px"
+          class="section-gap"
           @click="goDigest"
         >
           审核今日内容
         </van-button>
 
-        <van-grid :column-num="3" :gutter="10" style="margin-bottom: 12px">
+        <van-grid :column-num="3" :gutter="10" class="section-gap">
           <van-grid-item icon="friends-o" text="大V管理" @click="goAccounts" />
           <van-grid-item icon="setting-o" text="系统设置" @click="goSettings" />
-          <van-grid-item icon="description" text="系统日志" @click="router.push('/logs')" />
+          <van-grid-item icon="description" text="系统日志" @click="router.push({ name: 'logs' })" />
         </van-grid>
 
         <!-- 近 7 天记录 -->
@@ -164,3 +164,35 @@ onMounted(loadData);
     </van-pull-refresh>
   </div>
 </template>
+
+<style scoped>
+.alert-gap {
+  margin-bottom: 4px;
+}
+
+.page-content {
+  padding: 12px;
+}
+
+.section-gap {
+  margin-bottom: 12px;
+}
+
+.meta-text {
+  margin-left: 8px;
+  color: #969799;
+  font-size: 12px;
+}
+
+.cost-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cost-detail-link {
+  color: #1989fa;
+  font-size: 12px;
+  cursor: pointer;
+}
+</style>

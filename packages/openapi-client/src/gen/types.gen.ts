@@ -58,8 +58,8 @@ export type AddTweetRequest = {
  * 告警条目。
  */
 export type AlertItem = {
-    job_type: string;
-    status: string;
+    job_type: JobType;
+    status: JobStatus;
     error_message?: (string | null);
     started_at: string;
 };
@@ -121,7 +121,7 @@ export type DailyCostsResponse = {
  */
 export type DashboardOverviewResponse = {
     pipeline_status: PipelineStatus;
-    digest_status: DigestStatus;
+    digest_status: DigestStatusSummary;
     today_cost: CostSummary;
     recent_7_days: Array<DigestDayRecord>;
     alerts: Array<AlertItem>;
@@ -134,7 +134,7 @@ export type DigestBriefResponse = {
     id: number;
     digest_date: string;
     version: number;
-    status: string;
+    status: DigestStatus;
     summary: (string | null);
     item_count: number;
     content_markdown: (string | null);
@@ -146,7 +146,7 @@ export type DigestBriefResponse = {
  */
 export type DigestDayRecord = {
     date: string;
-    status: string;
+    status: DigestStatus;
     item_count: number;
     version: number;
 };
@@ -156,7 +156,7 @@ export type DigestDayRecord = {
  */
 export type DigestItemResponse = {
     id: number;
-    item_type: string;
+    item_type: ItemType;
     item_ref_id: number;
     display_order: number;
     is_pinned: boolean;
@@ -171,15 +171,29 @@ export type DigestItemResponse = {
     snapshot_author_handle: (string | null);
     snapshot_tweet_url: (string | null);
     snapshot_source_tweets: (string | null);
-    snapshot_topic_type: (string | null);
+    snapshot_topic_type: (TopicType | null);
     snapshot_tweet_time: (string | null);
 };
 
 /**
+ * 日报状态。
+ */
+export type DigestStatus = 'draft' | 'published' | 'failed';
+
+/**
+ * 日报状态。
+ */
+export const DigestStatus = {
+    DRAFT: 'draft',
+    PUBLISHED: 'published',
+    FAILED: 'failed'
+} as const;
+
+/**
  * 今日 Digest 状态。
  */
-export type DigestStatus = {
-    status?: (string | null);
+export type DigestStatusSummary = {
+    status?: (DigestStatus | null);
     digest_id?: (number | null);
     item_count?: number;
     version?: number;
@@ -219,7 +233,7 @@ export type HistoryListItem = {
     id: number;
     digest_date: string;
     version: number;
-    status: string;
+    status: DigestStatus;
     summary: (string | null);
     item_count: number;
     published_at: (string | null);
@@ -239,6 +253,51 @@ export type HistoryListResponse = {
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
 };
+
+/**
+ * 日报条目类型。
+ */
+export type ItemType = 'tweet' | 'topic';
+
+/**
+ * 日报条目类型。
+ */
+export const ItemType = {
+    TWEET: 'tweet',
+    TOPIC: 'topic'
+} as const;
+
+/**
+ * 任务状态。
+ */
+export type JobStatus = 'running' | 'completed' | 'failed' | 'skipped';
+
+/**
+ * 任务状态。
+ */
+export const JobStatus = {
+    RUNNING: 'running',
+    COMPLETED: 'completed',
+    FAILED: 'failed',
+    SKIPPED: 'skipped'
+} as const;
+
+/**
+ * 任务类型。
+ */
+export type JobType = 'pipeline' | 'fetch' | 'process' | 'digest' | 'backup' | 'cleanup';
+
+/**
+ * 任务类型。
+ */
+export const JobType = {
+    PIPELINE: 'pipeline',
+    FETCH: 'fetch',
+    PROCESS: 'process',
+    DIGEST: 'digest',
+    BACKUP: 'backup',
+    CLEANUP: 'cleanup'
+} as const;
 
 /**
  * 日志条目。
@@ -293,7 +352,7 @@ export type MessageResponse = {
  * 今日 Pipeline 状态。
  */
 export type PipelineStatus = {
-    status?: (string | null);
+    status?: (JobStatus | null);
     started_at?: (string | null);
     error_message?: (string | null);
 };
@@ -314,6 +373,19 @@ export type PreviewResponse = {
     items: Array<DigestItemResponse>;
     content_markdown: string;
 };
+
+/**
+ * 发布模式。
+ */
+export type PublishMode = 'api' | 'manual';
+
+/**
+ * 发布模式。
+ */
+export const PublishMode = {
+    API: 'api',
+    MANUAL: 'manual'
+} as const;
 
 /**
  * 排序请求条目。
@@ -349,7 +421,7 @@ export type SettingsResponse = {
     push_days: Array<(number)>;
     top_n: number;
     min_articles: number;
-    publish_mode: string;
+    publish_mode: PublishMode;
     enable_cover_generation: boolean;
     cover_generation_timeout: number;
     notification_webhook_url: string;
@@ -394,6 +466,19 @@ export type TodayResponse = {
     items: Array<DigestItemResponse>;
     low_content_warning: boolean;
 };
+
+/**
+ * 话题类型。
+ */
+export type TopicType = 'aggregated' | 'thread';
+
+/**
+ * 话题类型。
+ */
+export const TopicType = {
+    AGGREGATED: 'aggregated',
+    THREAD: 'thread'
+} as const;
 
 export type ValidationError = {
     loc: Array<(string | number)>;
