@@ -13,8 +13,26 @@ fi
 # 检测是否有前端文件变更（仅 admin/ 存在时）
 ADMIN_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR -- 'admin/' | head -1)
 if [ -n "$ADMIN_CHANGED" ] && [ -f admin/package.json ]; then
-  echo "== biome check =="
-  cd admin && bunx biome check .
+  echo "== biome check (admin/) =="
+  (cd admin && bunx biome check .)
+fi
+
+# 检测 API 端点/Schema 变更 → 生成物一致性检查
+API_CHANGED=$(git diff --cached --name-only --diff-filter=ACMR -- \
+  'app/api/' 'app/schemas/' 'app/main.py' | head -1)
+if [ -n "$API_CHANGED" ] && [ -f Makefile ]; then
+  echo "== codegen 一致性检查 =="
+  make gen
+  GEN_DIFF=$(git diff -- packages/openapi-client/src/gen/)
+  if [ -n "$GEN_DIFF" ]; then
+    echo ""
+    echo "❌ OpenAPI 生成物过期！已自动重新生成，请将以下文件加入暂存区："
+    git diff --name-only -- packages/openapi-client/src/gen/
+    echo ""
+    echo "运行: git add packages/openapi-client/src/gen/ && git commit --amend --no-edit"
+    exit 1
+  fi
+  echo "   生成物一致 ✓"
 fi
 
 echo "Pre-commit checks passed."
