@@ -23,6 +23,7 @@ from app.schemas.digest_types import (
     EditSummaryRequest,
     MarkdownResponse,
     MessageResponse,
+    PreviewLinkResponse,
     PreviewResponse,
     ReorderRequest,
     TodayResponse,
@@ -32,6 +33,7 @@ from app.services.digest_service import (
     DigestNotEditableError,
     DigestNotFoundError,
     DigestService,
+    PreviewTokenInvalidError,
 )
 from app.services.lock_service import has_running_job
 
@@ -115,6 +117,46 @@ async def get_preview(
     items_result = await db.execute(items_stmt)
     items = list(items_result.scalars().all())
 
+    return PreviewResponse(
+        digest=DigestBriefResponse.model_validate(digest),
+        items=[DigestItemResponse.model_validate(item) for item in items],
+        content_markdown=digest.content_markdown or "",
+    )
+
+
+# ── US-009: 预览签名链接 ──
+
+
+@router.post("/preview-link", response_model=PreviewLinkResponse)
+async def create_preview_link(
+    svc: DigestService = Depends(get_digest_service),
+    _admin: str = Depends(get_current_admin),
+) -> PreviewLinkResponse:
+    """生成预览签名链接（管理员操作）。
+
+    token 有效期 24h，同一 digest 只允许一个有效 token。
+    """
+    try:
+        token, expires_at = await svc.generate_preview_link()
+    except DigestNotFoundError:
+        raise HTTPException(status_code=404, detail="今日草稿不存在") from None
+    return PreviewLinkResponse(token=token, expires_at=expires_at)
+
+
+@router.get("/preview/{token}", response_model=PreviewResponse)
+async def get_preview_by_token(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> PreviewResponse:
+    """根据签名 token 获取预览内容（匿名访问）。
+
+    无效/过期/版本失效 token 返回 403。
+    """
+    svc = DigestService(db, claude_client=get_claude_client())
+    try:
+        digest, items = await svc.get_preview_by_token(token)
+    except PreviewTokenInvalidError:
+        raise HTTPException(status_code=403, detail="链接已失效或过期") from None
     return PreviewResponse(
         digest=DigestBriefResponse.model_validate(digest),
         items=[DigestItemResponse.model_validate(item) for item in items],
