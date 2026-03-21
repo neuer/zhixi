@@ -409,6 +409,115 @@ class DigestService:
         return count
 
     # ──────────────────────────────────────────────────
+    # US-016: 手动补录推文
+    # ──────────────────────────────────────────────────
+
+    async def add_manual_tweet_item(
+        self,
+        tweet: Tweet,
+        digest_date: date,
+    ) -> DigestItem:
+        """将手动补录推文添加到当日草稿。
+
+        流程：
+        1. 获取 current draft
+        2. 计算热度分（base_score → normalize 用已有推文范围 → heat_score）
+        3. 创建 DigestItem 快照（display_order=max+1）
+        4. 更新 item_count + 重渲染 Markdown
+        """
+        digest = await self._get_current_draft(digest_date)
+
+        # 热度计算
+        accounts_map = await self._get_accounts_map({tweet.account_id})
+        account = accounts_map.get(tweet.account_id)
+        await self._calculate_manual_heat(tweet, account, digest_date)
+
+        # 查询当前最大 display_order
+        max_order_result = await self._db.execute(
+            select(func.max(DigestItem.display_order)).where(DigestItem.digest_id == digest.id)
+        )
+        max_order: int = max_order_result.scalar_one_or_none() or 0
+
+        # 创建 DigestItem
+        item = self._create_tweet_item(
+            digest_id=digest.id,
+            display_order=max_order + 1,
+            tweet=tweet,
+            accounts_map=accounts_map,
+        )
+        self._db.add(item)
+
+        # 更新 item_count
+        digest.item_count = (digest.item_count or 0) + 1
+
+        # 重渲染 Markdown
+        await self._rerender_markdown(digest)
+        await self._db.flush()
+
+        return item
+
+    async def _calculate_manual_heat(
+        self,
+        tweet: Tweet,
+        account: TwitterAccount | None,
+        digest_date: date,
+    ) -> None:
+        """计算手动补录推文的热度分。
+
+        规则：
+        - base_score 按公式正常计算
+        - ai_importance_score 固定 50
+        - normalize 使用当日已有推文的 base_heat_score min/max
+        - 超出范围截断到 0 或 100
+        """
+        from app.processor.heat_calculator import (
+            calculate_base_score,
+            calculate_heat_score,
+            calculate_hours_since_post,
+            get_reference_time,
+        )
+
+        ref_time = get_reference_time(digest_date)
+        weight = account.weight if account else 1.0
+        tweet_time = _ensure_utc(tweet.tweet_time)
+        hours = calculate_hours_since_post(tweet_time, ref_time)
+
+        tweet.base_heat_score = calculate_base_score(
+            tweet.likes,
+            tweet.retweets,
+            tweet.replies,
+            weight,
+            hours,
+        )
+        tweet.ai_importance_score = 50.0
+
+        # 查询当日已有推文的 base_heat_score 范围
+        existing_scores = await self._get_existing_base_scores(digest_date)
+
+        if len(existing_scores) < 2:
+            normalized = 50.0
+        else:
+            min_score = min(existing_scores)
+            max_score = max(existing_scores)
+            if min_score == max_score:
+                normalized = 50.0
+            else:
+                raw_normalized = (tweet.base_heat_score - min_score) / (max_score - min_score) * 100
+                normalized = max(0.0, min(100.0, raw_normalized))
+
+        tweet.heat_score = calculate_heat_score(normalized, 50.0)
+
+    async def _get_existing_base_scores(self, digest_date: date) -> list[float]:
+        """查询当日已处理推文的 base_heat_score（用于 normalize 参照范围）。"""
+        stmt = select(Tweet.base_heat_score).where(
+            Tweet.digest_date == digest_date,
+            Tweet.is_ai_relevant.is_(True),
+            Tweet.is_processed.is_(True),
+        )
+        result = await self._db.execute(stmt)
+        return list(result.scalars().all())
+
+    # ──────────────────────────────────────────────────
     # 编辑操作（US-031/032/033/034）
     # ──────────────────────────────────────────────────
 

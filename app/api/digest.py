@@ -17,6 +17,8 @@ from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.models.job_run import JobRun
 from app.schemas.digest_types import (
+    AddTweetRequest,
+    AddTweetResponse,
     DigestBriefResponse,
     DigestItemResponse,
     EditItemRequest,
@@ -35,7 +37,9 @@ from app.services.digest_service import (
     DigestService,
     PreviewTokenInvalidError,
 )
+from app.services.fetch_service import FetchService, TweetAlreadyExistsError
 from app.services.lock_service import has_running_job
+from app.services.process_service import ProcessService
 
 logger = logging.getLogger(__name__)
 
@@ -405,3 +409,70 @@ async def mark_published(
     digest.published_at = datetime.now(UTC)
 
     return MessageResponse(message="发布成功")
+
+
+# ── US-016: 手动补录推文 ──
+
+
+@router.post("/add-tweet", response_model=None)
+async def add_tweet(
+    body: AddTweetRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> AddTweetResponse | JSONResponse:
+    """手动补录推文 — M1 抓取 → 入库 → M2 AI 加工 → M3 热度计算 + 建 item。"""
+    digest_date = get_today_digest_date()
+    claude = get_claude_client()
+
+    # 前置检查：当日必须有可编辑草稿
+    digest_svc = DigestService(db, claude_client=claude)
+    try:
+        await digest_svc._get_current_draft(digest_date)  # noqa: SLF001
+    except DigestNotFoundError:
+        raise HTTPException(
+            status_code=409,
+            detail="今日草稿尚未生成，请等待 pipeline 完成或手动触发后再补录",
+        ) from None
+    except DigestNotEditableError:
+        raise HTTPException(
+            status_code=409,
+            detail="当前版本不可编辑",
+        ) from None
+
+    # M1: 抓取 + 入库
+    fetch_svc = FetchService(db)
+    try:
+        tweet = await fetch_svc.fetch_single_tweet(body.tweet_url, digest_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的推文URL") from None
+    except TweetAlreadyExistsError:
+        raise HTTPException(status_code=409, detail="该推文已存在") from None
+    except Exception:
+        raise HTTPException(status_code=502, detail="推文抓取失败") from None
+
+    # M2: AI 加工（失败时推文保留但不建 item）
+    process_svc = ProcessService(db, claude_client=claude)
+    try:
+        await process_svc.process_single_tweet_by_id(tweet.id)
+    except Exception as exc:
+        logger.warning("手动补录 AI 加工失败: %s", exc)
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "推文已入库但AI加工失败，将在下次重新生成时处理"},
+        )
+
+    # M3: 热度计算 + 建 digest_item
+    try:
+        item = await digest_svc.add_manual_tweet_item(tweet, digest_date)
+    except DigestNotFoundError:
+        raise HTTPException(
+            status_code=409,
+            detail="今日草稿尚未生成，请等待 pipeline 完成或手动触发后再补录",
+        ) from None
+    except DigestNotEditableError:
+        raise HTTPException(status_code=409, detail="当前版本不可编辑") from None
+
+    return AddTweetResponse(
+        message="补录成功",
+        item=DigestItemResponse.model_validate(item),
+    )

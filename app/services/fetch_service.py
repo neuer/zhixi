@@ -1,8 +1,9 @@
-"""fetch_service — 数据采集编排层（US-013/014/015）。"""
+"""fetch_service — 数据采集编排层（US-013/014/015 + US-016）。"""
 
 import asyncio
 import json
 import logging
+import re
 from datetime import UTC, date, datetime
 
 import httpx
@@ -21,6 +22,26 @@ from app.models.tweet import Tweet
 from app.schemas.fetcher_types import KEEP_TYPES, FetchResult, RawTweet, TweetType
 
 logger = logging.getLogger(__name__)
+
+
+class TweetAlreadyExistsError(Exception):
+    """推文已存在于数据库中。"""
+
+
+# 推文 URL 正则：支持 x.com / twitter.com，可选尾部查询参数
+_TWEET_URL_PATTERN = re.compile(r"https?://(?:x\.com|twitter\.com)/(\w+)/status/(\d+)")
+
+
+def _parse_tweet_id(tweet_url: str) -> str | None:
+    """从推文 URL 提取 tweet_id。"""
+    match = _TWEET_URL_PATTERN.match(tweet_url.strip())
+    return match.group(2) if match else None
+
+
+def _extract_handle_from_url(tweet_url: str) -> str | None:
+    """从推文 URL 提取 handle。"""
+    match = _TWEET_URL_PATTERN.match(tweet_url.strip())
+    return match.group(1) if match else None
 
 
 class FetchService:
@@ -189,6 +210,105 @@ class FetchService:
         await self.db.flush()
 
         return new_count
+
+    # ── US-016: 单条推文抓取 ──
+
+    async def fetch_single_tweet(
+        self,
+        tweet_url: str,
+        digest_date: date,
+    ) -> Tweet:
+        """抓取单条推文并入库（source='manual'）。
+
+        流程：
+        1. 解析 tweet_url 提取 tweet_id
+        2. 检查 tweet_id 是否已存在
+        3. 调用 X API 抓取
+        4. 查找或创建 account
+        5. 入库 Tweet（source='manual', is_ai_relevant=True）
+
+        Raises:
+            ValueError: URL 格式无效
+            TweetAlreadyExistsError: 推文已存在
+            httpx.HTTPStatusError: X API 调用失败
+        """
+        tweet_id = _parse_tweet_id(tweet_url)
+        if not tweet_id:
+            msg = "无效的推文URL"
+            raise ValueError(msg)
+
+        # 去重检查
+        existing = await self.db.execute(select(Tweet).where(Tweet.tweet_id == tweet_id))
+        if existing.scalar_one_or_none() is not None:
+            raise TweetAlreadyExistsError
+
+        # X API 抓取
+        fetcher = get_fetcher(settings.X_API_BEARER_TOKEN)
+        try:
+            raw = await fetcher.fetch_single_tweet(tweet_id)
+        finally:
+            await fetcher.close()
+
+        # 记录 API 成本
+        cost_log = ApiCostLog(
+            call_date=digest_date,
+            service="x",
+            call_type="fetch_single_tweet",
+            success=True,
+        )
+        self.db.add(cost_log)
+
+        # 查找或创建账号
+        account = await self._find_or_create_account(raw.author_id, tweet_url)
+
+        # 分类推文
+        tweet_type = classify_tweet(raw)
+
+        # 构建 Tweet ORM
+        tweet = _raw_to_model(raw, account, digest_date, tweet_type)
+        tweet.source = "manual"
+        tweet.is_ai_relevant = True
+        self.db.add(tweet)
+        await self.db.flush()
+
+        return tweet
+
+    async def _find_or_create_account(
+        self,
+        author_id: str,
+        tweet_url: str,
+    ) -> TwitterAccount:
+        """通过 author_id 查找已有账号，找不到则创建临时账号。"""
+        # 按 twitter_user_id 查找
+        stmt = select(TwitterAccount).where(TwitterAccount.twitter_user_id == author_id)
+        result = await self.db.execute(stmt)
+        account = result.scalar_one_or_none()
+        if account:
+            return account
+
+        # 从 URL 提取 handle，按 handle 查找
+        handle = _extract_handle_from_url(tweet_url)
+        if handle:
+            stmt2 = select(TwitterAccount).where(TwitterAccount.twitter_handle == handle)
+            result2 = await self.db.execute(stmt2)
+            account2 = result2.scalar_one_or_none()
+            if account2:
+                # 补全 twitter_user_id
+                if not account2.twitter_user_id:
+                    account2.twitter_user_id = author_id
+                return account2
+
+        # 创建临时账号（不参与自动抓取）
+        new_account = TwitterAccount(
+            twitter_handle=handle or f"user_{author_id}",
+            twitter_user_id=author_id,
+            display_name=handle or f"User {author_id}",
+            weight=1.0,
+            is_active=False,
+        )
+        self.db.add(new_account)
+        await self.db.flush()
+        return new_account
 
 
 # ──────────────────────────────────────────────────
