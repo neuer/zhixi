@@ -17,17 +17,20 @@ const dailyData = ref<DailyCostsResponse | null>(null);
 async function loadData() {
   loading.value = true;
   try {
-    const [costsResp, dailyResp] = await Promise.all([
-      api.get<ApiCostsResponse>("/dashboard/api-costs"),
-      api.get<DailyCostsResponse>("/dashboard/api-costs/daily"),
-    ]);
+    const costsResp = await api.get<ApiCostsResponse>("/dashboard/api-costs");
     costsData.value = costsResp.data;
+  } catch {
+    // 拦截器已处理
+  }
+  try {
+    const dailyResp = await api.get<DailyCostsResponse>(
+      "/dashboard/api-costs/daily",
+    );
     dailyData.value = dailyResp.data;
   } catch {
-    // 错误已由拦截器处理
-  } finally {
-    loading.value = false;
+    // 拦截器已处理
   }
+  loading.value = false;
 }
 
 function formatCost(cost: number): string {

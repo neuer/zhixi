@@ -55,7 +55,7 @@ async function loadPreview() {
 }
 
 function goBack() {
-  router.push("/dashboard");
+  router.push({ name: "dashboard" });
 }
 
 onMounted(loadPreview);

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import ColumnElement, and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.schemas.enums as enums
 from app.api.deps import get_current_admin
 from app.config import get_system_config, get_today_digest_date
 from app.database import get_db
@@ -23,12 +24,13 @@ from app.schemas.dashboard_types import (
     DailyCostsResponse,
     DashboardOverviewResponse,
     DigestDayRecord,
-    DigestStatus,
+    DigestStatusSummary,
     LogEntry,
     LogsResponse,
     PipelineStatus,
     ServiceCostItem,
 )
+from app.schemas.enums import JobStatus, JobType
 
 router = APIRouter()
 
@@ -184,13 +186,13 @@ async def _get_pipeline_status(db: AsyncSession, today: date) -> PipelineStatus:
     if not job:
         return PipelineStatus()
     return PipelineStatus(
-        status=job.status,
+        status=JobStatus(job.status),
         started_at=job.started_at,
         error_message=job.error_message,
     )
 
 
-async def _get_digest_status(db: AsyncSession, today: date) -> DigestStatus:
+async def _get_digest_status(db: AsyncSession, today: date) -> DigestStatusSummary:
     """获取今日 current digest 状态。"""
     result = await db.execute(
         select(DailyDigest)
@@ -199,10 +201,10 @@ async def _get_digest_status(db: AsyncSession, today: date) -> DigestStatus:
     )
     digest = result.scalar_one_or_none()
     if not digest:
-        return DigestStatus()
+        return DigestStatusSummary()
     min_articles = int(await get_system_config(db, "min_articles", "1"))
-    return DigestStatus(
-        status=digest.status,
+    return DigestStatusSummary(
+        status=enums.DigestStatus(digest.status),
         digest_id=digest.id,
         item_count=digest.item_count,
         version=digest.version,
@@ -288,7 +290,7 @@ async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRec
     records = [
         DigestDayRecord(
             date=d.digest_date,
-            status=d.status,
+            status=enums.DigestStatus(d.status),
             item_count=d.item_count,
             version=d.version,
         )
@@ -317,8 +319,8 @@ async def _get_alerts(db: AsyncSession, today: date) -> list[AlertItem]:
 
     return [
         AlertItem(
-            job_type=j.job_type,
-            status=j.status,
+            job_type=JobType(j.job_type),
+            status=JobStatus(j.status),
             error_message=j.error_message,
             started_at=j.started_at,
         )

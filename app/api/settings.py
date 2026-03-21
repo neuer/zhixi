@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models.config import SystemConfig
 from app.models.job_run import JobRun
 from app.schemas.digest_types import MessageResponse
+from app.schemas.enums import PublishMode
 from app.schemas.settings_types import (
     ApiStatusItem,
     ApiStatusResponse,
@@ -92,7 +93,7 @@ async def get_settings(
         push_days=_parse_config_value("push_days", configs.get("push_days", "1,2,3,4,5,6,7")),  # type: ignore[arg-type]
         top_n=_parse_config_value("top_n", configs.get("top_n", "10")),  # type: ignore[arg-type]
         min_articles=_parse_config_value("min_articles", configs.get("min_articles", "1")),  # type: ignore[arg-type]
-        publish_mode=configs.get("publish_mode", "manual"),
+        publish_mode=PublishMode(configs.get("publish_mode", "manual")),
         enable_cover_generation=_parse_config_value(
             "enable_cover_generation", configs.get("enable_cover_generation", "false")
         ),  # type: ignore[arg-type]

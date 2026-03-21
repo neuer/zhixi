@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import api from "@/api";
-import { formatDate } from "@/utils/format";
+import { formatDate, formatWeekday } from "@/utils/format";
 import { getStatus } from "@/utils/status";
 import type {
   HistoryListItem,
@@ -17,14 +17,11 @@ const items = ref<HistoryListItem[]>([]);
 const page = ref(1);
 const pageSize = 20;
 
-function formatWeekday(dateStr: string): string {
-  const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-  const d = new Date(dateStr);
-  return days[d.getDay()] ?? "";
-}
+let isLoadingMore = false;
 
 async function loadMore() {
-  if (loading.value || finished.value) return;
+  if (isLoadingMore || finished.value) return;
+  isLoadingMore = true;
   loading.value = true;
 
   try {
@@ -44,9 +41,10 @@ async function loadMore() {
     }
     page.value += 1;
   } catch {
-    finished.value = true;
+    // 拦截器已处理，不置 finished 以便用户可重试
   } finally {
     loading.value = false;
+    isLoadingMore = false;
   }
 }
 
@@ -59,11 +57,11 @@ async function onRefresh() {
 }
 
 function goDetail(id: number) {
-  router.push(`/history/${id}`);
+  router.push({ name: "history-detail", params: { id } });
 }
 
 function goBack() {
-  router.push("/dashboard");
+  router.push({ name: "dashboard" });
 }
 
 onMounted(loadMore);

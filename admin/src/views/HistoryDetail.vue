@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import api from "@/api";
 import ArticlePreview from "@/components/ArticlePreview.vue";
+import AsyncContent from "@/components/AsyncContent.vue";
 import type { HistoryDetailResponse } from "@zhixi/openapi-client";
+import axios from "axios";
 import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
@@ -12,21 +14,31 @@ const data = ref<HistoryDetailResponse | null>(null);
 const error = ref<string | null>(null);
 
 async function loadDetail() {
-  const id = route.params.id;
-  loading.value = true;
+  const rawId = route.params.id;
+  const id = Number(Array.isArray(rawId) ? rawId[0] : rawId);
+  if (Number.isNaN(id) || id <= 0) {
+    error.value = "无效的记录 ID";
+    loading.value = false;
+    return;
+  }
 
+  loading.value = true;
   try {
     const resp = await api.get<HistoryDetailResponse>(`/history/${id}`);
     data.value = resp.data;
-  } catch {
-    error.value = "记录不存在";
+  } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 404) {
+      error.value = "记录不存在";
+    } else {
+      error.value = "加载失败，请稍后重试";
+    }
   } finally {
     loading.value = false;
   }
 }
 
 function goBack() {
-  router.push("/history");
+  router.push({ name: "history" });
 }
 
 onMounted(loadDetail);
@@ -42,23 +54,18 @@ onMounted(loadDetail);
       :border="false"
     />
 
-    <div v-if="loading" class="detail-loading">
-      <van-loading size="36px" vertical>加载中...</van-loading>
-    </div>
-
-    <div v-else-if="error" class="detail-empty">
-      <van-empty :description="error">
+    <AsyncContent :loading="loading" :error="error">
+      <template #error-action>
         <van-button round type="primary" size="small" @click="goBack">
           返回列表
         </van-button>
-      </van-empty>
-    </div>
-
-    <ArticlePreview
-      v-else-if="data"
-      :digest="data.digest"
-      :items="data.items"
-    />
+      </template>
+      <ArticlePreview
+        v-if="data"
+        :digest="data.digest"
+        :items="data.items"
+      />
+    </AsyncContent>
   </div>
 </template>
 
@@ -66,16 +73,5 @@ onMounted(loadDetail);
 .history-detail-page {
   background: #fff;
   min-height: 100vh;
-}
-
-.detail-loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 60vh;
-}
-
-.detail-empty {
-  padding-top: 20vh;
 }
 </style>

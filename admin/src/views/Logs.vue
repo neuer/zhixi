@@ -6,9 +6,12 @@ import { useRouter } from "vue-router";
 
 const router = useRouter();
 
-const loading = ref(true);
+const loading = ref(false);
+const finished = ref(false);
 const logs = ref<LogsResponse["logs"]>([]);
 const selectedLevel = ref("INFO");
+const pageVal = ref(1);
+const pageSize = 50;
 
 const levelOptions = [
   { text: "DEBUG", value: "DEBUG" },
@@ -42,20 +45,42 @@ function levelBg(level: string): string {
 }
 
 async function loadLogs() {
+  if (loading.value || finished.value) return;
   loading.value = true;
   try {
     const resp = await api.get<LogsResponse>("/dashboard/logs", {
-      params: { level: selectedLevel.value, limit: 200 },
+      params: {
+        level: selectedLevel.value,
+        limit: pageSize,
+        offset: (pageVal.value - 1) * pageSize,
+      },
     });
-    logs.value = resp.data.logs;
+    const newLogs = resp.data.logs;
+    if (pageVal.value === 1) {
+      logs.value = newLogs;
+    } else {
+      logs.value.push(...newLogs);
+    }
+    if (newLogs.length < pageSize) {
+      finished.value = true;
+    }
+    pageVal.value += 1;
   } catch {
-    // 错误已由拦截器处理
+    // 拦截器已处理
+    finished.value = true;
   } finally {
     loading.value = false;
   }
 }
 
-watch(selectedLevel, loadLogs);
+function resetAndLoad() {
+  pageVal.value = 1;
+  finished.value = false;
+  logs.value = [];
+  loadLogs();
+}
+
+watch(selectedLevel, resetAndLoad);
 onMounted(loadLogs);
 </script>
 
@@ -72,28 +97,35 @@ onMounted(loadLogs);
       </van-dropdown-menu>
     </div>
 
-    <van-pull-refresh v-model="loading" @refresh="loadLogs">
-      <div class="log-list" style="padding: 12px">
-        <van-empty v-if="!logs.length && !loading" description="暂无日志" />
+    <van-pull-refresh v-model="loading" @refresh="resetAndLoad">
+      <van-list
+        v-model:loading="loading"
+        :finished="finished"
+        finished-text="没有更多了"
+        @load="loadLogs"
+      >
+        <div class="log-list" style="padding: 12px">
+          <van-empty v-if="!logs.length && !loading" description="暂无日志" />
 
-        <div
-          v-for="(log, idx) in logs"
-          :key="log.timestamp + '-' + idx"
-          class="log-entry"
-          :style="{
-            color: levelColor(log.level),
-            backgroundColor: levelBg(log.level),
-          }"
-        >
-          <div class="log-meta">
-            <span class="log-level">{{ log.level }}</span>
-            <span class="log-time">{{ log.timestamp }}</span>
-            <span v-if="log.module" class="log-module">[{{ log.module }}]</span>
+          <div
+            v-for="(log, idx) in logs"
+            :key="log.timestamp + '-' + idx"
+            class="log-entry"
+            :style="{
+              color: levelColor(log.level),
+              backgroundColor: levelBg(log.level),
+            }"
+          >
+            <div class="log-meta">
+              <span class="log-level">{{ log.level }}</span>
+              <span class="log-time">{{ log.timestamp }}</span>
+              <span v-if="log.module" class="log-module">[{{ log.module }}]</span>
+            </div>
+            <div class="log-message">{{ log.message }}</div>
+            <div v-if="log.exception" class="log-exception">{{ log.exception }}</div>
           </div>
-          <div class="log-message">{{ log.message }}</div>
-          <div v-if="log.exception" class="log-exception">{{ log.exception }}</div>
         </div>
-      </div>
+      </van-list>
     </van-pull-refresh>
   </div>
 </template>
