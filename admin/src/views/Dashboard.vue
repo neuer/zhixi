@@ -25,18 +25,6 @@ async function loadData() {
   }
 }
 
-function goDigest() {
-  router.push({ name: "digest" });
-}
-
-function goSettings() {
-  router.push({ name: "settings" });
-}
-
-function goAccounts() {
-  router.push({ name: "accounts" });
-}
-
 onMounted(loadData);
 </script>
 
@@ -134,14 +122,14 @@ onMounted(loadData);
           block
           size="large"
           class="section-gap"
-          @click="goDigest"
+          @click="router.push({ name: 'digest' })"
         >
           审核今日内容
         </van-button>
 
         <van-grid :column-num="3" :gutter="10" class="section-gap">
-          <van-grid-item icon="friends-o" text="大V管理" @click="goAccounts" />
-          <van-grid-item icon="setting-o" text="系统设置" @click="goSettings" />
+          <van-grid-item icon="friends-o" text="大V管理" @click="router.push({ name: 'accounts' })" />
+          <van-grid-item icon="setting-o" text="系统设置" @click="router.push({ name: 'settings' })" />
           <van-grid-item icon="description" text="系统日志" @click="router.push({ name: 'logs' })" />
         </van-grid>
 

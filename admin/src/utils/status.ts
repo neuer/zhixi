@@ -1,4 +1,4 @@
-/** 状态映射工具 */
+/** 状态映射工具 -- 将后端状态字符串统一映射为中文文本、颜色与标签类型 */
 
 import type { DigestStatus, JobStatus } from "@zhixi/openapi-client";
 

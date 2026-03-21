@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// TODO: 待实现 — 参见 docs/spec/user-stories.md
+// TODO: 前端页面待实现（后端 API 已就绪）
 </script>
 
 <template>

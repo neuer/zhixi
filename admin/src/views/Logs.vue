@@ -10,7 +10,7 @@ const loading = ref(false);
 const refreshing = ref(false);
 const finished = ref(false);
 const logs = ref<LogsResponse["logs"]>([]);
-const selectedLevel = ref("INFO");
+const selectedLevel = ref<"DEBUG" | "INFO" | "WARNING" | "ERROR">("INFO");
 const pageVal = ref(1);
 const pageSize = 50;
 
@@ -21,28 +21,15 @@ const levelOptions = [
   { text: "ERROR", value: "ERROR" },
 ];
 
-function levelColor(level: string): string {
-  switch (level) {
-    case "ERROR":
-    case "CRITICAL":
-      return "#ee0a24";
-    case "WARNING":
-      return "#ff976a";
-    default:
-      return "#323233";
-  }
-}
+const levelStyleMap: Record<string, { color: string; bg: string }> = {
+  ERROR: { color: "#ee0a24", bg: "#fff0f0" },
+  CRITICAL: { color: "#ee0a24", bg: "#fff0f0" },
+  WARNING: { color: "#ff976a", bg: "#fffbe8" },
+};
+const levelStyleDefault = { color: "#323233", bg: "transparent" };
 
-function levelBg(level: string): string {
-  switch (level) {
-    case "ERROR":
-    case "CRITICAL":
-      return "#fff0f0";
-    case "WARNING":
-      return "#fffbe8";
-    default:
-      return "transparent";
-  }
+function getLevelStyle(level: string) {
+  return levelStyleMap[level] ?? levelStyleDefault;
 }
 
 let isLoadingMore = false;
@@ -117,8 +104,8 @@ onMounted(loadLogs);
             :key="log.timestamp + '-' + idx"
             class="log-entry"
             :style="{
-              color: levelColor(log.level),
-              backgroundColor: levelBg(log.level),
+              color: getLevelStyle(log.level).color,
+              backgroundColor: getLevelStyle(log.level).bg,
             }"
           >
             <div class="log-meta">

@@ -16,12 +16,23 @@ const loading = ref(true);
 const saving = ref(false);
 
 // 表单数据
-const form = ref({
+interface SettingsForm {
+  push_time: string;
+  push_days: number[];
+  top_n: number;
+  min_articles: number;
+  publish_mode: PublishMode;
+  enable_cover_generation: boolean;
+  cover_generation_timeout: number;
+  notification_webhook_url: string;
+}
+
+const form = ref<SettingsForm>({
   push_time: "08:00",
-  push_days: [1, 2, 3, 4, 5, 6, 7] as number[],
+  push_days: [1, 2, 3, 4, 5, 6, 7],
   top_n: 10,
   min_articles: 1,
-  publish_mode: "manual" as PublishMode,
+  publish_mode: "manual",
   enable_cover_generation: false,
   cover_generation_timeout: 30,
   notification_webhook_url: "",
@@ -126,20 +137,19 @@ async function checkApiStatus() {
 }
 
 function onTimeConfirm({ selectedValues }: { selectedValues: string[] }) {
+  if (selectedValues.length < 2) return;
   form.value.push_time = `${selectedValues[0]}:${selectedValues[1]}`;
   showTimePicker.value = false;
 }
 
-function apiStatusText(status: string): string {
-  if (status === "ok") return "正常";
-  if (status === "error") return "异常";
-  return "未配置";
-}
+const apiStatusMap: Record<string, { text: string; color: string }> = {
+  ok: { text: "正常", color: "#07c160" },
+  error: { text: "异常", color: "#ee0a24" },
+};
+const apiStatusDefault = { text: "未配置", color: "#969799" };
 
-function apiStatusColor(status: string): string {
-  if (status === "ok") return "#07c160";
-  if (status === "error") return "#ee0a24";
-  return "#969799";
+function getApiStatus(status: string) {
+  return apiStatusMap[status] ?? apiStatusDefault;
 }
 
 function formatBackupTime(dt: string | null): string {
@@ -243,8 +253,8 @@ onMounted(loadSettings);
           :title="entry.label"
         >
           <template #value>
-            <span :style="{ color: apiStatusColor(entry.data.status) }">
-              {{ apiStatusText(entry.data.status) }}
+            <span :style="{ color: getApiStatus(entry.data.status).color }">
+              {{ getApiStatus(entry.data.status).text }}
             </span>
             <span
               v-if="entry.data.latency_ms != null"

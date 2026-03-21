@@ -21,8 +21,8 @@ function parsePerspectives(raw: string | null): string[] {
     const parsed: unknown = JSON.parse(raw);
     if (Array.isArray(parsed))
       return parsed.filter((x): x is string => typeof x === "string");
-  } catch {
-    /* 忽略解析失败 */
+  } catch (e: unknown) {
+    console.warn("[ArticlePreview] JSON 解析失败:", raw, e);
   }
   return [];
 }
@@ -42,8 +42,8 @@ function parseSourceTweets(
           typeof (item as Record<string, unknown>).handle === "string" &&
           typeof (item as Record<string, unknown>).tweet_url === "string",
       );
-  } catch {
-    /* 忽略解析失败 */
+  } catch (e: unknown) {
+    console.warn("[ArticlePreview] JSON 解析失败:", raw, e);
   }
   return [];
 }
