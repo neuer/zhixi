@@ -291,6 +291,14 @@ export type PipelineStatus = {
 };
 
 /**
+ * 预览签名链接响应。
+ */
+export type PreviewLinkResponse = {
+    token: string;
+    expires_at: string;
+};
+
+/**
  * 预览响应（digest + items + Markdown）。
  */
 export type PreviewResponse = {
