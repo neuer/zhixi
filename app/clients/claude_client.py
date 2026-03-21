@@ -10,8 +10,9 @@ import time
 
 import anthropic
 from anthropic.types import TextBlock
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import get_secret_config, get_system_config, safe_float_config, settings
 from app.schemas.client_types import ClaudeResponse
 
 logger = logging.getLogger(__name__)
@@ -101,18 +102,23 @@ class ClaudeClient:
         )
 
 
-# 模块级惰性单例
-_client: ClaudeClient | None = None
+async def get_claude_client(db: AsyncSession) -> ClaudeClient:
+    """从 DB / .env 读取配置，构建 ClaudeClient。"""
+    api_key = await get_secret_config(db, "anthropic_api_key")
+    if not api_key:
+        raise ClaudeAPIError("Anthropic API Key 未配置，请在后台 Settings 页面配置")
 
+    model = await get_system_config(db, "claude_model", settings.CLAUDE_MODEL)
+    input_price = await safe_float_config(
+        db, "claude_input_price", settings.CLAUDE_INPUT_PRICE_PER_MTOK
+    )
+    output_price = await safe_float_config(
+        db, "claude_output_price", settings.CLAUDE_OUTPUT_PRICE_PER_MTOK
+    )
 
-def get_claude_client() -> ClaudeClient:
-    """获取 ClaudeClient 单例。"""
-    global _client
-    if _client is None:
-        _client = ClaudeClient(
-            api_key=settings.ANTHROPIC_API_KEY,
-            model=settings.CLAUDE_MODEL,
-            input_price=settings.CLAUDE_INPUT_PRICE_PER_MTOK,
-            output_price=settings.CLAUDE_OUTPUT_PRICE_PER_MTOK,
-        )
-    return _client
+    return ClaudeClient(
+        api_key=api_key,
+        model=model,
+        input_price=input_price,
+        output_price=output_price,
+    )

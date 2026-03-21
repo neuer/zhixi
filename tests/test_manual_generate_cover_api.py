@@ -55,7 +55,7 @@ class TestManualGenerateCover:
         """Gemini API Key 未配置 → 400。"""
         await _seed_config(db, cover_enabled=True)
 
-        with patch("app.api.manual.get_gemini_client", return_value=None):
+        with patch("app.api.manual.get_gemini_client", AsyncMock(return_value=None)):
             resp = await authed_client.post("/api/manual/generate-cover")
         assert resp.status_code == 400
         assert "Gemini API Key" in resp.json()["detail"]
@@ -66,7 +66,7 @@ class TestManualGenerateCover:
         mock_client = AsyncMock()
 
         with (
-            patch("app.api.manual.get_gemini_client", return_value=mock_client),
+            patch("app.api.manual.get_gemini_client", AsyncMock(return_value=mock_client)),
             patch("app.api.manual.get_today_digest_date", return_value=date(2026, 3, 19)),
         ):
             resp = await authed_client.post("/api/manual/generate-cover")
@@ -80,7 +80,7 @@ class TestManualGenerateCover:
         mock_client = AsyncMock()
 
         with (
-            patch("app.api.manual.get_gemini_client", return_value=mock_client),
+            patch("app.api.manual.get_gemini_client", AsyncMock(return_value=mock_client)),
             patch("app.api.manual.get_today_digest_date", return_value=digest_date),
             patch(
                 "app.services.digest_service.generate_cover_image",
@@ -89,6 +89,7 @@ class TestManualGenerateCover:
             ),
             patch(
                 "app.services.digest_service.get_gemini_client",
+                new_callable=AsyncMock,
                 return_value=mock_client,
             ),
         ):
@@ -109,7 +110,7 @@ class TestManualGenerateCover:
         mock_client = AsyncMock()
 
         with (
-            patch("app.api.manual.get_gemini_client", return_value=mock_client),
+            patch("app.api.manual.get_gemini_client", AsyncMock(return_value=mock_client)),
             patch("app.api.manual.get_today_digest_date", return_value=digest_date),
             patch(
                 "app.services.digest_service.generate_cover_image",
@@ -118,6 +119,7 @@ class TestManualGenerateCover:
             ),
             patch(
                 "app.services.digest_service.get_gemini_client",
+                new_callable=AsyncMock,
                 return_value=mock_client,
             ),
         ):

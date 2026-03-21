@@ -1,4 +1,4 @@
-"""Settings 路由 — US-041。"""
+"""Settings 路由 — US-041 + API Key UI 管理。"""
 
 import asyncio
 import logging
@@ -8,11 +8,18 @@ import time
 import anthropic
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin
-from app.config import settings, upsert_system_config
+from app.config import (
+    SECRET_CONFIG_KEYS,
+    get_secret_config,
+    mask_secret,
+    settings,
+    upsert_system_config,
+)
+from app.crypto import encrypt_secret
 from app.database import get_db
 from app.models.config import SystemConfig
 from app.models.job_run import JobRun
@@ -21,6 +28,9 @@ from app.schemas.enums import JobStatus, JobType, PublishMode
 from app.schemas.settings_types import (
     ApiStatusItem,
     ApiStatusResponse,
+    SecretsStatusResponse,
+    SecretStatusItem,
+    SecretsUpdateRequest,
     SettingsResponse,
     SettingsUpdate,
 )
@@ -39,6 +49,15 @@ _EDITABLE_KEYS = {
     "enable_cover_generation",
     "cover_generation_timeout",
     "notification_webhook_url",
+}
+
+# 密钥 key → 前端显示名
+_SECRET_LABELS: dict[str, str] = {
+    "x_api_bearer_token": "X API",
+    "anthropic_api_key": "Claude API",
+    "gemini_api_key": "Gemini API",
+    "wechat_app_id": "微信 App ID",
+    "wechat_app_secret": "微信 App Secret",
 }
 
 
@@ -84,6 +103,9 @@ def _serialize_config_value(key: str, value: int | bool | str | list[int]) -> st
     if key == "enable_cover_generation" and isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+# ---- 业务配置 CRUD ----
 
 
 @router.get("", response_model=SettingsResponse)
@@ -138,15 +160,114 @@ async def update_settings(
     return MessageResponse(message="配置已更新")
 
 
+# ---- 密钥管理 ----
+
+
+@router.get("/secrets-status", response_model=SecretsStatusResponse)
+async def get_secrets_status(
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> SecretsStatusResponse:
+    """获取各密钥配置状态（掩码展示，不返回原文）。"""
+    from app.crypto import decrypt_secret
+
+    items: list[SecretStatusItem] = []
+    for key in SECRET_CONFIG_KEYS:
+        label = _SECRET_LABELS.get(key, key)
+        db_key = f"secret:{key}"
+        db_value = await _get_raw_config(db, db_key)
+
+        if db_value:
+            decrypted = decrypt_secret(db_value)
+            if decrypted:
+                items.append(
+                    SecretStatusItem(
+                        key=key,
+                        label=label,
+                        configured=True,
+                        masked=mask_secret(decrypted),
+                        source="db",
+                    )
+                )
+                continue
+
+        # fallback .env
+        from app.config import _ENV_ATTR_MAP
+
+        env_attr = _ENV_ATTR_MAP.get(key, key.upper())
+        env_value = str(getattr(settings, env_attr, ""))
+        if env_value:
+            items.append(
+                SecretStatusItem(
+                    key=key,
+                    label=label,
+                    configured=True,
+                    masked=mask_secret(env_value),
+                    source="env",
+                )
+            )
+        else:
+            items.append(
+                SecretStatusItem(
+                    key=key,
+                    label=label,
+                    configured=False,
+                    masked="",
+                    source="none",
+                )
+            )
+
+    return SecretsStatusResponse(items=items)
+
+
+@router.put("/secrets", response_model=MessageResponse)
+async def update_secrets(
+    data: SecretsUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> MessageResponse:
+    """更新密钥配置（加密存储）。"""
+    updates = data.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=422, detail="未提供任何密钥") from None
+
+    for key, value in updates.items():
+        if key not in SECRET_CONFIG_KEYS:
+            continue
+        ciphertext = encrypt_secret(str(value))
+        await upsert_system_config(db, f"secret:{key}", ciphertext)
+
+    return MessageResponse(message="密钥已更新")
+
+
+@router.delete("/secrets/{key}", response_model=MessageResponse)
+async def delete_secret(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> MessageResponse:
+    """删除 DB 中的密钥配置（恢复 .env fallback）。"""
+    if key not in SECRET_CONFIG_KEYS:
+        raise HTTPException(status_code=422, detail=f"不支持的密钥名: {key}") from None
+
+    db_key = f"secret:{key}"
+    await db.execute(delete(SystemConfig).where(SystemConfig.key == db_key))
+    return MessageResponse(message="密钥已清除，将使用 .env 配置")
+
+
+# ---- API 状态检测 ----
+
+
 @router.get("/api-status", response_model=ApiStatusResponse)
 async def get_api_status(
+    db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
 ) -> ApiStatusResponse:
     """并发 Ping 各 API，检测状态。"""
     x_status, claude_status, gemini_status = await asyncio.gather(
-        _ping_x_api(),
-        _ping_claude_api(),
-        _ping_gemini_api(),
+        _ping_x_api(db),
+        _ping_claude_api(db),
+        _ping_gemini_api(db),
     )
 
     return ApiStatusResponse(
@@ -157,9 +278,16 @@ async def get_api_status(
     )
 
 
-async def _ping_x_api() -> ApiStatusItem:
+async def _get_raw_config(db: AsyncSession, key: str) -> str:
+    """直接读 system_config 原始值。"""
+    result = await db.execute(select(SystemConfig).where(SystemConfig.key == key))
+    config = result.scalar_one_or_none()
+    return config.value if config else ""
+
+
+async def _ping_x_api(db: AsyncSession) -> ApiStatusItem:
     """Ping X API: GET /2/users/me。"""
-    token = settings.X_API_BEARER_TOKEN
+    token = await get_secret_config(db, "x_api_bearer_token")
     if not token:
         return ApiStatusItem(status="unconfigured")
 
@@ -178,9 +306,9 @@ async def _ping_x_api() -> ApiStatusItem:
     return ApiStatusItem(status="ok", latency_ms=_elapsed_ms(start))
 
 
-async def _ping_claude_api() -> ApiStatusItem:
+async def _ping_claude_api(db: AsyncSession) -> ApiStatusItem:
     """Ping Claude API: models.list()。"""
-    api_key = settings.ANTHROPIC_API_KEY
+    api_key = await get_secret_config(db, "anthropic_api_key")
     if not api_key:
         return ApiStatusItem(status="unconfigured")
 
@@ -195,11 +323,11 @@ async def _ping_claude_api() -> ApiStatusItem:
     return ApiStatusItem(status="ok", latency_ms=_elapsed_ms(start))
 
 
-async def _ping_gemini_api() -> ApiStatusItem:
+async def _ping_gemini_api(db: AsyncSession) -> ApiStatusItem:
     """Ping Gemini API。MVP 阶段仅检查 key 是否配置。"""
-    if not settings.GEMINI_API_KEY:
+    api_key = await get_secret_config(db, "gemini_api_key")
+    if not api_key:
         return ApiStatusItem(status="unconfigured")
-    # 有 key 但暂不实际 ping（MVP），标记为 ok
     return ApiStatusItem(status="ok", latency_ms=0)
 
 

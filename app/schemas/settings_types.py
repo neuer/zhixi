@@ -73,3 +73,29 @@ class ApiStatusResponse(BaseModel):
     claude_api: ApiStatusItem
     gemini_api: ApiStatusItem
     wechat_api: ApiStatusItem
+
+
+class SecretsUpdateRequest(BaseModel):
+    """密钥更新请求（所有字段可选）。"""
+
+    x_api_bearer_token: str | None = None
+    anthropic_api_key: str | None = None
+    gemini_api_key: str | None = None
+    wechat_app_id: str | None = None
+    wechat_app_secret: str | None = None
+
+
+class SecretStatusItem(BaseModel):
+    """单个密钥状态。"""
+
+    key: str
+    label: str
+    configured: bool
+    masked: str
+    source: Literal["db", "env", "none"]
+
+
+class SecretsStatusResponse(BaseModel):
+    """密钥状态响应。"""
+
+    items: list[SecretStatusItem]

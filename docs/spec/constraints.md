@@ -234,9 +234,9 @@ cd admin && bun dev
 | 业务模块间互相 import | fetcher/ 不能 import processor/ |
 | Web 进程中嵌入定时任务 | 必须独立 CLI + supercronic |
 | 硬编码 AI 模型名 | 必须从 CLAUDE_MODEL 环境变量读取 |
-| 硬编码 API Key | 必须从 .env 读取 |
-| DB 中存 API Key 明文 | 密钥只存 .env |
-| 设置页回显 API Key | 只显示"已配置/未配置" |
+| 硬编码 API Key | 必须从 DB（加密）或 .env 读取 |
+| DB 中存 API Key 明文 | 密钥必须 Fernet 加密存储（EXC-20260321-001） |
+| 设置页回显 API Key | 只显示掩码（首4尾4）或"未配置" |
 | .env 中存 notification_webhook_url | 只存 DB system_config |
 | .env 中存管理员密码 | 只存 DB（bcrypt hash） |
 

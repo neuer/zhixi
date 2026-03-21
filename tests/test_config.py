@@ -83,8 +83,8 @@ class TestSettings:
     def test_required_fields_exist(self) -> None:
         from app.config import settings
 
-        assert settings.X_API_BEARER_TOKEN
-        assert settings.ANTHROPIC_API_KEY
+        assert hasattr(settings, "X_API_BEARER_TOKEN")
+        assert hasattr(settings, "ANTHROPIC_API_KEY")
         assert settings.JWT_SECRET_KEY
 
     def test_default_values(self) -> None:

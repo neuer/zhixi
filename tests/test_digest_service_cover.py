@@ -81,6 +81,7 @@ class TestDigestServiceCoverIntegration:
         with (
             patch(
                 "app.services.digest_service.get_gemini_client",
+                new_callable=AsyncMock,
                 return_value=mock_gemini,
             ),
             patch(
@@ -155,6 +156,7 @@ class TestDigestServiceCoverIntegration:
         with (
             patch(
                 "app.services.digest_service.get_gemini_client",
+                new_callable=AsyncMock,
                 return_value=None,
             ),
             patch(
@@ -190,6 +192,7 @@ class TestDigestServiceCoverIntegration:
         with (
             patch(
                 "app.services.digest_service.get_gemini_client",
+                new_callable=AsyncMock,
                 return_value=mock_gemini,
             ),
             patch(
