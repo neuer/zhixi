@@ -2,11 +2,13 @@
 
 import logging
 from datetime import UTC, date, datetime, timedelta
+from typing import Any, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job_run import JobRun
+from app.schemas.enums import JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ async def has_running_job(db: AsyncSession, job_type: str, digest_date: date) ->
         .where(
             JobRun.job_type == job_type,
             JobRun.digest_date == digest_date,
-            JobRun.status == "running",
+            JobRun.status == JobStatus.RUNNING,
         )
         .limit(1)
     )
@@ -43,19 +45,19 @@ async def clean_stale_jobs(db: AsyncSession, digest_date: date) -> int:
         update(JobRun)
         .where(
             JobRun.digest_date == digest_date,
-            JobRun.status == "running",
+            JobRun.status == JobStatus.RUNNING,
             JobRun.started_at < cutoff,
         )
         .values(
-            status="failed",
+            status=JobStatus.FAILED,
             error_message=f"超时自动清理(>{STALE_THRESHOLD_HOURS}h)",
             finished_at=datetime.now(UTC),
         )
     )
-    count = result.rowcount  # type: ignore[assignment]
+    count: int = cast("CursorResult[Any]", result).rowcount
     if count > 0:
         logger.info("清理了 %d 个超时 running 任务（digest_date=%s）", count, digest_date)
-    return count  # type: ignore[return-value]
+    return count
 
 
 async def unlock_all_running(db: AsyncSession, digest_date: date) -> int:
@@ -68,15 +70,15 @@ async def unlock_all_running(db: AsyncSession, digest_date: date) -> int:
         update(JobRun)
         .where(
             JobRun.digest_date == digest_date,
-            JobRun.status == "running",
+            JobRun.status == JobStatus.RUNNING,
         )
         .values(
-            status="failed",
+            status=JobStatus.FAILED,
             error_message="manually unlocked",
             finished_at=datetime.now(UTC),
         )
     )
-    count = result.rowcount  # type: ignore[assignment]
+    count: int = cast("CursorResult[Any]", result).rowcount
     if count > 0:
         logger.info("手动解锁了 %d 个 running 任务（digest_date=%s）", count, digest_date)
-    return count  # type: ignore[return-value]
+    return count

@@ -16,6 +16,7 @@ from app.digest.cover_generator import generate_cover_image
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.models.job_run import JobRun
+from app.schemas.enums import JobStatus
 from app.services.fetch_service import FetchService
 from app.services.lock_service import has_running_job
 
@@ -61,7 +62,7 @@ async def manual_fetch(
         fetch_svc = FetchService(db)
         result = await fetch_svc.run_daily_fetch(digest_date)
 
-        job_run.status = "completed"
+        job_run.status = JobStatus.COMPLETED
         job_run.finished_at = datetime.now(UTC)
 
         logger.info(
@@ -77,7 +78,7 @@ async def manual_fetch(
 
     except Exception as exc:
         error_msg = str(exc)[:500]
-        job_run.status = "failed"
+        job_run.status = JobStatus.FAILED
         job_run.error_message = error_msg
         job_run.finished_at = datetime.now(UTC)
 

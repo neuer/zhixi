@@ -1,5 +1,6 @@
 """认证 — JWT 生成/验证、bcrypt 密码哈希、密码强度校验、登录限流器。"""
 
+import asyncio
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -27,14 +28,22 @@ class InvalidTokenError(Exception):
 # ── 密码操作 ────────────────────────────────────────────────
 
 
-def hash_password(password: str) -> str:
-    """bcrypt 哈希（默认 12 rounds）。"""
+def _hash_password_sync(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
-def verify_password(password: str, hashed: str) -> bool:
-    """bcrypt 验证。"""
+def _verify_password_sync(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
+
+
+async def hash_password(password: str) -> str:
+    """bcrypt 哈希（异步包装，避免阻塞事件循环）。"""
+    return await asyncio.to_thread(_hash_password_sync, password)
+
+
+async def verify_password(password: str, hashed: str) -> bool:
+    """bcrypt 验证（异步包装）。"""
+    return await asyncio.to_thread(_verify_password_sync, password, hashed)
 
 
 def validate_password_strength(password: str) -> None:
@@ -97,10 +106,10 @@ def check_login_rate_limit(username: str) -> bool:
     attempt = _login_attempts.get(username)
     if not attempt:
         return True
-    if attempt.locked_until and datetime.now(UTC) < attempt.locked_until:
-        return False
-    # 锁定时间已过，重置
-    if attempt.locked_until and datetime.now(UTC) >= attempt.locked_until:
+    if attempt.locked_until:
+        if datetime.now(UTC) < attempt.locked_until:
+            return False
+        # 锁定时间已过，重置
         _login_attempts.pop(username, None)
     return True
 

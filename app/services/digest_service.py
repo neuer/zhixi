@@ -13,12 +13,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
 from app.clients.gemini_client import get_gemini_client
-from app.config import ensure_utc, get_system_config, get_today_digest_date
+from app.config import (
+    ensure_utc,
+    get_system_config,
+    get_today_digest_date,
+    safe_float_config,
+    safe_int_config,
+)
 from app.digest.cover_generator import generate_cover_image
 from app.digest.renderer import render_markdown
 from app.digest.summary_generator import generate_summary
+from app.lib.cost_logger import record_api_cost
 from app.models.account import TwitterAccount
-from app.models.api_cost_log import ApiCostLog
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.models.topic import Topic
@@ -107,15 +113,17 @@ class DigestService:
 
         # 8. 生成导读摘要
         top_items = created_items[:_SUMMARY_TOP_N]
-        summary, cost_response, _degraded = await generate_summary(
+        summary, cost_response, degraded = await generate_summary(
             self._claude, top_items, db=self._db
         )
         digest.summary = summary
+        if degraded:
+            logger.warning("导读摘要使用了降级默认文本 (digest_date=%s)", digest_date)
         if cost_response:
             self._record_cost(cost_response, "summary", digest_date)
 
         # 9. 渲染 Markdown
-        top_n = int(await get_system_config(self._db, "top_n", "10"))
+        top_n = await safe_int_config(self._db, "top_n", 10)
         digest.content_markdown = render_markdown(digest, created_items, top_n)
 
         # 10. 封面图生成（可选，不阻塞）
@@ -123,9 +131,7 @@ class DigestService:
         if enable_cover.lower() == "true":
             gemini_client = get_gemini_client()
             if gemini_client:
-                cover_timeout = float(
-                    await get_system_config(self._db, "cover_generation_timeout", "30")
-                )
+                cover_timeout = await safe_float_config(self._db, "cover_generation_timeout", 30.0)
                 cover_path = await generate_cover_image(
                     gemini_client=gemini_client,
                     top_items=created_items[:_SUMMARY_TOP_N],
@@ -353,16 +359,7 @@ class DigestService:
 
     def _record_cost(self, response: ClaudeResponse, call_type: str, digest_date: date) -> None:
         """写入 api_cost_log。"""
-        cost_log = ApiCostLog(
-            call_date=digest_date,
-            service="claude",
-            call_type=call_type,
-            input_tokens=response.input_tokens,
-            output_tokens=response.output_tokens,
-            estimated_cost=response.estimated_cost,
-            duration_ms=response.duration_ms,
-        )
-        self._db.add(cost_log)
+        record_api_cost(self._db, response, call_type, digest_date)
 
     # ──────────────────────────────────────────────────
     # 重新生成（US-035）
@@ -575,7 +572,7 @@ class DigestService:
         )
         items_result = await self._db.execute(items_stmt)
         items = list(items_result.scalars().all())
-        top_n = int(await get_system_config(self._db, "top_n", "10"))
+        top_n = await safe_int_config(self._db, "top_n", 10)
         digest.content_markdown = render_markdown(digest, items, top_n)
 
     async def edit_item(

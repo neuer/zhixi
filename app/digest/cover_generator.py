@@ -4,6 +4,7 @@
 超时/异常不阻塞主流程，仅 log warning。
 """
 
+import asyncio
 import io
 import logging
 from datetime import date
@@ -120,7 +121,7 @@ async def generate_cover_image(
         _COVERS_DIR.mkdir(parents=True, exist_ok=True)
         filename = f"cover_{digest_date.strftime('%Y%m%d')}.png"
         cover_path = _COVERS_DIR / filename
-        cover_path.write_bytes(resized_bytes)
+        await asyncio.to_thread(cover_path.write_bytes, resized_bytes)
 
         # 记录成本
         _record_cover_cost(

@@ -117,6 +117,16 @@ class FetchService:
                     new_tweets_total += new_count
                     success_count += 1
                 except (httpx.HTTPError, XApiError) as e:
+                    # 401/403 说明 Bearer Token 失效，立即中止
+                    if isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (
+                        401,
+                        403,
+                    ):
+                        logger.error(
+                            "X API 认证失败(%d)，中止全部账号抓取",
+                            e.response.status_code,
+                        )
+                        raise
                     logger.warning(
                         "抓取账号 %s 失败（API 错误）: %s",
                         account.twitter_handle,

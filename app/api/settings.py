@@ -50,15 +50,19 @@ def _get_db_size_mb() -> float:
     return 0.0
 
 
-def _parse_config_value(key: str, value: str) -> int | bool | str | list[int]:
-    """将 DB 字符串值转为对应 Python 类型。"""
-    if key == "push_days":
-        return [int(x.strip()) for x in value.split(",") if x.strip()] if value else []
-    if key in ("top_n", "min_articles", "cover_generation_timeout"):
-        return int(value) if value else 0
-    if key == "enable_cover_generation":
-        return value.lower() == "true"
-    return value
+def _parse_int(value: str, default: int) -> int:
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def _parse_bool(value: str) -> bool:
+    return value.lower() in ("true", "1", "yes")
+
+
+def _parse_int_list(value: str) -> list[int]:
+    return [int(x) for x in value.split(",") if x.strip()]
 
 
 def _serialize_config_value(key: str, value: int | bool | str | list[int]) -> str:
@@ -90,16 +94,12 @@ async def get_settings(
 
     return SettingsResponse(
         push_time=configs.get("push_time", "08:00"),
-        push_days=_parse_config_value("push_days", configs.get("push_days", "1,2,3,4,5,6,7")),  # type: ignore[arg-type]
-        top_n=_parse_config_value("top_n", configs.get("top_n", "10")),  # type: ignore[arg-type]
-        min_articles=_parse_config_value("min_articles", configs.get("min_articles", "1")),  # type: ignore[arg-type]
+        push_days=_parse_int_list(configs.get("push_days", "1,2,3,4,5,6,7")),
+        top_n=_parse_int(configs.get("top_n", "10"), 10),
+        min_articles=_parse_int(configs.get("min_articles", "1"), 1),
         publish_mode=PublishMode(configs.get("publish_mode", "manual")),
-        enable_cover_generation=_parse_config_value(
-            "enable_cover_generation", configs.get("enable_cover_generation", "false")
-        ),  # type: ignore[arg-type]
-        cover_generation_timeout=_parse_config_value(
-            "cover_generation_timeout", configs.get("cover_generation_timeout", "30")
-        ),  # type: ignore[arg-type]
+        enable_cover_generation=_parse_bool(configs.get("enable_cover_generation", "false")),
+        cover_generation_timeout=_parse_int(configs.get("cover_generation_timeout", "30"), 30),
         notification_webhook_url=configs.get("notification_webhook_url", ""),
         db_size_mb=_get_db_size_mb(),
         last_backup_at=last_backup.finished_at if last_backup else None,

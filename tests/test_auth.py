@@ -25,7 +25,7 @@ from app.models.config import SystemConfig
 
 async def _setup_admin(db: AsyncSession, password: str = "Admin123") -> None:
     """在 seeded_db 中写入 admin 密码哈希。"""
-    hashed = hash_password(password)
+    hashed = await hash_password(password)
     result = await db.execute(select(SystemConfig).where(SystemConfig.key == "admin_password_hash"))
     config = result.scalar_one()
     config.value = hashed
@@ -53,10 +53,10 @@ def _clean_rate_limiter():  # noqa: ANN202
 class TestPassword:
     """bcrypt 密码哈希与验证。"""
 
-    def test_hash_and_verify(self) -> None:
-        hashed = hash_password("Admin123")
-        assert verify_password("Admin123", hashed)
-        assert not verify_password("Wrong999", hashed)
+    async def test_hash_and_verify(self) -> None:
+        hashed = await hash_password("Admin123")
+        assert await verify_password("Admin123", hashed)
+        assert not await verify_password("Wrong999", hashed)
 
     def test_validate_strength_valid(self) -> None:
         validate_password_strength("Admin123")  # 不抛异常

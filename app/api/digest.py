@@ -13,7 +13,7 @@ from app.api.deps import get_current_admin, get_digest_service, require_no_pipel
 from app.clients.claude_client import get_claude_client
 from app.clients.notifier import send_alert
 from app.clients.x_client import XApiError
-from app.config import get_system_config, get_today_digest_date
+from app.config import get_system_config, get_today_digest_date, safe_int_config
 from app.database import get_db
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
@@ -32,6 +32,7 @@ from app.schemas.digest_types import (
     ReorderRequest,
     TodayResponse,
 )
+from app.schemas.enums import DigestStatus, JobStatus
 from app.services.digest_service import (
     DigestItemNotFoundError,
     DigestNotEditableError,
@@ -40,7 +41,6 @@ from app.services.digest_service import (
     PreviewTokenInvalidError,
 )
 from app.services.fetch_service import FetchService, TweetAlreadyExistsError
-from app.services.lock_service import has_running_job
 from app.services.process_service import ProcessService
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ async def get_today_digest(
     items = list(items_result.scalars().all())
 
     # low_content_warning
-    min_articles = int(await get_system_config(db, "min_articles", "1"))
+    min_articles = await safe_int_config(db, "min_articles", 1)
     low_content_warning = digest.item_count < min_articles
 
     return TodayResponse(
@@ -152,13 +152,12 @@ async def create_preview_link(
 @router.get("/preview/{token}", response_model=PreviewResponse)
 async def get_preview_by_token(
     token: str,
-    db: AsyncSession = Depends(get_db),
+    svc: DigestService = Depends(get_digest_service),
 ) -> PreviewResponse:
     """根据签名 token 获取预览内容（匿名访问）。
 
     无效/过期/版本失效 token 返回 403。
     """
-    svc = DigestService(db, claude_client=get_claude_client())
     try:
         digest, items = await svc.get_preview_by_token(token)
     except PreviewTokenInvalidError:
@@ -302,13 +301,6 @@ async def regenerate_digest(
     """
     digest_date = get_today_digest_date()
 
-    # 基本锁：同日 pipeline 已 running → 409
-    if await has_running_job(db, "pipeline", digest_date):
-        raise HTTPException(
-            status_code=409,
-            detail="当前有任务在运行中，请稍后再试",
-        ) from None
-
     # 创建 job_run
     job_run = JobRun(
         job_type="pipeline",
@@ -321,11 +313,10 @@ async def regenerate_digest(
     await db.flush()
 
     try:
-        claude = get_claude_client()
-        svc = DigestService(db, claude_client=claude)
+        svc = DigestService(db, claude_client=get_claude_client())
         new_digest = await svc.regenerate_digest(digest_date)
 
-        job_run.status = "completed"
+        job_run.status = JobStatus.COMPLETED
         job_run.finished_at = datetime.now(UTC)
 
         return {
@@ -338,7 +329,7 @@ async def regenerate_digest(
 
     except Exception as exc:
         error_msg = str(exc)[:500]
-        job_run.status = "failed"
+        job_run.status = JobStatus.FAILED
         job_run.error_message = error_msg
         job_run.finished_at = datetime.now(UTC)
 
@@ -407,7 +398,7 @@ async def mark_published(
     if digest.status == "published":
         raise HTTPException(status_code=409, detail="该版本已发布") from None
 
-    digest.status = "published"
+    digest.status = DigestStatus.PUBLISHED
     digest.published_at = datetime.now(UTC)
 
     return MessageResponse(message="发布成功")
@@ -421,13 +412,11 @@ async def add_tweet(
     body: AddTweetRequest,
     db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
+    digest_svc: DigestService = Depends(get_digest_service),
 ) -> AddTweetResponse | JSONResponse:
     """手动补录推文 — M1 抓取 → 入库 → M2 AI 加工 → M3 热度计算 + 建 item。"""
     digest_date = get_today_digest_date()
     claude = get_claude_client()
-
-    # 前置检查：当日必须有可编辑草稿
-    digest_svc = DigestService(db, claude_client=claude)
     try:
         await digest_svc.check_draft_editable(digest_date)
     except DigestNotFoundError:

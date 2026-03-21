@@ -74,7 +74,7 @@ class ClaudeClient:
                 max_tokens=max_tokens,
             )
         except anthropic.APIError as e:
-            raise ClaudeAPIError(str(e)) from None
+            raise ClaudeAPIError(str(e)) from e
 
         duration_ms = int((time.monotonic() - start) * 1000)
 
@@ -86,6 +86,8 @@ class ClaudeClient:
             6,
         )
 
+        if not response.content:
+            raise ClaudeAPIError("Claude API 返回空响应")
         first_block = response.content[0]
         content_text = first_block.text if isinstance(first_block, TextBlock) else str(first_block)
 

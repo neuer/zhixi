@@ -2,10 +2,12 @@
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 
 import httpx
 
+from app.clients.x_client import XApiError
 from app.fetcher.base import BaseFetcher
 from app.schemas.fetcher_types import PublicMetrics, RawTweet, ReferencedTweet
 
@@ -29,14 +31,6 @@ class XApiFetcher(BaseFetcher):
             headers={"Authorization": f"Bearer {bearer_token}"},
             timeout=30.0,
         )
-
-    async def __aenter__(self) -> "XApiFetcher":
-        """支持 async with 用法。"""
-        return self
-
-    async def __aexit__(self, *_: object) -> None:
-        """退出时自动关闭 httpx 客户端。"""
-        await self.close()
 
     async def fetch_user_tweets(
         self,
@@ -199,17 +193,42 @@ class XApiFetcher(BaseFetcher):
         url: str,
         params: dict[str, str],
     ) -> httpx.Response:
-        """发送 GET 请求，遇到 429 限流时指数退避重试（2s→4s→8s，最多 3 次）。"""
+        """发送 GET 请求，遇到 429 限流或网络异常时退避重试。"""
         backoff_delays = [2, 4, 8]
-        response = await self._client.get(url, params=params)
-        for delay in backoff_delays:
-            if response.status_code != 429:
-                break
-            logger.warning("X API 429 限流，%ds 后重试", delay)
-            await asyncio.sleep(delay)
-            response = await self._client.get(url, params=params)
-        response.raise_for_status()
-        return response
+        last_error: Exception | None = None
+
+        for attempt, delay in enumerate([0, *backoff_delays]):
+            if delay > 0:
+                logger.warning("X API 重试第 %d 次，等待 %ds", attempt, delay)
+                await asyncio.sleep(delay)
+            try:
+                response = await self._client.get(url, params=params)
+                if response.status_code != 429:
+                    response.raise_for_status()
+                    return response
+                # 429: 尝试读取 rate limit reset header
+                reset_ts = response.headers.get("x-rate-limit-reset")
+                if reset_ts:
+                    wait = max(int(reset_ts) - int(time.time()), 1)
+                    if wait <= 60:
+                        logger.warning("X API 429，等待 rate-limit-reset %ds", wait)
+                        await asyncio.sleep(wait)
+                        continue
+                last_error = httpx.HTTPStatusError(
+                    "429 Too Many Requests",
+                    request=response.request,
+                    response=response,
+                )
+            except httpx.HTTPStatusError:
+                raise
+            except httpx.HTTPError as e:
+                last_error = e
+                logger.warning("X API 网络异常: %s", e)
+
+        if last_error:
+            raise last_error
+        msg = "X API 请求异常"
+        raise XApiError(msg)
 
     async def fetch_single_tweet(self, tweet_id: str) -> RawTweet:
         """抓取单条推文（X API v2 GET /tweets/:id）。

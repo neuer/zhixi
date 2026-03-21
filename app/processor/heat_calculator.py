@@ -7,11 +7,9 @@
 """
 
 import math
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import UTC, date, datetime
 
-BEIJING_TZ = ZoneInfo("Asia/Shanghai")
-UTC = ZoneInfo("UTC")
+from app.config import BEIJING_TZ
 
 
 def get_reference_time(digest_date: date) -> datetime:

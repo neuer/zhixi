@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job_run import JobRun
+from app.schemas.enums import JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ class BackupService:
                 source_conn.backup(target_conn)
 
             # 3. 成功
-            job.status = "completed"
+            job.status = JobStatus.COMPLETED
             job.finished_at = datetime.now(UTC)
             return BackupResult(success=True, file_path=backup_path)
 
@@ -81,7 +82,7 @@ class BackupService:
             # 3. 失败
             logger.error("数据库备份失败: %s", exc, exc_info=True)
             error_msg = str(exc)
-            job.status = "failed"
+            job.status = JobStatus.FAILED
             job.error_message = error_msg
             job.finished_at = datetime.now(UTC)
             # 若备份文件已创建但内容不完整，尝试清理
