@@ -476,21 +476,62 @@ git commit -m "chore: 更新过时TODO、提取全局异常处理器、前端tok
 
 ## 执行结果
 
-> 以下区域在实施完成后回填
-
 ### 交付物清单
-（待回填）
+
+修改 40 个文件，+900 / -188 行：
+
+| 类别 | 文件 | 说明 |
+|------|------|------|
+| 安全 | `app/main.py` | 异常处理器移除内部详情 + 新增 Digest 全局异常处理器 |
+| 安全 | `app/clients/notifier.py` | 新增 SSRF 校验函数 |
+| 安全 | `docker-compose.yml` | ports→expose |
+| 安全 | `app/auth.py` | bcrypt rounds=12 |
+| Dashboard | `app/api/dashboard.py` | 日期类型修复 + 7天范围 + offset 支持 |
+| Dashboard | `app/schemas/dashboard_types.py` | LogsResponse.total + LogEntry.level Literal |
+| 枚举 | `app/models/*.py` (3 files) | ORM default 改用枚举 |
+| 枚举 | `app/services/*.py` (7 files) | 全量裸字符串→枚举替换 |
+| 枚举 | `app/api/*.py` (4 files) | 路由参数枚举 + 响应 Schema |
+| 枚举 | `app/schemas/*.py` (4 files) | Literal 收窄 + 响应模型定义 |
+| Bug | `app/digest/renderer.py` | JSON 解析日志 |
+| Bug | `app/processor/merger_prompts.py` | 移除重复安全声明 |
+| Bug | `app/fetcher/x_api.py` | 解析失败聚合告警 |
+| Bug | `app/services/process_service.py` | 失败率告警 + 空列表防御 |
+| Bug | `app/services/digest_service.py` | is_current 清理 + 封面降级日志 |
+| 前端 | `admin/src/components/ArticlePreview.vue` | parsePerspectives 对象数组支持 |
+| 前端 | `admin/src/views/Digest.vue` | item_ref_id |
+| 前端 | `admin/src/router/index.ts` | JWT 过期检查 |
+| 生成 | `packages/openapi-client/src/gen/types.gen.ts` | OpenAPI 类型更新 |
+| 测试 | `tests/test_accounts.py`, `tests/test_error_handling.py` | 适配安全修复 |
 
 ### 偏离项表格
+
 | 编号 | 计划 | 实际 | 原因 |
 |------|------|------|------|
-（待回填）
+| I-6 | 调整括号补全顺序（先}再]） | 保持原顺序不变 | 实施 agent 验证后确认原顺序正确：内层 ] 应先关闭，现有测试验证了此行为 |
+| I-16 | ReferencedTweet.type 收窄为 Literal | 保持 str | X API 可能返回 "mentioned"/"pinned" 等值，Literal 会导致运行时校验失败 |
+| — | — | 更新 test_accounts.py | 适配 I-1 异常处理器安全修复 |
+| — | — | 更新 test_error_handling.py | 适配 I-1 异常处理器安全修复 |
+| — | — | 更新 OpenAPI 生成物 | I-16/I-18 Schema 变更触发生成物更新 |
 
 ### 问题与修复记录
-（待回填）
+
+1. **I-1 导致 2 个测试失败**：测试断言了旧的异常消息格式（含内部详情），修复后测试需要适配新的固定消息。已在第 1 轮提交后发现并修复。
+2. **CI 生成物过期**：I-16 的 Literal 收窄和 I-18 的响应 Schema 变更了 OpenAPI 输出，需要 `make gen` 更新前端类型。CI 第 1 轮失败，第 2 轮自动修复通过。
+3. **I-6 括号顺序**：计划复核已指出描述不够明确，实施 agent 验证后确认原有逻辑正确，标记为不修改。
 
 ### 质量门禁详表
-（待回填）
+
+| 门禁 | 结果 |
+|------|------|
+| `ruff check .` | 0 errors |
+| `ruff format --check .` | 0 errors |
+| `pyright` | 0 errors |
+| `pytest` | 537 passed |
+| `vue-tsc --noEmit` | 0 errors |
+| `biome check .` | 通过 |
+| `bun run build` | 通过 |
+| `make gen && git diff --exit-code` | 通过（CI 验证） |
+| GitHub Actions CI | 全绿（backend ✓ / frontend ✓ / codegen ✓） |
 
 ### PR 链接
-（待回填）
+https://github.com/neuer/zhixi/pull/33
