@@ -42,7 +42,7 @@ const apiEntries = computed(() => {
     { label: "Claude API", data: apiStatus.value.claude_api },
     { label: "Gemini API", data: apiStatus.value.gemini_api },
     { label: "微信 API", data: apiStatus.value.wechat_api },
-  ];
+  ].filter((e) => e.data != null);
 });
 
 // 时间选择器
@@ -103,7 +103,8 @@ async function saveSettings() {
     await api.put("/settings", payload);
     showToast("配置已保存");
   } catch {
-    // 拦截器已处理
+    // 拦截器已 toast；重载服务端数据恢复表单
+    await loadSettings();
   } finally {
     saving.value = false;
   }
@@ -115,11 +116,12 @@ async function checkApiStatus() {
   try {
     const resp = await api.get<ApiStatusResponse>("/settings/api-status");
     apiStatus.value = resp.data;
+    closeToast();
   } catch {
-    // 拦截器已处理
+    closeToast();
+    // 拦截器会弹新的错误 toast
   } finally {
     checkingApi.value = false;
-    closeToast();
   }
 }
 

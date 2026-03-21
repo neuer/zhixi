@@ -11,26 +11,25 @@ const router = useRouter();
 
 const activeTab = ref(0);
 const loading = ref(true);
+const error = ref<string | null>(null);
 const costsData = ref<ApiCostsResponse | null>(null);
 const dailyData = ref<DailyCostsResponse | null>(null);
 
 async function loadData() {
   loading.value = true;
+  error.value = null;
   try {
-    const costsResp = await api.get<ApiCostsResponse>("/dashboard/api-costs");
+    const [costsResp, dailyResp] = await Promise.all([
+      api.get<ApiCostsResponse>("/dashboard/api-costs"),
+      api.get<DailyCostsResponse>("/dashboard/api-costs/daily"),
+    ]);
     costsData.value = costsResp.data;
-  } catch {
-    // 拦截器已处理
-  }
-  try {
-    const dailyResp = await api.get<DailyCostsResponse>(
-      "/dashboard/api-costs/daily",
-    );
     dailyData.value = dailyResp.data;
   } catch {
-    // 拦截器已处理
+    error.value = "加载失败，下拉刷新重试";
+  } finally {
+    loading.value = false;
   }
-  loading.value = false;
 }
 
 function formatCost(cost: number): string {
@@ -52,7 +51,12 @@ onMounted(loadData);
         text="费用为估算值，实际费用以服务商账单为准"
       />
 
-      <div style="padding: 12px">
+      <!-- 加载失败 -->
+      <div v-if="!loading && error" style="padding-top: 20vh">
+        <van-empty :description="error" image="error" />
+      </div>
+
+      <div v-else style="padding: 12px">
         <!-- 今日 / 本月切换 -->
         <van-tabs v-model:active="activeTab" style="margin-bottom: 12px">
           <van-tab title="今日">

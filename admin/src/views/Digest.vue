@@ -2,7 +2,7 @@
 import api from "@/api";
 import { filterVisibleItems } from "@/utils/digest";
 import { getStatus } from "@/utils/status";
-import type { TodayResponse } from "@zhixi/openapi-client";
+import type { DigestItemResponse, TodayResponse } from "@zhixi/openapi-client";
 import { showConfirmDialog, showToast } from "vant";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
@@ -11,6 +11,8 @@ const router = useRouter();
 const loading = ref(true);
 const data = ref<TodayResponse | null>(null);
 const error = ref<string | null>(null);
+const publishing = ref(false);
+const regenerating = ref(false);
 
 const visibleItems = computed(() => {
   if (!data.value) return [];
@@ -30,8 +32,14 @@ async function loadData() {
   }
 }
 
+function getItemLabel(item: DigestItemResponse): string {
+  if (item.snapshot_author_handle) return `@${item.snapshot_author_handle}`;
+  if (item.snapshot_topic_type === "aggregated") return "聚合话题";
+  return "";
+}
+
 async function handlePublish() {
-  if (!data.value?.digest) return;
+  if (!data.value?.digest || publishing.value) return;
   try {
     await showConfirmDialog({
       title: "确认发布",
@@ -40,17 +48,20 @@ async function handlePublish() {
   } catch {
     return; // 用户取消
   }
+  publishing.value = true;
   try {
     await api.post("/digest/mark-published");
     showToast("发布成功");
-    await loadData();
   } catch {
     // API 失败已由拦截器处理
+  } finally {
+    publishing.value = false;
+    await loadData();
   }
 }
 
 async function handleRegenerate() {
-  if (!data.value?.digest) return;
+  if (!data.value?.digest || regenerating.value) return;
   try {
     await showConfirmDialog({
       title: "重新生成",
@@ -59,12 +70,15 @@ async function handleRegenerate() {
   } catch {
     return; // 用户取消
   }
+  regenerating.value = true;
   try {
     await api.post("/digest/regenerate");
     showToast("重新生成中...");
-    await loadData();
   } catch {
     // API 失败已由拦截器处理
+  } finally {
+    regenerating.value = false;
+    await loadData();
   }
 }
 
@@ -125,10 +139,10 @@ onMounted(loadData);
 
           <!-- 操作按钮 -->
           <div v-if="data.digest.status === 'draft'" class="action-buttons">
-            <van-button type="primary" block @click="handlePublish">
+            <van-button type="primary" block :loading="publishing" :disabled="publishing" @click="handlePublish">
               确认发布
             </van-button>
-            <van-button type="default" block @click="handleRegenerate">
+            <van-button type="default" block :loading="regenerating" :disabled="regenerating" @click="handleRegenerate">
               重新生成
             </van-button>
           </div>
@@ -139,7 +153,7 @@ onMounted(loadData);
               v-for="(item, idx) in visibleItems"
               :key="item.id"
               :title="`${idx + 1}. ${item.snapshot_title || '无标题'}`"
-              :label="item.snapshot_author_handle ? `@${item.snapshot_author_handle}` : item.snapshot_topic_type === 'aggregated' ? '聚合话题' : ''"
+              :label="getItemLabel(item)"
               is-link
               @click="router.push({ name: 'digest-edit', params: { type: item.item_type, id: item.id } })"
             >
