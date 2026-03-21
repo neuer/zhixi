@@ -1,6 +1,9 @@
-"""Dashboard API 测试 — US-040。"""
+"""Dashboard API 测试 — US-040/US-043/US-044。"""
 
+import json
+import tempfile
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -290,3 +293,313 @@ async def test_overview_7day_records(
     day3 = next(r for r in records if r["date"] == str(TODAY - timedelta(days=3)))
     assert day3["status"] == "published"
     assert day3["item_count"] == 10
+
+
+# ══════════════════════════════════════════
+# US-043: API 成本监控
+# ══════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_api_costs_requires_auth(client: AsyncClient) -> None:
+    """未认证 → 401。"""
+    resp = await client.get("/api/dashboard/api-costs")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_api_costs_daily_requires_auth(client: AsyncClient) -> None:
+    """未认证 → 401。"""
+    resp = await client.get("/api/dashboard/api-costs/daily")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_api_costs_empty(authed_client: AsyncClient) -> None:
+    """无数据时返回 0。"""
+    with patch("app.api.dashboard.get_today_digest_date", return_value=TODAY):
+        resp = await authed_client.get("/api/dashboard/api-costs")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    assert data["today"]["total_cost"] == 0
+    assert data["today"]["by_service"] == []
+    assert data["this_month"]["total_cost"] == 0
+    assert data["this_month"]["by_service"] == []
+
+
+@pytest.mark.asyncio
+async def test_api_costs_with_data(
+    authed_client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """今日 + 本月各有数据，正确聚合。"""
+    # 今日成本
+    db.add(
+        ApiCostLog(
+            call_date=TODAY,
+            service="claude",
+            call_type="global_analysis",
+            input_tokens=50000,
+            output_tokens=2000,
+            estimated_cost=0.18,
+            duration_ms=3000,
+        )
+    )
+    # 本月早些时候
+    db.add(
+        ApiCostLog(
+            call_date=date(2026, 3, 5),
+            service="claude",
+            call_type="single_process",
+            input_tokens=10000,
+            output_tokens=500,
+            estimated_cost=0.04,
+            duration_ms=1500,
+        )
+    )
+    # 上个月 — 不计入本月
+    db.add(
+        ApiCostLog(
+            call_date=date(2026, 2, 28),
+            service="claude",
+            call_type="global_analysis",
+            input_tokens=50000,
+            output_tokens=2000,
+            estimated_cost=0.18,
+            duration_ms=3000,
+        )
+    )
+    await db.commit()
+
+    with patch("app.api.dashboard.get_today_digest_date", return_value=TODAY):
+        resp = await authed_client.get("/api/dashboard/api-costs")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    # 今日只有一条 0.18
+    assert data["today"]["total_cost"] == pytest.approx(0.18, abs=0.01)
+    assert len(data["today"]["by_service"]) == 1
+
+    # 本月包含今日 + 3月5日 = 0.18 + 0.04 = 0.22
+    assert data["this_month"]["total_cost"] == pytest.approx(0.22, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_api_costs_daily_empty(authed_client: AsyncClient) -> None:
+    """无数据返回空 days。"""
+    with patch("app.api.dashboard.get_today_digest_date", return_value=TODAY):
+        resp = await authed_client.get("/api/dashboard/api-costs/daily")
+    assert resp.status_code == 200
+    assert resp.json()["days"] == []
+
+
+@pytest.mark.asyncio
+async def test_api_costs_daily_with_data(
+    authed_client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """多天多 service 正确聚合。"""
+    for day_offset in range(3):
+        d = TODAY - timedelta(days=day_offset)
+        db.add(
+            ApiCostLog(
+                call_date=d,
+                service="claude",
+                call_type="global_analysis",
+                input_tokens=50000,
+                output_tokens=2000,
+                estimated_cost=0.18,
+                duration_ms=3000,
+            )
+        )
+        db.add(
+            ApiCostLog(
+                call_date=d,
+                service="x",
+                call_type="fetch_tweets",
+                input_tokens=0,
+                output_tokens=0,
+                estimated_cost=0.01,
+                duration_ms=800,
+            )
+        )
+    await db.commit()
+
+    with patch("app.api.dashboard.get_today_digest_date", return_value=TODAY):
+        resp = await authed_client.get("/api/dashboard/api-costs/daily")
+    assert resp.status_code == 200
+
+    days = resp.json()["days"]
+    assert len(days) == 3
+
+    # 按日期降序
+    dates = [d["date"] for d in days]
+    assert dates == sorted(dates, reverse=True)
+
+    # 每天 claude=0.18, x=0.01, total=0.19
+    for day in days:
+        assert day["claude_cost"] == pytest.approx(0.18, abs=0.01)
+        assert day["x_cost"] == pytest.approx(0.01, abs=0.01)
+        assert day["total_cost"] == pytest.approx(0.19, abs=0.01)
+        assert day["gemini_cost"] == 0.0
+
+
+# ══════════════════════════════════════════
+# US-044: Dashboard 日志展示
+# ══════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_logs_requires_auth(client: AsyncClient) -> None:
+    """未认证 → 401。"""
+    resp = await client.get("/api/dashboard/logs")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logs_empty(authed_client: AsyncClient) -> None:
+    """日志文件不存在时返回空列表。"""
+    with patch("app.api.dashboard.LOG_FILE_PATH", Path("/nonexistent/app.log")):
+        resp = await authed_client.get("/api/dashboard/logs")
+    assert resp.status_code == 200
+    assert resp.json()["logs"] == []
+
+
+@pytest.mark.asyncio
+async def test_logs_default(authed_client: AsyncClient) -> None:
+    """默认返回 INFO 及以上级别的日志。"""
+    lines = []
+    for i in range(5):
+        lines.append(
+            json.dumps(
+                {
+                    "timestamp": f"2026-03-20T10:00:{i:02d}Z",
+                    "level": "INFO",
+                    "message": f"测试消息 {i}",
+                    "module": "test",
+                    "request_id": None,
+                }
+            )
+        )
+    lines.append(
+        json.dumps(
+            {
+                "timestamp": "2026-03-20T10:00:05Z",
+                "level": "DEBUG",
+                "message": "调试消息",
+                "module": "test",
+                "request_id": None,
+            }
+        )
+    )
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as f:
+        f.write("\n".join(lines) + "\n")
+        tmp_path = Path(f.name)
+
+    try:
+        with patch("app.api.dashboard.LOG_FILE_PATH", tmp_path):
+            resp = await authed_client.get("/api/dashboard/logs")
+        assert resp.status_code == 200
+
+        logs = resp.json()["logs"]
+        # 默认 INFO 级别，不包含 DEBUG
+        assert len(logs) == 5
+        assert all(log["level"] != "DEBUG" for log in logs)
+        # 最新的在前（倒序）
+        assert logs[0]["message"] == "测试消息 4"
+    finally:
+        tmp_path.unlink()
+
+
+@pytest.mark.asyncio
+async def test_logs_filter_error(authed_client: AsyncClient) -> None:
+    """level=ERROR 只返回 ERROR 及以上。"""
+    lines = [
+        json.dumps(
+            {
+                "timestamp": "2026-03-20T10:00:00Z",
+                "level": "INFO",
+                "message": "信息",
+                "module": "test",
+                "request_id": None,
+            }
+        ),
+        json.dumps(
+            {
+                "timestamp": "2026-03-20T10:00:01Z",
+                "level": "WARNING",
+                "message": "警告",
+                "module": "test",
+                "request_id": None,
+            }
+        ),
+        json.dumps(
+            {
+                "timestamp": "2026-03-20T10:00:02Z",
+                "level": "ERROR",
+                "message": "错误",
+                "module": "test",
+                "request_id": None,
+            }
+        ),
+        json.dumps(
+            {
+                "timestamp": "2026-03-20T10:00:03Z",
+                "level": "CRITICAL",
+                "message": "致命",
+                "module": "test",
+                "request_id": None,
+            }
+        ),
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as f:
+        f.write("\n".join(lines) + "\n")
+        tmp_path = Path(f.name)
+
+    try:
+        with patch("app.api.dashboard.LOG_FILE_PATH", tmp_path):
+            resp = await authed_client.get("/api/dashboard/logs?level=ERROR")
+        assert resp.status_code == 200
+
+        logs = resp.json()["logs"]
+        assert len(logs) == 2
+        levels = {log["level"] for log in logs}
+        assert levels == {"ERROR", "CRITICAL"}
+    finally:
+        tmp_path.unlink()
+
+
+@pytest.mark.asyncio
+async def test_logs_limit(authed_client: AsyncClient) -> None:
+    """limit 参数限制返回条数。"""
+    lines = [
+        json.dumps(
+            {
+                "timestamp": f"2026-03-20T10:00:{i:02d}Z",
+                "level": "INFO",
+                "message": f"消息 {i}",
+                "module": "test",
+                "request_id": None,
+            }
+        )
+        for i in range(20)
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".log", delete=False) as f:
+        f.write("\n".join(lines) + "\n")
+        tmp_path = Path(f.name)
+
+    try:
+        with patch("app.api.dashboard.LOG_FILE_PATH", tmp_path):
+            resp = await authed_client.get("/api/dashboard/logs?limit=5")
+        assert resp.status_code == 200
+
+        logs = resp.json()["logs"]
+        assert len(logs) == 5
+        # 最新在前
+        assert logs[0]["message"] == "消息 19"
+    finally:
+        tmp_path.unlink()

@@ -121,6 +121,12 @@ onMounted(loadData);
 
         <!-- 成本卡片 -->
         <van-cell-group inset title="今日 API 成本" style="margin-bottom: 12px">
+          <template #title>
+            <div style="display: flex; justify-content: space-between; align-items: center">
+              <span>今日 API 成本</span>
+              <span style="color: #1989fa; font-size: 12px; cursor: pointer" @click="router.push('/costs')">查看详情 &gt;</span>
+            </div>
+          </template>
           <van-cell
             title="总费用（估算）"
             :value="`$${data?.today_cost?.total_cost?.toFixed(4) ?? '0.0000'}`"
@@ -149,9 +155,10 @@ onMounted(loadData);
           审核今日内容
         </van-button>
 
-        <van-grid :column-num="2" :gutter="10" style="margin-bottom: 12px">
+        <van-grid :column-num="3" :gutter="10" style="margin-bottom: 12px">
           <van-grid-item icon="friends-o" text="大V管理" @click="goAccounts" />
           <van-grid-item icon="setting-o" text="系统设置" @click="goSettings" />
+          <van-grid-item icon="description" text="系统日志" @click="router.push('/logs')" />
         </van-grid>
 
         <!-- 近 7 天记录 -->
