@@ -45,6 +45,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 6. **Prompt 安全**: 所有 AI Prompt 开头注入安全声明
 7. **API Key 安全**: 仅 `.env` 存储，不经 API 传输/回显
 8. **中文规范**: 所有 Python 文件中文 docstring，错误消息中文面向用户
+9. **检查闭环**: 禁止通过 ignore、disable、suppress 等方式跳过任何 lint/类型/测试检查，除非同时由另一工具覆盖同等检测能力并在提交时说明闭环关系（例：biome 对 .vue 关闭 noUnusedVariables → vue-tsc noUnusedLocals 接管）。单纯关闭检查视为未通过质量门禁
 
 ## 模块概览
 
