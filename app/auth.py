@@ -29,7 +29,7 @@ class InvalidTokenError(Exception):
 
 
 def _hash_password_sync(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
 
 
 def _verify_password_sync(password: str, hashed: str) -> bool:

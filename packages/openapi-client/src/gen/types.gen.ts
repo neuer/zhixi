@@ -76,9 +76,17 @@ export type ApiCostsResponse = {
  * 单个 API 状态。
  */
 export type ApiStatusItem = {
-    status: string;
+    status: 'ok' | 'error' | 'unconfigured';
     latency_ms?: (number | null);
 };
+
+export type status = 'ok' | 'error' | 'unconfigured';
+
+export const status = {
+    OK: 'ok',
+    ERROR: 'error',
+    UNCONFIGURED: 'unconfigured'
+} as const;
 
 /**
  * API 状态检测响应。
@@ -304,12 +312,22 @@ export const JobType = {
  */
 export type LogEntry = {
     timestamp: string;
-    level: string;
+    level: 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
     message: string;
     module: string;
     request_id?: (string | null);
     exception?: (string | null);
 };
+
+export type level = 'DEBUG' | 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';
+
+export const level = {
+    DEBUG: 'DEBUG',
+    INFO: 'INFO',
+    WARNING: 'WARNING',
+    ERROR: 'ERROR',
+    CRITICAL: 'CRITICAL'
+} as const;
 
 /**
  * 管理员登录请求。
@@ -332,6 +350,24 @@ export type LoginResponse = {
  */
 export type LogsResponse = {
     logs: Array<LogEntry>;
+    total?: (number | null);
+};
+
+/**
+ * 手动封面图生成响应。
+ */
+export type ManualCoverResponse = {
+    message: string;
+    cover_path: string;
+};
+
+/**
+ * 手动抓取响应。
+ */
+export type ManualFetchResponse = {
+    message: string;
+    job_run_id: number;
+    new_tweets: number;
 };
 
 /**
@@ -388,6 +424,17 @@ export const PublishMode = {
 } as const;
 
 /**
+ * 重新生成草稿响应。
+ */
+export type RegenerateResponse = {
+    message: string;
+    digest_id: number;
+    version: number;
+    item_count: number;
+    job_run_id: number;
+};
+
+/**
  * 排序请求条目。
  */
 export type ReorderInput = {
@@ -407,11 +454,26 @@ export type ReorderRequest = {
  * 单个服务的成本摘要。
  */
 export type ServiceCostItem = {
-    service: string;
+    service: ServiceType;
     call_count: number;
     total_tokens: number;
     estimated_cost: number;
 };
+
+/**
+ * 外部服务类型。
+ */
+export type ServiceType = 'x' | 'claude' | 'gemini' | 'wechat';
+
+/**
+ * 外部服务类型。
+ */
+export const ServiceType = {
+    X: 'x',
+    CLAUDE: 'claude',
+    GEMINI: 'gemini',
+    WECHAT: 'wechat'
+} as const;
 
 /**
  * 系统设置响应（不含密钥）。
@@ -437,7 +499,7 @@ export type SettingsUpdate = {
     push_days?: (Array<(number)> | null);
     top_n?: (number | null);
     min_articles?: (number | null);
-    publish_mode?: ('manual' | 'api' | null);
+    publish_mode?: (PublishMode | null);
     enable_cover_generation?: (boolean | null);
     cover_generation_timeout?: (number | null);
     notification_webhook_url?: (string | null);

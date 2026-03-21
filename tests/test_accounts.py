@@ -144,7 +144,7 @@ async def test_create_account_x_api_failure(authed_client: AsyncClient) -> None:
     )
     assert resp.status_code == 502
     body = resp.json()
-    assert body["detail"].startswith("X API拉取失败")
+    assert body["detail"] == "X API 拉取失败，请稍后重试"
     assert body["allow_manual"] is True
 
 

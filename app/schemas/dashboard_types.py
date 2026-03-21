@@ -1,17 +1,18 @@
 """Dashboard 相关类型。"""
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
 import app.schemas.enums as enums
-from app.schemas.enums import JobStatus, JobType
+from app.schemas.enums import JobStatus, JobType, ServiceType
 
 
 class ServiceCostItem(BaseModel):
     """单个服务的成本摘要。"""
 
-    service: str
+    service: ServiceType
     call_count: int
     total_tokens: int
     estimated_cost: float
@@ -97,7 +98,7 @@ class LogEntry(BaseModel):
     """日志条目。"""
 
     timestamp: str
-    level: str
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     message: str
     module: str
     request_id: str | None = None
@@ -108,3 +109,4 @@ class LogsResponse(BaseModel):
     """日志查询响应。"""
 
     logs: list[LogEntry]
+    total: int | None = None

@@ -2,13 +2,12 @@
 
 import logging
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, cast
 
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job_run import JobRun
-from app.schemas.enums import JobStatus
+from app.schemas.enums import JobStatus, JobType
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ async def has_running_job(db: AsyncSession, job_type: str, digest_date: date) ->
 
 async def has_running_pipeline(db: AsyncSession, digest_date: date) -> bool:
     """增强锁：检查当日是否存在 running 的 pipeline 任务。"""
-    return await has_running_job(db, "pipeline", digest_date)
+    return await has_running_job(db, JobType.PIPELINE, digest_date)
 
 
 async def clean_stale_jobs(db: AsyncSession, digest_date: date) -> int:
@@ -54,7 +53,7 @@ async def clean_stale_jobs(db: AsyncSession, digest_date: date) -> int:
             finished_at=datetime.now(UTC),
         )
     )
-    count: int = cast("CursorResult[Any]", result).rowcount
+    count: int = result.rowcount  # type: ignore[assignment]
     if count > 0:
         logger.info("清理了 %d 个超时 running 任务（digest_date=%s）", count, digest_date)
     return count
@@ -78,7 +77,7 @@ async def unlock_all_running(db: AsyncSession, digest_date: date) -> int:
             finished_at=datetime.now(UTC),
         )
     )
-    count: int = cast("CursorResult[Any]", result).rowcount
+    count: int = result.rowcount  # type: ignore[assignment]
     if count > 0:
         logger.info("手动解锁了 %d 个 running 任务（digest_date=%s）", count, digest_date)
     return count

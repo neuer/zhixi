@@ -30,6 +30,7 @@ from app.models.digest_item import DigestItem
 from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
+from app.schemas.enums import DigestStatus, ItemType, TopicType
 
 logger = logging.getLogger(__name__)
 
@@ -84,12 +85,19 @@ class DigestService:
         # 5. 按 heat_score 降序排序
         sortable_items.sort(key=lambda x: x[0], reverse=True)
 
-        # 6. 创建 DailyDigest
+        # 6. 清理同日期旧记录的 is_current 标记
+        await self._db.execute(
+            update(DailyDigest)
+            .where(DailyDigest.digest_date == digest_date, DailyDigest.is_current.is_(True))
+            .values(is_current=False)
+        )
+
+        # 7. 创建 DailyDigest
         digest = DailyDigest(
             digest_date=digest_date,
             version=version,
             is_current=True,
-            status="draft",
+            status=DigestStatus.DRAFT,
             item_count=len(sortable_items),
         )
         self._db.add(digest)
@@ -140,6 +148,8 @@ class DigestService:
                     db=self._db,
                 )
                 digest.cover_image_path = cover_path
+                if cover_path is None:
+                    logger.warning("封面图生成失败，日报将无封面 (digest_date=%s)", digest_date)
 
         await self._db.flush()
         logger.info(
@@ -257,7 +267,7 @@ class DigestService:
         account = accounts_map.get(tweet.account_id)
         return DigestItem(
             digest_id=digest_id,
-            item_type="tweet",
+            item_type=ItemType.TWEET,
             item_ref_id=tweet.id,
             display_order=display_order,
             snapshot_title=tweet.title,
@@ -279,7 +289,7 @@ class DigestService:
         accounts_map: dict[int, TwitterAccount],
     ) -> DigestItem:
         """创建 topic 类型 DigestItem。"""
-        if topic.type == "aggregated":
+        if topic.type == TopicType.AGGREGATED:
             return self._create_aggregated_item(
                 digest_id, display_order, topic, members, accounts_map
             )
@@ -297,7 +307,7 @@ class DigestService:
         source_tweets = self._build_source_tweets_json(members, accounts_map)
         return DigestItem(
             digest_id=digest_id,
-            item_type="topic",
+            item_type=ItemType.TOPIC,
             item_ref_id=topic.id,
             display_order=display_order,
             snapshot_title=topic.title,
@@ -306,7 +316,7 @@ class DigestService:
             snapshot_perspectives=topic.perspectives,
             snapshot_heat_score=topic.heat_score,
             snapshot_source_tweets=source_tweets,
-            snapshot_topic_type="aggregated",
+            snapshot_topic_type=TopicType.AGGREGATED,
         )
 
     def _create_thread_item(
@@ -323,7 +333,7 @@ class DigestService:
         first_account = accounts_map.get(first_tweet.account_id) if first_tweet else None
         return DigestItem(
             digest_id=digest_id,
-            item_type="topic",
+            item_type=ItemType.TOPIC,
             item_ref_id=topic.id,
             display_order=display_order,
             snapshot_title=topic.title,
@@ -333,7 +343,7 @@ class DigestService:
             snapshot_author_name=first_account.display_name if first_account else None,
             snapshot_author_handle=first_account.twitter_handle if first_account else None,
             snapshot_tweet_url=first_tweet.tweet_url if first_tweet else None,
-            snapshot_topic_type="thread",
+            snapshot_topic_type=TopicType.THREAD,
         )
 
     def _build_source_tweets_json(

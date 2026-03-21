@@ -17,7 +17,7 @@ from app.database import get_db
 from app.models.config import SystemConfig
 from app.models.job_run import JobRun
 from app.schemas.digest_types import MessageResponse
-from app.schemas.enums import PublishMode
+from app.schemas.enums import JobStatus, JobType, PublishMode
 from app.schemas.settings_types import (
     ApiStatusItem,
     ApiStatusResponse,
@@ -62,7 +62,16 @@ def _parse_bool(value: str) -> bool:
 
 
 def _parse_int_list(value: str) -> list[int]:
-    return [int(x) for x in value.split(",") if x.strip()]
+    result: list[int] = []
+    for x in value.split(","):
+        x = x.strip()
+        if not x:
+            continue
+        try:
+            result.append(int(x))
+        except ValueError:
+            continue
+    return result
 
 
 def _serialize_config_value(key: str, value: int | bool | str | list[int]) -> str:
@@ -86,7 +95,7 @@ async def get_settings(
     # 查询最近 backup
     backup_result = await db.execute(
         select(JobRun)
-        .where(JobRun.job_type == "backup", JobRun.status == "completed")
+        .where(JobRun.job_type == JobType.BACKUP, JobRun.status == JobStatus.COMPLETED)
         .order_by(desc(JobRun.finished_at))
         .limit(1)
     )

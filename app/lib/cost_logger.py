@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_today_digest_date
 from app.models.api_cost_log import ApiCostLog
 from app.schemas.client_types import ClaudeResponse
+from app.schemas.enums import ServiceType
 
 
 def record_api_cost(
@@ -14,7 +15,7 @@ def record_api_cost(
     response: ClaudeResponse,
     call_type: str,
     digest_date: date | None,
-    service: str = "claude",
+    service: str = ServiceType.CLAUDE,
 ) -> None:
     """记录成功的 API 调用成本。"""
     db.add(
@@ -36,7 +37,7 @@ def record_api_cost_failure(
     db: AsyncSession,
     call_type: str,
     digest_date: date | None,
-    service: str = "claude",
+    service: str = ServiceType.CLAUDE,
 ) -> None:
     """记录失败的 API 调用。"""
     db.add(

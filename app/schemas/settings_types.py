@@ -31,7 +31,7 @@ class SettingsUpdate(BaseModel):
     push_days: list[int] | None = None
     top_n: int | None = Field(default=None, ge=1, le=50)
     min_articles: int | None = Field(default=None, ge=0, le=50)
-    publish_mode: Literal["manual", "api"] | None = None
+    publish_mode: PublishMode | None = None
     enable_cover_generation: bool | None = None
     cover_generation_timeout: int | None = Field(default=None, ge=5, le=300)
     notification_webhook_url: str | None = None
@@ -62,7 +62,7 @@ class SettingsUpdate(BaseModel):
 class ApiStatusItem(BaseModel):
     """单个 API 状态。"""
 
-    status: str
+    status: Literal["ok", "error", "unconfigured"]
     latency_ms: int | None = None
 
 

@@ -19,6 +19,7 @@ from app.models.account import TwitterAccount
 from app.models.api_cost_log import ApiCostLog
 from app.models.fetch_log import FetchLog
 from app.models.tweet import Tweet
+from app.schemas.enums import ServiceType, TweetSource
 from app.schemas.fetcher_types import KEEP_TYPES, FetchResult, RawTweet, TweetType
 
 logger = logging.getLogger(__name__)
@@ -34,13 +35,13 @@ _TWEET_URL_PATTERN = re.compile(r"https?://(?:x\.com|twitter\.com)/(\w+)/status/
 
 def _parse_tweet_id(tweet_url: str) -> str | None:
     """从推文 URL 提取 tweet_id。"""
-    match = _TWEET_URL_PATTERN.match(tweet_url.strip())
+    match = _TWEET_URL_PATTERN.search(tweet_url.strip())
     return match.group(2) if match else None
 
 
 def _extract_handle_from_url(tweet_url: str) -> str | None:
     """从推文 URL 提取 handle。"""
-    match = _TWEET_URL_PATTERN.match(tweet_url.strip())
+    match = _TWEET_URL_PATTERN.search(tweet_url.strip())
     return match.group(1) if match else None
 
 
@@ -190,7 +191,7 @@ class FetchService:
         # 记录 api_cost_log
         cost_log = ApiCostLog(
             call_date=digest_date,
-            service="x",
+            service=ServiceType.X,
             call_type="fetch_tweets",
             endpoint=f"/users/{account.twitter_user_id}/tweets",
             success=True,
@@ -256,7 +257,7 @@ class FetchService:
         # 记录 API 成本
         cost_log = ApiCostLog(
             call_date=digest_date,
-            service="x",
+            service=ServiceType.X,
             call_type="fetch_single_tweet",
             success=True,
         )
@@ -270,7 +271,7 @@ class FetchService:
 
         # 构建 Tweet ORM
         tweet = _raw_to_model(raw, account, digest_date, tweet_type)
-        tweet.source = "manual"
+        tweet.source = TweetSource.MANUAL
         tweet.is_ai_relevant = True
         self.db.add(tweet)
         await self.db.flush()
@@ -340,7 +341,7 @@ def _raw_to_model(
         replies=raw.public_metrics.reply_count,
         is_quote_tweet=tweet_type == TweetType.QUOTE,
         is_self_thread_reply=tweet_type == TweetType.SELF_REPLY,
-        source="auto",
+        source=TweetSource.AUTO,
     )
 
 

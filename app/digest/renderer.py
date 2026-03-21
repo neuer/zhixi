@@ -5,10 +5,14 @@
 """
 
 import json
+import logging
 from datetime import date
 
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
+from app.schemas.enums import ItemType, TopicType
+
+logger = logging.getLogger(__name__)
 
 
 def render_markdown(
@@ -79,7 +83,7 @@ def _render_details(items: list[DigestItem]) -> str:
 
 def _render_detail_item(item: DigestItem, rank: int) -> str:
     """渲染单条详细资讯（分发到对应模板）。"""
-    if item.item_type == "topic" and item.snapshot_topic_type == "aggregated":
+    if item.item_type == ItemType.TOPIC and item.snapshot_topic_type == TopicType.AGGREGATED:
         return _render_aggregated(item, rank)
     # tweet 和 thread 都用单条模板
     return _render_single(item, rank)
@@ -175,5 +179,5 @@ def _parse_json_list(json_str: str | None) -> list[dict[str, str]]:
         if isinstance(data, list):
             return data
     except (json.JSONDecodeError, TypeError):
-        pass
+        logger.warning("JSON 列表解析失败: %s", json_str[:200] if json_str else json_str)
     return []

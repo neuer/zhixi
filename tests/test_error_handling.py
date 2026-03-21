@@ -21,7 +21,8 @@ async def test_x_api_error_handler_includes_detail():
     assert response.status_code == 502
     body = response.body
     body_str = body.decode() if isinstance(body, bytes) else str(body)
-    assert "Token 已过期" in body_str
+    # I-1: 异常处理器不再泄露内部异常信息，返回固定消息
+    assert "X API 拉取失败，请稍后重试" in body_str
     assert "allow_manual" in body_str
 
 

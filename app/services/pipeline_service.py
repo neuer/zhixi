@@ -15,7 +15,7 @@ from app.clients.claude_client import get_claude_client
 from app.clients.notifier import send_alert
 from app.config import get_system_config, get_today_digest_date
 from app.models.job_run import JobRun
-from app.schemas.enums import JobStatus
+from app.schemas.enums import JobStatus, JobType, TriggerSource
 from app.schemas.fetcher_types import FetchResult
 from app.schemas.pipeline_types import PipelineResult
 from app.schemas.processor_types import ProcessResult
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 async def run_pipeline(
     db: AsyncSession,
-    trigger_source: str = "cron",
+    trigger_source: str = TriggerSource.CRON,
 ) -> PipelineResult:
     """执行每日 Pipeline 主流程：fetch → process → digest。
 
@@ -43,7 +43,7 @@ async def run_pipeline(
     push_days_str = await get_system_config(db, "push_days", "1,2,3,4,5,6,7")
     today_weekday = str(digest_date.isoweekday())
     if today_weekday not in push_days_str.split(","):
-        job_run = _create_job_run(digest_date, trigger_source, status="skipped")
+        job_run = _create_job_run(digest_date, trigger_source, status=JobStatus.SKIPPED)
         db.add(job_run)
         await db.flush()
         logger.info(
@@ -62,7 +62,7 @@ async def run_pipeline(
         logger.info("已清理 %d 个超时 running 任务", cleaned)
 
     # ── 3. 检查锁 ────────────────────────────────────────
-    if await has_running_job(db, "pipeline", digest_date):
+    if await has_running_job(db, JobType.PIPELINE, digest_date):
         logger.warning("同日已有 running pipeline，跳过")
         return PipelineResult(
             status="skipped",
@@ -133,7 +133,7 @@ async def run_pipeline(
                 db,
             )
         except Exception:
-            logger.warning("Pipeline 失败通知发送也失败", exc_info=True)
+            logger.error("Pipeline 失败通知发送也失败", exc_info=True)
 
         return PipelineResult(
             status="failed",
@@ -149,16 +149,16 @@ async def run_pipeline(
 def _create_job_run(
     digest_date: date,
     trigger_source: str,
-    status: str = "running",
+    status: str = JobStatus.RUNNING,
 ) -> JobRun:
     """创建 job_run 记录。"""
     return JobRun(
-        job_type="pipeline",
+        job_type=JobType.PIPELINE,
         digest_date=digest_date,
         trigger_source=trigger_source,
         status=status,
         started_at=datetime.now(UTC),
-        finished_at=datetime.now(UTC) if status == "skipped" else None,
+        finished_at=datetime.now(UTC) if status == JobStatus.SKIPPED else None,
     )
 
 

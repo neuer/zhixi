@@ -6,6 +6,7 @@ from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base, _utcnow
+from app.schemas.enums import DigestStatus, PublishMode
 
 
 class DailyDigest(Base):
@@ -23,8 +24,8 @@ class DailyDigest(Base):
     content_html: Mapped[str | None] = mapped_column(Text, nullable=True)
     cover_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     item_count: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(20), default="draft")
-    publish_mode: Mapped[str] = mapped_column(String(20), default="manual")
+    status: Mapped[str] = mapped_column(String(20), default=DigestStatus.DRAFT)
+    publish_mode: Mapped[str] = mapped_column(String(20), default=PublishMode.MANUAL)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     job_run_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("job_runs.id"), nullable=True

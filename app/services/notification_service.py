@@ -1,2 +1,1 @@
-"""notification_service — 编排层。"""
-# TODO: Phase 2 实现
+"""notification_service — 已由 app/clients/notifier.py 实现，本模块保留为扩展预留。"""

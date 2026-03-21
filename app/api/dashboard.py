@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
@@ -31,7 +31,7 @@ from app.schemas.dashboard_types import (
     PipelineStatus,
     ServiceCostItem,
 )
-from app.schemas.enums import JobStatus, JobType
+from app.schemas.enums import DigestStatus, JobStatus, JobType
 
 router = APIRouter()
 
@@ -129,15 +129,16 @@ async def get_api_costs_daily(
 async def get_logs(
     level: str = Query(default="INFO"),
     limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     _admin: str = Depends(get_current_admin),
 ) -> LogsResponse:
-    """读取最新日志，按级别过滤。"""
+    """读取最新日志，按级别过滤，支持 offset 分页。"""
     min_severity = LEVEL_SEVERITY.get(level.upper(), 20)
 
     if not LOG_FILE_PATH.exists():
-        return LogsResponse(logs=[])
+        return LogsResponse(logs=[], total=0)
 
-    entries: list[LogEntry] = []
+    all_entries: list[LogEntry] = []
     text = await asyncio.to_thread(LOG_FILE_PATH.read_text, encoding="utf-8")
     lines = text.splitlines()
 
@@ -156,7 +157,7 @@ async def get_logs(
         if entry_severity < min_severity:
             continue
 
-        entries.append(
+        all_entries.append(
             LogEntry(
                 timestamp=obj.get("timestamp", ""),
                 level=entry_level,
@@ -167,10 +168,14 @@ async def get_logs(
             )
         )
 
-        if len(entries) >= limit:
+        # 提前终止：已收集够 offset + limit 条
+        if len(all_entries) >= offset + limit:
             break
 
-    return LogsResponse(logs=entries)
+    total = len(all_entries)
+    page_entries = all_entries[offset : offset + limit]
+
+    return LogsResponse(logs=page_entries, total=total)
 
 
 # ── 内部辅助函数 ──
@@ -180,7 +185,7 @@ async def _get_pipeline_status(db: AsyncSession, today: date) -> PipelineStatus:
     """获取今日最新 pipeline 状态。"""
     result = await db.execute(
         select(JobRun)
-        .where(and_(JobRun.job_type == "pipeline", JobRun.digest_date == today))
+        .where(and_(JobRun.job_type == JobType.PIPELINE, JobRun.digest_date == today))
         .order_by(desc(JobRun.started_at))
         .limit(1)
     )
@@ -265,7 +270,7 @@ async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRec
 
     result = await db.execute(
         select(DailyDigest)
-        .where(and_(DailyDigest.digest_date > since, DailyDigest.digest_date < today))
+        .where(and_(DailyDigest.digest_date >= since, DailyDigest.digest_date < today))
         .order_by(DailyDigest.digest_date, desc(DailyDigest.version))
     )
     all_digests = result.scalars().all()
@@ -278,9 +283,9 @@ async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRec
             by_date[d.digest_date] = d
         else:
             # published 优先
-            if d.status == "published" and existing.status != "published":
+            if d.status == DigestStatus.PUBLISHED and existing.status != DigestStatus.PUBLISHED:
                 by_date[d.digest_date] = d
-            elif d.status != "published" and existing.status == "published":
+            elif d.status != DigestStatus.PUBLISHED and existing.status == DigestStatus.PUBLISHED:
                 pass  # 保留 existing
             elif d.is_current and not existing.is_current:
                 by_date[d.digest_date] = d
@@ -304,15 +309,15 @@ async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRec
 
 async def _get_alerts(db: AsyncSession, today: date) -> list[AlertItem]:
     """近 7 天 failed 的 pipeline/fetch job_runs。"""
-    since = today - timedelta(days=7)
+    since_dt = datetime(today.year, today.month, today.day, tzinfo=UTC) - timedelta(days=7)
 
     result = await db.execute(
         select(JobRun)
         .where(
             and_(
-                JobRun.status == "failed",
-                JobRun.job_type.in_(["pipeline", "fetch"]),
-                JobRun.started_at >= since,
+                JobRun.status == JobStatus.FAILED,
+                JobRun.job_type.in_([JobType.PIPELINE, JobType.FETCH]),
+                JobRun.started_at >= since_dt,
             )
         )
         .order_by(desc(JobRun.started_at))

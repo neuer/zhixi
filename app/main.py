@@ -25,6 +25,11 @@ from app.config import settings
 from app.database import engine
 from app.logging_config import setup_logging
 from app.middleware import RequestIdMiddleware
+from app.services.digest_service import (
+    DigestItemNotFoundError,
+    DigestNotEditableError,
+    DigestNotFoundError,
+)
 
 
 @asynccontextmanager
@@ -71,7 +76,7 @@ async def handle_x_api_error(_request: Request, exc: XApiError) -> JSONResponse:
     logger.error("X API 调用失败: %s", exc, exc_info=True)
     return JSONResponse(
         status_code=502,
-        content={"detail": f"X API拉取失败: {exc}", "allow_manual": True},
+        content={"detail": "X API 拉取失败，请稍后重试", "allow_manual": True},
     )
 
 
@@ -79,14 +84,36 @@ async def handle_x_api_error(_request: Request, exc: XApiError) -> JSONResponse:
 async def handle_claude_error(_request: Request, exc: ClaudeAPIError) -> JSONResponse:
     """Claude API 调用失败 → 502。"""
     logger.error("Claude API 调用失败: %s", exc, exc_info=True)
-    return JSONResponse(status_code=502, content={"detail": f"AI 服务暂不可用: {exc}"})
+    return JSONResponse(status_code=502, content={"detail": "AI 服务暂不可用，请稍后重试"})
 
 
 @app.exception_handler(GeminiAPIError)
 async def handle_gemini_error(_request: Request, exc: GeminiAPIError) -> JSONResponse:
     """Gemini API 调用失败 → 502。"""
     logger.error("Gemini API 调用失败: %s", exc, exc_info=True)
-    return JSONResponse(status_code=502, content={"detail": f"图像服务暂不可用: {exc}"})
+    return JSONResponse(status_code=502, content={"detail": "图像服务暂不可用，请稍后重试"})
+
+
+@app.exception_handler(DigestNotFoundError)
+async def handle_digest_not_found(_request: Request, _exc: DigestNotFoundError) -> JSONResponse:
+    """草稿不存在 → 404。"""
+    return JSONResponse(status_code=404, content={"detail": "今日草稿不存在"})
+
+
+@app.exception_handler(DigestNotEditableError)
+async def handle_digest_not_editable(
+    _request: Request, _exc: DigestNotEditableError
+) -> JSONResponse:
+    """草稿不可编辑 → 409。"""
+    return JSONResponse(status_code=409, content={"detail": "当前版本不可编辑，请先重新生成新版本"})
+
+
+@app.exception_handler(DigestItemNotFoundError)
+async def handle_digest_item_not_found(
+    _request: Request, _exc: DigestItemNotFoundError
+) -> JSONResponse:
+    """条目不存在 → 404。"""
+    return JSONResponse(status_code=404, content={"detail": "条目不存在"})
 
 
 # Vue SPA 静态文件（生产环境）

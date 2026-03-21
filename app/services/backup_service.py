@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job_run import JobRun
-from app.schemas.enums import JobStatus
+from app.schemas.enums import JobStatus, JobType, TriggerSource
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +52,9 @@ class BackupService:
 
         # 1. 写入 job_run 记录
         job = JobRun(
-            job_type="backup",
-            trigger_source="manual",
-            status="running",
+            job_type=JobType.BACKUP,
+            trigger_source=TriggerSource.MANUAL,
+            status=JobStatus.RUNNING,
             started_at=now,
         )
         self._db.add(job)

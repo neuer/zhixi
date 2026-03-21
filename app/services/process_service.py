@@ -35,6 +35,7 @@ from app.processor.translator import (
     process_thread,
 )
 from app.schemas.client_types import ClaudeResponse
+from app.schemas.enums import TopicType
 from app.schemas.processor_types import AnalysisResult, ProcessResult
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,17 @@ class ProcessService:
         self._calculate_all_heat_scores(tweets, topics_created, accounts_map, digest_date)
 
         await self._db.flush()
+
+        # 失败率告警
+        total = processed_count + failed_count
+        if total > 0 and failed_count / total > 0.3:
+            logger.error(
+                "AI 加工失败率过高: %.1f%% (%d/%d), digest_date=%s",
+                failed_count / total * 100,
+                failed_count,
+                total,
+                digest_date,
+            )
 
         return ProcessResult(
             processed_count=processed_count,
@@ -293,7 +305,7 @@ class ProcessService:
                     tweet.topic_id = topic.id
 
             # Thread: 缓存 merged_text
-            if topic_result.type == "thread" and topic_result.merged_text:
+            if topic_result.type == TopicType.THREAD and topic_result.merged_text:
                 merged_texts[topic.id] = topic_result.merged_text
 
             topics.append(topic)
@@ -361,7 +373,7 @@ class ProcessService:
 
             member_tweets = [t for t in tweet_map.values() if t.topic_id == topic.id]
 
-            if topic.type == "aggregated":
+            if topic.type == TopicType.AGGREGATED:
                 success = await self._process_aggregated_with_retry(
                     topic,
                     member_tweets,
@@ -640,9 +652,11 @@ def _build_thread_data(
     merged_text: str,
 ) -> dict[str, object]:
     """构建 Thread 加工输入（R.1.5 格式）。"""
+    if not member_tweets:
+        raise ValueError("Thread 成员推文列表为空")
     sorted_tweets = sorted(member_tweets, key=lambda t: t.tweet_time)
-    first_tweet = sorted_tweets[0] if sorted_tweets else member_tweets[0]
-    last_tweet = sorted_tweets[-1] if sorted_tweets else member_tweets[-1]
+    first_tweet = sorted_tweets[0]
+    last_tweet = sorted_tweets[-1]
     account = accounts_map.get(first_tweet.account_id)
 
     return {
