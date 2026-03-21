@@ -1,15 +1,20 @@
-"""手动操作路由 — 手动触发抓取等（US-027b）。"""
+"""手动操作路由 — 手动触发抓取、封面图生成等。"""
 
 import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin, require_no_pipeline_lock
-from app.config import get_today_digest_date
+from app.clients.gemini_client import get_gemini_client
+from app.config import get_system_config, get_today_digest_date
 from app.database import get_db
+from app.digest.cover_generator import generate_cover_image
+from app.models.digest import DailyDigest
+from app.models.digest_item import DigestItem
 from app.models.job_run import JobRun
 from app.services.fetch_service import FetchService
 from app.services.lock_service import has_running_job
@@ -83,3 +88,70 @@ async def manual_fetch(
             status_code=500,
             content={"detail": f"抓取失败: {str(exc)[:200]}"},
         )
+
+
+@router.post("/generate-cover", response_model=None)
+async def manual_generate_cover(
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> dict[str, str] | JSONResponse:
+    """手动触发封面图生成（US-026）。
+
+    成功: 200 {"message": "封面图生成成功", "cover_path": "..."}
+    功能未开启: 400 "封面图功能未开启"
+    Key 未配置: 400 "Gemini API Key 未配置"
+    无草稿: 404 "当日无可编辑草稿"
+    生成失败: 500 "封面图生成失败"
+    """
+    # 检查功能开关
+    enable_cover = await get_system_config(db, "enable_cover_generation", "false")
+    if enable_cover.lower() != "true":
+        raise HTTPException(status_code=400, detail="封面图功能未开启") from None
+
+    # 检查 Gemini API Key
+    gemini_client = get_gemini_client()
+    if gemini_client is None:
+        raise HTTPException(status_code=400, detail="Gemini API Key 未配置") from None
+
+    # 查找当日草稿
+    digest_date = get_today_digest_date()
+    stmt = select(DailyDigest).where(
+        DailyDigest.digest_date == digest_date,
+        DailyDigest.is_current.is_(True),
+    )
+    result = await db.execute(stmt)
+    digest = result.scalar_one_or_none()
+    if digest is None:
+        raise HTTPException(status_code=404, detail="当日无可编辑草稿") from None
+
+    # 查询 digest_items
+    items_stmt = (
+        select(DigestItem)
+        .where(
+            DigestItem.digest_id == digest.id,
+            DigestItem.is_excluded.is_(False),
+        )
+        .order_by(DigestItem.display_order)
+    )
+    items_result = await db.execute(items_stmt)
+    items = list(items_result.scalars())
+
+    # 生成封面图
+    cover_timeout = float(await get_system_config(db, "cover_generation_timeout", "30"))
+    cover_path = await generate_cover_image(
+        gemini_client=gemini_client,
+        top_items=items[:5],
+        digest_date=digest_date,
+        timeout=cover_timeout,
+        db=db,
+    )
+
+    if cover_path is None:
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "封面图生成失败"},
+        )
+
+    digest.cover_image_path = cover_path
+    logger.info("手动封面图生成成功: %s", cover_path)
+    return {"message": "封面图生成成功", "cover_path": cover_path}

@@ -12,7 +12,9 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
+from app.clients.gemini_client import get_gemini_client
 from app.config import get_system_config, get_today_digest_date
+from app.digest.cover_generator import generate_cover_image
 from app.digest.renderer import render_markdown
 from app.digest.summary_generator import generate_summary
 from app.models.account import TwitterAccount
@@ -116,6 +118,23 @@ class DigestService:
         # 9. 渲染 Markdown
         top_n = int(await get_system_config(self._db, "top_n", "10"))
         digest.content_markdown = render_markdown(digest, created_items, top_n)
+
+        # 10. 封面图生成（可选，不阻塞）
+        enable_cover = await get_system_config(self._db, "enable_cover_generation", "false")
+        if enable_cover.lower() == "true":
+            gemini_client = get_gemini_client()
+            if gemini_client:
+                cover_timeout = float(
+                    await get_system_config(self._db, "cover_generation_timeout", "30")
+                )
+                cover_path = await generate_cover_image(
+                    gemini_client=gemini_client,
+                    top_items=created_items[:_SUMMARY_TOP_N],
+                    digest_date=digest_date,
+                    timeout=cover_timeout,
+                    db=self._db,
+                )
+                digest.cover_image_path = cover_path
 
         await self._db.flush()
         logger.info(
