@@ -167,3 +167,51 @@ cd admin && bun run build
 # 生成物
 make gen && git diff --exit-code
 ```
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `app/schemas/dashboard_types.py` | 修改 | 新增 5 个 Schema（ApiCostsResponse, DailyCostItem, DailyCostsResponse, LogEntry, LogsResponse） |
+| `app/api/dashboard.py` | 修改 | 新增 3 个路由 + 2 个辅助函数（_get_month_cost, _aggregate_cost），重构 _get_today_cost 复用通用函数 |
+| `tests/test_dashboard_api.py` | 修改 | 新增 11 个测试用例 |
+| `admin/src/views/ApiCosts.vue` | 新增 | 成本监控页面 |
+| `admin/src/views/Logs.vue` | 新增 | 系统日志页面 |
+| `admin/src/router/index.ts` | 修改 | 新增 /costs 和 /logs 路由 |
+| `admin/src/views/Dashboard.vue` | 修改 | 成本卡片增加"查看详情"跳转，Grid 增加"系统日志"入口 |
+| `packages/openapi-client/src/gen/types.gen.ts` | 自动生成 | make gen 更新 |
+| `docs/spec/user-stories.md` | 修改 | US-043/044 状态 → ✅ 已完成 |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | _get_today_cost 保持不变 | 提取 _aggregate_cost 通用函数，_get_today_cost 和 _get_month_cost 都复用 | 消除重复代码 |
+| 2 | Dashboard Grid 2 列 | 改为 3 列增加"系统日志"入口 | 提供日志页面的直接入口 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| ruff format 报测试文件格式问题 | 运行 `ruff format` 自动修复 |
+| 当前工作目录跳转到 admin/ | 使用绝对路径切回，后续命令在正确目录执行 |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format --check | ✅ 通过（修复后） |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 471 passed |
+| biome check | ✅ ok (no errors) |
+| vue-tsc --noEmit | ✅ 通过 |
+| vite build | ✅ built in 626ms |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/23
