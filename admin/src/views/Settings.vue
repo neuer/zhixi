@@ -6,7 +6,12 @@ import type {
   SettingsResponse,
   SettingsUpdate,
 } from "@zhixi/openapi-client";
-import { closeToast, showConfirmDialog, showLoadingToast, showToast } from "vant";
+import {
+  closeToast,
+  showConfirmDialog,
+  showLoadingToast,
+  showToast,
+} from "vant";
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
@@ -153,7 +158,9 @@ async function checkApiStatus() {
 
 async function loadSecretsStatus() {
   try {
-    const resp = await api.get<{ items: SecretItem[] }>("/settings/secrets-status");
+    const resp = await api.get<{ items: SecretItem[] }>(
+      "/settings/secrets-status",
+    );
     secretsStatus.value = resp.data.items;
   } catch {
     // 静默失败
