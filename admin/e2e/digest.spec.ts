@@ -237,6 +237,41 @@ test.describe("Digest 今日内容", () => {
     ).not.toBeVisible();
   });
 
+  test("左滑剔除条目", async ({ page }) => {
+    let excludeCalled = false;
+    await page.route("**/api/digest/today", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockToday),
+      }),
+    );
+    await page.route("**/api/digest/exclude/tweet/42", (route) => {
+      excludeCalled = true;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "已剔除" }),
+      });
+    });
+
+    await page.goto("/digest");
+    await expect(page.getByText("GPT-5 发布")).toBeVisible({ timeout: 10000 });
+
+    // 左滑按钮存在于 DOM（van-swipe-cell right slot）
+    const excludeBtn = page.getByRole("button", { name: "剔除" }).first();
+    await expect(excludeBtn).toBeAttached();
+
+    // 点击剔除按钮触发确认弹窗
+    await excludeBtn.click({ force: true });
+    await expect(page.getByText(/确定剔除/)).toBeVisible({ timeout: 3000 });
+    await page.locator(".van-dialog__confirm").click();
+    await page.waitForResponse("**/api/digest/exclude/tweet/42", {
+      timeout: 5000,
+    });
+    expect(excludeCalled).toBe(true);
+  });
+
   test("点击条目跳转编辑页", async ({ page }) => {
     await page.route("**/api/digest/today", (route) =>
       route.fulfill({

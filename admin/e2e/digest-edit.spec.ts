@@ -217,6 +217,50 @@ test.describe("DigestEdit 内容编辑", () => {
     ).not.toBeVisible();
   });
 
+  test("只读模式下各方观点渲染为可读列表", async ({ page }) => {
+    const topicWithPerspectives = {
+      ...mockTopicItem,
+      snapshot_perspectives: JSON.stringify([
+        {
+          author: "Sam Altman",
+          handle: "sama",
+          viewpoint: "AGI 就在眼前",
+        },
+        {
+          author: "Yann LeCun",
+          handle: "ylecun",
+          viewpoint: "自回归不是答案",
+        },
+      ]),
+    };
+    await page.route("**/api/digest/today", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...mockTodayResponse,
+          digest: { ...mockTodayResponse.digest, status: "published" },
+          items: [mockTweetItem, topicWithPerspectives],
+        }),
+      }),
+    );
+
+    await page.goto("/digest/edit/topic/5");
+
+    // 等待加载
+    await expect(page.getByText("各方观点")).toBeVisible({ timeout: 10000 });
+
+    // 应渲染可读列表，而非 JSON 原文
+    await expect(page.getByText("Sam Altman")).toBeVisible();
+    await expect(page.getByText("@sama")).toBeVisible();
+    await expect(page.getByText("AGI 就在眼前")).toBeVisible();
+    await expect(page.getByText("Yann LeCun")).toBeVisible();
+    await expect(page.getByText("自回归不是答案")).toBeVisible();
+
+    // 不应出现 JSON 语法字符
+    await expect(page.getByText('"viewpoint"')).not.toBeVisible();
+  });
+
   test("条目不存在时显示错误", async ({ page }) => {
     await page.goto("/digest/edit/tweet/9999");
     await expect(page.getByText("条目不存在")).toBeVisible({ timeout: 10000 });

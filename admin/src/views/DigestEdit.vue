@@ -32,6 +32,42 @@ const isTopic = computed(
   () => item.value?.snapshot_topic_type === "aggregated",
 );
 
+/** 解析 perspectives JSON 为可读列表。 */
+interface PerspectiveItem {
+  author: string;
+  handle: string;
+  viewpoint: string;
+}
+
+const parsedPerspectives = computed<PerspectiveItem[]>(() => {
+  const raw = form.value.perspectives;
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const results: PerspectiveItem[] = [];
+    for (const p of parsed) {
+      if (typeof p === "string") {
+        results.push({ author: "", handle: "", viewpoint: p });
+      } else if (
+        typeof p === "object" &&
+        p !== null &&
+        typeof (p as Record<string, unknown>).viewpoint === "string"
+      ) {
+        const obj = p as Record<string, unknown>;
+        results.push({
+          author: typeof obj.author === "string" ? obj.author : "",
+          handle: typeof obj.handle === "string" ? obj.handle : "",
+          viewpoint: obj.viewpoint as string,
+        });
+      }
+    }
+    return results;
+  } catch {
+    return [];
+  }
+});
+
 async function loadItem() {
   loading.value = true;
   error.value = null;
@@ -222,17 +258,32 @@ onMounted(loadItem);
               maxlength="2000"
               show-word-limit
             />
+            <!-- 各方观点：可编辑时显示 JSON textarea，只读时渲染可读列表 -->
             <van-field
-              v-if="isTopic"
+              v-if="isTopic && isEditable"
               v-model="form.perspectives"
               label="各方观点"
               type="textarea"
               placeholder="JSON 格式"
               :rows="4"
               autosize
-              :disabled="!isEditable"
               maxlength="5000"
             />
+            <template v-if="isTopic && !isEditable && parsedPerspectives.length">
+              <div class="perspectives-section">
+                <div class="perspectives-header">各方观点</div>
+                <div
+                  v-for="(p, pi) in parsedPerspectives"
+                  :key="pi"
+                  class="perspective-item"
+                >
+                  <div v-if="p.author || p.handle" class="perspective-author">
+                    {{ p.author }}<span v-if="p.handle" class="perspective-handle">@{{ p.handle }}</span>
+                  </div>
+                  <div class="perspective-text">{{ p.viewpoint }}</div>
+                </div>
+              </div>
+            </template>
             <van-field
               v-model="form.comment"
               label="点评"
@@ -305,6 +356,55 @@ onMounted(loadItem);
   color: var(--zx-accent);
   font-weight: 700;
   font-size: var(--zx-text-base);
+}
+
+/* ── 各方观点只读展示 ── */
+
+.perspectives-section {
+  background: var(--zx-bg-card);
+  border-radius: var(--zx-radius-md);
+  box-shadow: var(--zx-shadow-xs);
+  padding: var(--zx-space-base);
+  margin-bottom: var(--zx-space-base);
+}
+
+.perspectives-header {
+  font-size: var(--zx-text-sm);
+  color: var(--zx-primary);
+  font-weight: 600;
+  margin-bottom: var(--zx-space-md);
+  letter-spacing: 0.03em;
+}
+
+.perspective-item {
+  padding: var(--zx-space-md);
+  background: var(--zx-bg-elevated);
+  border-radius: var(--zx-radius-sm);
+  border-left: 3px solid var(--zx-primary-lighter);
+  margin-bottom: var(--zx-space-sm);
+}
+
+.perspective-item:last-child {
+  margin-bottom: 0;
+}
+
+.perspective-author {
+  font-size: var(--zx-text-sm);
+  font-weight: 600;
+  color: var(--zx-text-primary);
+  margin-bottom: var(--zx-space-xs);
+}
+
+.perspective-handle {
+  color: var(--zx-text-tertiary);
+  font-weight: 400;
+  margin-left: var(--zx-space-xs);
+}
+
+.perspective-text {
+  font-size: var(--zx-text-sm);
+  color: var(--zx-text-secondary);
+  line-height: 1.6;
 }
 
 /* ── 操作按钮 ── */

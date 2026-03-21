@@ -174,6 +174,102 @@ test.describe("Accounts 大V账号管理", () => {
     await expect(page.getByRole("button", { name: "手动添加" })).toBeVisible();
   });
 
+  test("左滑停用账号", async ({ page }) => {
+    await setupAuth(page);
+    let toggleCalled = false;
+    await page.route("**/api/accounts*", (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            items: [mockAccount],
+            total: 1,
+            page: 1,
+            page_size: 100,
+          }),
+        });
+      }
+      return route.continue();
+    });
+    await page.route(`**/api/accounts/${mockAccount.id}`, (route) => {
+      if (route.request().method() === "DELETE") {
+        toggleCalled = true;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ message: "ok" }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/accounts");
+    await expect(page.getByText("@elonmusk")).toBeVisible({ timeout: 10000 });
+
+    // 左滑按钮存在于 DOM（van-swipe-cell 的 right slot）
+    const stopBtn = page.getByRole("button", { name: "停用" });
+    await expect(stopBtn).toBeAttached();
+
+    // 点击停用按钮触发确认弹窗
+    await stopBtn.click({ force: true });
+    await expect(page.locator(".van-dialog__confirm")).toBeVisible({
+      timeout: 3000,
+    });
+    await page.locator(".van-dialog__confirm").click();
+    await page.waitForResponse(`**/api/accounts/${mockAccount.id}`, {
+      timeout: 5000,
+    });
+    expect(toggleCalled).toBe(true);
+  });
+
+  test("左滑删除账号", async ({ page }) => {
+    await setupAuth(page);
+    let deleteCalled = false;
+    await page.route("**/api/accounts*", (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            items: [mockAccount],
+            total: 1,
+            page: 1,
+            page_size: 100,
+          }),
+        });
+      }
+      return route.continue();
+    });
+    await page.route(`**/api/accounts/${mockAccount.id}`, (route) => {
+      if (route.request().method() === "DELETE") {
+        deleteCalled = true;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ message: "ok" }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/accounts");
+    await expect(page.getByText("@elonmusk")).toBeVisible({ timeout: 10000 });
+
+    // 删除按钮存在于 DOM
+    const deleteBtn = page.getByRole("button", { name: "删除" });
+    await expect(deleteBtn).toBeAttached();
+
+    // 点击删除按钮触发确认弹窗
+    await deleteBtn.click({ force: true });
+    await expect(page.getByText("确定永久删除")).toBeVisible({ timeout: 3000 });
+    await page.locator(".van-dialog__confirm").click();
+    await page.waitForResponse(`**/api/accounts/${mockAccount.id}`, {
+      timeout: 5000,
+    });
+    expect(deleteCalled).toBe(true);
+  });
+
   test("点击账号打开编辑弹窗", async ({ page }) => {
     await setupAuth(page);
     await page.route("**/api/accounts*", (route) =>

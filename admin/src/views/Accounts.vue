@@ -157,6 +157,24 @@ async function toggleActive(account: AccountResponse) {
   }
 }
 
+async function handleDelete(account: AccountResponse) {
+  try {
+    await showConfirmDialog({
+      title: "删除账号",
+      message: `确定永久删除 @${account.twitter_handle}？`,
+    });
+  } catch {
+    return;
+  }
+  try {
+    await api.delete(`/accounts/${account.id}`);
+    showToast("已删除");
+    await loadAccounts();
+  } catch {
+    // 拦截器已处理
+  }
+}
+
 function formatLastFetch(dt: string | null): string {
   if (!dt) return "从未抓取";
   return new Date(dt).toLocaleString("zh-CN", {
@@ -196,32 +214,53 @@ onMounted(loadAccounts);
       <div v-else class="zx-page-content">
         <p class="zx-section-title">共 {{ total }} 个账号</p>
         <div class="account-list">
-          <div
+          <van-swipe-cell
             v-for="account in accounts"
             :key="account.id"
-            class="account-card"
-            @click="openEdit(account)"
           >
-            <div class="account-avatar">
-              {{ account.twitter_handle.charAt(0).toUpperCase() }}
+            <div
+              class="account-card"
+              @click="openEdit(account)"
+            >
+              <div class="account-avatar">
+                {{ account.twitter_handle.charAt(0).toUpperCase() }}
+              </div>
+              <div class="account-info">
+                <div class="account-handle">@{{ account.twitter_handle }}</div>
+                <div class="account-name">{{ account.display_name }}</div>
+              </div>
+              <div class="account-end">
+                <van-tag
+                  :type="account.is_active ? 'success' : 'default'"
+                  size="medium"
+                >
+                  {{ account.is_active ? "活跃" : "停用" }}
+                </van-tag>
+                <span class="weight-badge">{{ account.weight }}x</span>
+                <span class="fetch-time">
+                  {{ formatLastFetch(account.last_fetch_at) }}
+                </span>
+              </div>
             </div>
-            <div class="account-info">
-              <div class="account-handle">@{{ account.twitter_handle }}</div>
-              <div class="account-name">{{ account.display_name }}</div>
-            </div>
-            <div class="account-end">
-              <van-tag
-                :type="account.is_active ? 'success' : 'default'"
-                size="medium"
+            <template #right>
+              <van-button
+                square
+                :type="account.is_active ? 'warning' : 'success'"
+                class="swipe-btn"
+                @click="toggleActive(account)"
               >
-                {{ account.is_active ? "活跃" : "停用" }}
-              </van-tag>
-              <span class="weight-badge">{{ account.weight }}x</span>
-              <span class="fetch-time">
-                {{ formatLastFetch(account.last_fetch_at) }}
-              </span>
-            </div>
-          </div>
+                {{ account.is_active ? "停用" : "启用" }}
+              </van-button>
+              <van-button
+                square
+                type="danger"
+                class="swipe-btn"
+                @click="handleDelete(account)"
+              >
+                删除
+              </van-button>
+            </template>
+          </van-swipe-cell>
         </div>
       </div>
     </van-pull-refresh>
@@ -430,6 +469,14 @@ onMounted(loadAccounts);
 .fetch-time {
   font-size: var(--zx-text-xs);
   color: var(--zx-text-disabled);
+}
+
+/* ── 滑动按钮 ── */
+
+.swipe-btn {
+  height: 100%;
+  min-width: 64px;
+  font-size: var(--zx-text-sm);
 }
 
 /* ── 弹窗 ── */

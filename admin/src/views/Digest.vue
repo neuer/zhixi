@@ -84,6 +84,24 @@ function handleRegenerate() {
   });
 }
 
+async function handleExclude(item: DigestItemResponse) {
+  try {
+    await showConfirmDialog({
+      title: "剔除条目",
+      message: `确定剔除「${item.snapshot_title || "该条目"}」？`,
+    });
+  } catch {
+    return;
+  }
+  try {
+    await api.post(`/digest/exclude/${item.item_type}/${item.item_ref_id}`);
+    showToast("已剔除");
+    await loadData();
+  } catch {
+    // 拦截器已处理
+  }
+}
+
 onMounted(loadData);
 </script>
 
@@ -154,22 +172,36 @@ onMounted(loadData);
           <!-- 条目列表 -->
           <p class="zx-section-title">条目列表（{{ visibleItems.length }}条）</p>
           <div class="item-list">
-            <div
+            <van-swipe-cell
               v-for="(item, idx) in visibleItems"
               :key="item.id"
-              class="item-card"
-              @click="router.push({ name: 'digest-edit', params: { type: item.item_type, id: item.item_ref_id } })"
+              :disabled="data?.digest?.status !== 'draft'"
             >
-              <div class="item-index">{{ idx + 1 }}</div>
-              <div class="item-body">
-                <div class="item-title">{{ item.snapshot_title || '无标题' }}</div>
-                <div class="item-meta">
-                  <span v-if="getItemLabel(item)" class="item-author">{{ getItemLabel(item) }}</span>
-                  <span class="item-heat">{{ Math.round(item.snapshot_heat_score) }}</span>
+              <div
+                class="item-card"
+                @click="router.push({ name: 'digest-edit', params: { type: item.item_type, id: item.item_ref_id } })"
+              >
+                <div class="item-index">{{ idx + 1 }}</div>
+                <div class="item-body">
+                  <div class="item-title">{{ item.snapshot_title || '无标题' }}</div>
+                  <div class="item-meta">
+                    <span v-if="getItemLabel(item)" class="item-author">{{ getItemLabel(item) }}</span>
+                    <span class="item-heat">{{ Math.round(item.snapshot_heat_score) }}</span>
+                  </div>
                 </div>
+                <van-icon name="arrow" class="item-arrow" />
               </div>
-              <van-icon name="arrow" class="item-arrow" />
-            </div>
+              <template #right>
+                <van-button
+                  square
+                  type="danger"
+                  class="swipe-btn"
+                  @click="handleExclude(item)"
+                >
+                  剔除
+                </van-button>
+              </template>
+            </van-swipe-cell>
           </div>
           <div
             v-if="visibleItems.length === 0"
@@ -226,6 +258,14 @@ onMounted(loadData);
 .action-buttons {
   display: flex;
   gap: var(--zx-space-sm);
+}
+
+/* ── 滑动按钮 ── */
+
+.swipe-btn {
+  height: 100%;
+  min-width: 64px;
+  font-size: var(--zx-text-sm);
 }
 
 /* ── 条目列表 ── */
