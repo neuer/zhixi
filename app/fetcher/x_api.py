@@ -203,6 +203,50 @@ class XApiFetcher(BaseFetcher):
         response.raise_for_status()
         return response
 
+    async def fetch_single_tweet(self, tweet_id: str) -> RawTweet:
+        """抓取单条推文（X API v2 GET /tweets/:id）。
+
+        Args:
+            tweet_id: 推文 ID 字符串
+
+        Returns:
+            RawTweet
+
+        Raises:
+            httpx.HTTPStatusError: API 调用失败
+            ValueError: 解析失败
+        """
+        params: dict[str, str] = {
+            "tweet.fields": "author_id,created_at,public_metrics,attachments,referenced_tweets",
+            "expansions": "attachments.media_keys,referenced_tweets.id",
+            "media.fields": "url,type",
+        }
+        response = await self._request_with_retry(f"/tweets/{tweet_id}", params)
+        payload = response.json()
+
+        data = payload.get("data")
+        if not data:
+            msg = f"推文不存在: {tweet_id}"
+            raise ValueError(msg)
+
+        includes = payload.get("includes", {})
+        included_tweets: dict[str, str] = {
+            t["id"]: t["author_id"]
+            for t in includes.get("tweets", [])
+            if "id" in t and "author_id" in t
+        }
+        media_url_map: dict[str, str] = {
+            m["media_key"]: m["url"]
+            for m in includes.get("media", [])
+            if "media_key" in m and "url" in m
+        }
+
+        tweet = self._parse_tweet(data, included_tweets, media_url_map)
+        if tweet is None:
+            msg = f"解析推文失败: {tweet_id}"
+            raise ValueError(msg)
+        return tweet
+
     async def close(self) -> None:
         """关闭 httpx 客户端，释放连接资源。"""
         await self._client.aclose()

@@ -48,6 +48,13 @@ export type AccountUpdate = {
 };
 
 /**
+ * 手动补录推文请求。
+ */
+export type AddTweetRequest = {
+    tweet_url: string;
+};
+
+/**
  * 告警条目。
  */
 export type AlertItem = {

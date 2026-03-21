@@ -148,3 +148,19 @@ class HistoryDetailResponse(BaseModel):
 
     digest: DigestBriefResponse
     items: list[DigestItemResponse]
+
+
+# ── US-016: 手动补录推文 ──
+
+
+class AddTweetRequest(BaseModel):
+    """手动补录推文请求。"""
+
+    tweet_url: str = Field(min_length=1, max_length=500)
+
+
+class AddTweetResponse(BaseModel):
+    """手动补录推文响应。"""
+
+    message: str
+    item: DigestItemResponse

@@ -28,5 +28,21 @@ class BaseFetcher(ABC):
         """
         ...
 
+    @abstractmethod
+    async def fetch_single_tweet(self, tweet_id: str) -> RawTweet:
+        """抓取单条推文。
+
+        Args:
+            tweet_id: 推文 ID 字符串（X API 数字 ID）
+
+        Returns:
+            RawTweet
+
+        Raises:
+            httpx.HTTPStatusError: API 错误（含 404 推文不存在）
+            ValueError: 解析失败
+        """
+        ...
+
     async def close(self) -> None:  # noqa: B027  -- 有意设计为可选覆盖，非强制实现
         """释放连接资源。子类可覆盖，默认无操作。"""
