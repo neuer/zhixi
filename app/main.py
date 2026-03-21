@@ -32,10 +32,21 @@ from app.services.digest_service import (
 )
 
 
+def _run_alembic_upgrade() -> None:
+    """同步执行 Alembic upgrade head，确保数据库表结构就绪。"""
+    from alembic.config import Config
+
+    from alembic import command
+
+    cfg = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
+    command.upgrade(cfg, "head")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """应用生命周期 — 启动/关闭钩子。"""
     setup_logging(settings.LOG_LEVEL)
+    _run_alembic_upgrade()
     yield
     await engine.dispose()
 

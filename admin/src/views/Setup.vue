@@ -14,17 +14,30 @@ const webhookUrl = ref("");
 const submitting = ref(false);
 const step = ref(1);
 
+function validatePassword(): string | null {
+  const pwd = password.value;
+  if (!pwd.trim()) return "请输入管理员密码";
+  if (pwd.length < 8) return "密码长度至少 8 位";
+  if (!/[A-Z]/.test(pwd)) return "密码必须包含大写字母";
+  if (!/[a-z]/.test(pwd)) return "密码必须包含小写字母";
+  if (!/\d/.test(pwd)) return "密码必须包含数字";
+  if (pwd !== confirmPassword.value) return "两次密码不一致";
+  return null;
+}
+
+function goNextStep() {
+  const err = validatePassword();
+  if (err) {
+    showToast(err);
+    return;
+  }
+  step.value = 2;
+}
+
 async function handleSubmit() {
-  if (!password.value.trim()) {
-    showToast("请输入管理员密码");
-    return;
-  }
-  if (password.value.length < 8) {
-    showToast("密码至少 8 位");
-    return;
-  }
-  if (password.value !== confirmPassword.value) {
-    showToast("两次密码不一致");
+  const err = validatePassword();
+  if (err) {
+    showToast(err);
     return;
   }
 
@@ -77,7 +90,7 @@ async function handleSubmit() {
             v-model="password"
             type="password"
             label="密码"
-            placeholder="至少 8 位字符"
+            placeholder="至少 8 位，含大小写字母和数字"
             clearable
             maxlength="128"
           />
@@ -88,7 +101,7 @@ async function handleSubmit() {
             placeholder="再次输入密码"
             clearable
             maxlength="128"
-            @keyup.enter="step = 2"
+            @keyup.enter="goNextStep"
           />
         </van-cell-group>
 
@@ -98,7 +111,7 @@ async function handleSubmit() {
           size="large"
           class="next-btn"
           :disabled="!password || !confirmPassword"
-          @click="step = 2"
+          @click="goNextStep"
         >
           下一步
         </van-button>

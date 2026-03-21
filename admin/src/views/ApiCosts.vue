@@ -32,8 +32,8 @@ async function loadData() {
   }
 }
 
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(4)}`;
+function formatCost(cost: number | null | undefined): string {
+  return `$${(cost ?? 0).toFixed(4)}`;
 }
 
 onMounted(loadData);

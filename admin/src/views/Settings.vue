@@ -163,7 +163,7 @@ async function loadSecretsStatus() {
     );
     secretsStatus.value = resp.data.items;
   } catch {
-    // 静默失败
+    showToast("密钥状态加载失败");
   }
 }
 
@@ -429,7 +429,7 @@ onMounted(async () => {
       :confirm-button-text="savingSecret ? '保存中...' : '保存'"
       :confirm-button-disabled="savingSecret"
       @confirm="saveSecret"
-      :before-close="(action: string) => action === 'cancel' || !savingSecret"
+      :before-close="(action: string) => action !== 'confirm' || !savingSecret"
     >
       <div style="padding: 16px">
         <van-field
