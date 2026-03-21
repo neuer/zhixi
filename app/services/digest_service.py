@@ -5,7 +5,8 @@
 
 import json
 import logging
-from datetime import date
+import secrets
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,16 @@ logger = logging.getLogger(__name__)
 
 # 导读摘要取 TOP N 条目
 _SUMMARY_TOP_N = 5
+
+# 预览链接有效期（小时）
+_PREVIEW_LINK_HOURS = 24
+
+
+def _ensure_utc(dt: datetime) -> datetime:
+    """确保 datetime 有 UTC 时区信息（SQLite 读回可能丢失 tzinfo）。"""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt
 
 
 class DigestService:
@@ -555,6 +566,64 @@ class DigestService:
         await self._rerender_markdown(digest)
         await self._db.flush()
 
+    # ──────────────────────────────────────────────────
+    # 预览签名链接（US-009）
+    # ──────────────────────────────────────────────────
+
+    async def generate_preview_link(self, digest_date: date | None = None) -> tuple[str, datetime]:
+        """生成预览签名 token。
+
+        同一 digest 只允许一个有效 token，新 token 覆盖旧 token。
+        返回 (token, expires_at)。
+        """
+        if digest_date is None:
+            digest_date = get_today_digest_date()
+
+        digest = await self._get_current_digest_or_none(digest_date)
+        if digest is None:
+            raise DigestNotFoundError
+
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(UTC) + timedelta(hours=_PREVIEW_LINK_HOURS)
+
+        digest.preview_token = token
+        digest.preview_expires_at = expires_at
+        await self._db.flush()
+
+        return token, expires_at
+
+    async def get_preview_by_token(self, token: str) -> tuple[DailyDigest, list[DigestItem]]:
+        """根据签名 token 获取预览内容。
+
+        验证：token 匹配 + 未过期 + digest is_current=True。
+        无效 token 抛 PreviewTokenInvalidError。
+        """
+        stmt = select(DailyDigest).where(DailyDigest.preview_token == token)
+        result = await self._db.execute(stmt)
+        digest = result.scalar_one_or_none()
+
+        if digest is None:
+            raise PreviewTokenInvalidError
+
+        if not digest.is_current:
+            raise PreviewTokenInvalidError
+
+        if digest.preview_expires_at is None:
+            raise PreviewTokenInvalidError
+
+        if _ensure_utc(digest.preview_expires_at) < datetime.now(UTC):
+            raise PreviewTokenInvalidError
+
+        items_stmt = (
+            select(DigestItem)
+            .where(DigestItem.digest_id == digest.id)
+            .order_by(DigestItem.display_order)
+        )
+        items_result = await self._db.execute(items_stmt)
+        items = list(items_result.scalars().all())
+
+        return digest, items
+
 
 class DigestNotFoundError(Exception):
     """当日无 is_current=true 的草稿。"""
@@ -566,3 +635,7 @@ class DigestNotEditableError(Exception):
 
 class DigestItemNotFoundError(Exception):
     """指定的 digest_item 不存在。"""
+
+
+class PreviewTokenInvalidError(Exception):
+    """预览 token 无效、已过期或对应版本已失效。"""

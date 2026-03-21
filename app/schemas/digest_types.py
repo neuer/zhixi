@@ -106,6 +106,16 @@ class PreviewResponse(BaseModel):
     content_markdown: str
 
 
+# ── US-009: 预览签名链接 ──
+
+
+class PreviewLinkResponse(BaseModel):
+    """预览签名链接响应。"""
+
+    token: str
+    expires_at: datetime
+
+
 # ── US-042: 推送历史 ──
 
 

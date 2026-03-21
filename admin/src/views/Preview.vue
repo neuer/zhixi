@@ -2,17 +2,44 @@
 import api from "@/api";
 import ArticlePreview from "@/components/ArticlePreview.vue";
 import type { PreviewResponse } from "@zhixi/openapi-client";
-import { onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import type { AxiosError } from "axios";
+import { computed, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
+const route = useRoute();
 const router = useRouter();
 const loading = ref(true);
 const data = ref<PreviewResponse | null>(null);
 const error = ref<string | null>(null);
 
+const isTokenMode = computed(() => !!route.query.token);
+
 async function loadPreview() {
-  const token = localStorage.getItem("zhixi_token");
-  if (!token) {
+  const shareToken = route.query.token as string | undefined;
+
+  if (shareToken) {
+    // 签名链接模式：匿名访问
+    loading.value = true;
+    try {
+      const resp = await api.get<PreviewResponse>(
+        `/digest/preview/${shareToken}`,
+      );
+      data.value = resp.data;
+    } catch (e) {
+      const axiosErr = e as AxiosError;
+      error.value =
+        axiosErr.response?.status === 403
+          ? "链接已失效或过期"
+          : "暂无可预览的内容";
+    } finally {
+      loading.value = false;
+    }
+    return;
+  }
+
+  // 登录态模式（原逻辑）
+  const jwtToken = localStorage.getItem("zhixi_token");
+  if (!jwtToken) {
     error.value = "请先登录后访问预览";
     loading.value = false;
     return;
@@ -44,9 +71,9 @@ onMounted(loadPreview);
     <!-- 顶部导航 -->
     <van-nav-bar
       title="内容预览"
-      left-text="返回"
-      left-arrow
-      @click-left="goBack"
+      :left-text="isTokenMode ? '' : '返回'"
+      :left-arrow="!isTokenMode"
+      @click-left="isTokenMode ? undefined : goBack()"
       :border="false"
     />
 
@@ -58,7 +85,13 @@ onMounted(loadPreview);
     <!-- 错误态 -->
     <div v-else-if="error" class="preview-empty">
       <van-empty :description="error">
-        <van-button round type="primary" size="small" @click="goBack">
+        <van-button
+          v-if="!isTokenMode"
+          round
+          type="primary"
+          size="small"
+          @click="goBack"
+        >
           返回首页
         </van-button>
       </van-empty>
