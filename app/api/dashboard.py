@@ -1,8 +1,12 @@
-"""Dashboard 路由 — US-040。"""
+"""Dashboard 路由 — US-040/US-043/US-044。"""
 
+import json
+from collections import defaultdict
+from datetime import date as date_type
 from datetime import timedelta
+from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,15 +18,24 @@ from app.models.digest import DailyDigest
 from app.models.job_run import JobRun
 from app.schemas.dashboard_types import (
     AlertItem,
+    ApiCostsResponse,
     CostSummary,
+    DailyCostItem,
+    DailyCostsResponse,
     DashboardOverviewResponse,
     DigestDayRecord,
     DigestStatus,
+    LogEntry,
+    LogsResponse,
     PipelineStatus,
     ServiceCostItem,
 )
 
 router = APIRouter()
+
+LOG_FILE_PATH = Path("data/logs/app.log")
+
+LEVEL_SEVERITY = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40, "CRITICAL": 50}
 
 
 @router.get("/overview", response_model=DashboardOverviewResponse)
@@ -46,6 +59,119 @@ async def get_overview(
         recent_7_days=recent_7_days,
         alerts=alerts,
     )
+
+
+# ── US-043: API 成本监控 ──
+
+
+@router.get("/api-costs", response_model=ApiCostsResponse)
+async def get_api_costs(
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> ApiCostsResponse:
+    """API 成本汇总：今日 + 本月。"""
+    today = get_today_digest_date()
+    today_cost = await _get_today_cost(db, today)
+    month_cost = await _get_month_cost(db, today)
+    return ApiCostsResponse(today=today_cost, this_month=month_cost)
+
+
+@router.get("/api-costs/daily", response_model=DailyCostsResponse)
+async def get_api_costs_daily(
+    db: AsyncSession = Depends(get_db),
+    _admin: str = Depends(get_current_admin),
+) -> DailyCostsResponse:
+    """最近 30 天按日成本趋势。"""
+    today = get_today_digest_date()
+    assert isinstance(today, date_type)
+    since = today - timedelta(days=30)
+
+    result = await db.execute(
+        select(
+            ApiCostLog.call_date,
+            ApiCostLog.service,
+            func.sum(ApiCostLog.estimated_cost).label("cost"),
+        )
+        .where(and_(ApiCostLog.call_date > since, ApiCostLog.call_date <= today))
+        .group_by(ApiCostLog.call_date, ApiCostLog.service)
+    )
+    rows = result.all()
+
+    by_date: dict[date_type, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    for row in rows:
+        by_date[row.call_date][row.service] = round(float(row.cost or 0), 6)
+
+    days = []
+    for d in sorted(by_date.keys(), reverse=True):
+        services = by_date[d]
+        claude_cost = services.get("claude", 0.0)
+        x_cost = services.get("x", 0.0)
+        gemini_cost = services.get("gemini", 0.0)
+        total = round(sum(services.values()), 6)
+        days.append(
+            DailyCostItem(
+                date=d,
+                total_cost=total,
+                claude_cost=claude_cost,
+                x_cost=x_cost,
+                gemini_cost=gemini_cost,
+            )
+        )
+
+    return DailyCostsResponse(days=days)
+
+
+# ── US-044: 日志展示 ──
+
+
+@router.get("/logs", response_model=LogsResponse)
+async def get_logs(
+    level: str = Query(default="INFO"),
+    limit: int = Query(default=100, ge=1, le=500),
+    _admin: str = Depends(get_current_admin),
+) -> LogsResponse:
+    """读取最新日志，按级别过滤。"""
+    min_severity = LEVEL_SEVERITY.get(level.upper(), 20)
+
+    if not LOG_FILE_PATH.exists():
+        return LogsResponse(logs=[])
+
+    entries: list[LogEntry] = []
+    lines = LOG_FILE_PATH.read_text(encoding="utf-8").splitlines()
+
+    # 倒序遍历获取最新日志
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        entry_level = obj.get("level", "INFO")
+        entry_severity = LEVEL_SEVERITY.get(entry_level, 20)
+        if entry_severity < min_severity:
+            continue
+
+        entries.append(
+            LogEntry(
+                timestamp=obj.get("timestamp", ""),
+                level=entry_level,
+                message=obj.get("message", ""),
+                module=obj.get("module", ""),
+                request_id=obj.get("request_id"),
+                exception=obj.get("exception"),
+            )
+        )
+
+        if len(entries) >= limit:
+            break
+
+    return LogsResponse(logs=entries)
+
+
+# ── 内部辅助函数 ──
 
 
 async def _get_pipeline_status(db: AsyncSession, today: object) -> PipelineStatus:
@@ -86,6 +212,21 @@ async def _get_digest_status(db: AsyncSession, today: object) -> DigestStatus:
 
 async def _get_today_cost(db: AsyncSession, today: object) -> CostSummary:
     """聚合今日 API 成本。"""
+    return await _aggregate_cost(db, ApiCostLog.call_date == today)
+
+
+async def _get_month_cost(db: AsyncSession, today: object) -> CostSummary:
+    """聚合本月 API 成本。"""
+    assert isinstance(today, date_type)
+    month_start = today.replace(day=1)
+    return await _aggregate_cost(
+        db,
+        and_(ApiCostLog.call_date >= month_start, ApiCostLog.call_date <= today),
+    )
+
+
+async def _aggregate_cost(db: AsyncSession, where_clause: object) -> CostSummary:
+    """按 service 聚合成本的通用函数。"""
     result = await db.execute(
         select(
             ApiCostLog.service,
@@ -93,7 +234,7 @@ async def _get_today_cost(db: AsyncSession, today: object) -> CostSummary:
             func.sum(ApiCostLog.input_tokens + ApiCostLog.output_tokens).label("total_tokens"),
             func.sum(ApiCostLog.estimated_cost).label("estimated_cost"),
         )
-        .where(ApiCostLog.call_date == today)
+        .where(where_clause)  # type: ignore[arg-type]
         .group_by(ApiCostLog.service)
     )
     rows = result.all()
@@ -117,8 +258,6 @@ async def _get_recent_7_days(db: AsyncSession, today: object) -> list[DigestDayR
 
     优先级: published > is_current > max version。
     """
-    from datetime import date as date_type
-
     assert isinstance(today, date_type)
     since = today - timedelta(days=7)
 
@@ -163,8 +302,6 @@ async def _get_recent_7_days(db: AsyncSession, today: object) -> list[DigestDayR
 
 async def _get_alerts(db: AsyncSession, today: object) -> list[AlertItem]:
     """近 7 天 failed 的 pipeline/fetch job_runs。"""
-    from datetime import date as date_type
-
     assert isinstance(today, date_type)
     since = today - timedelta(days=7)
 

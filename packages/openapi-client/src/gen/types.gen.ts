@@ -58,6 +58,14 @@ export type AlertItem = {
 };
 
 /**
+ * API 成本汇总响应（今日 + 本月）。
+ */
+export type ApiCostsResponse = {
+    today: CostSummary;
+    this_month: CostSummary;
+};
+
+/**
  * 单个 API 状态。
  */
 export type ApiStatusItem = {
@@ -81,6 +89,24 @@ export type ApiStatusResponse = {
 export type CostSummary = {
     total_cost: number;
     by_service: Array<ServiceCostItem>;
+};
+
+/**
+ * 每日成本趋势单条。
+ */
+export type DailyCostItem = {
+    date: string;
+    total_cost: number;
+    claude_cost: number;
+    x_cost: number;
+    gemini_cost: number;
+};
+
+/**
+ * 30 天按日成本趋势响应。
+ */
+export type DailyCostsResponse = {
+    days: Array<DailyCostItem>;
 };
 
 /**
@@ -207,6 +233,18 @@ export type HTTPValidationError = {
 };
 
 /**
+ * 日志条目。
+ */
+export type LogEntry = {
+    timestamp: string;
+    level: string;
+    message: string;
+    module: string;
+    request_id?: (string | null);
+    exception?: (string | null);
+};
+
+/**
  * 管理员登录请求。
  */
 export type LoginRequest = {
@@ -220,6 +258,13 @@ export type LoginRequest = {
 export type LoginResponse = {
     token: string;
     expires_at: string;
+};
+
+/**
+ * 日志查询响应。
+ */
+export type LogsResponse = {
+    logs: Array<LogEntry>;
 };
 
 /**

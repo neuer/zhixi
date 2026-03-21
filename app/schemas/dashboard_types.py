@@ -64,3 +64,43 @@ class DashboardOverviewResponse(BaseModel):
     today_cost: CostSummary
     recent_7_days: list[DigestDayRecord]
     alerts: list[AlertItem]
+
+
+class ApiCostsResponse(BaseModel):
+    """API 成本汇总响应（今日 + 本月）。"""
+
+    today: CostSummary
+    this_month: CostSummary
+
+
+class DailyCostItem(BaseModel):
+    """每日成本趋势单条。"""
+
+    date: date
+    total_cost: float
+    claude_cost: float
+    x_cost: float
+    gemini_cost: float
+
+
+class DailyCostsResponse(BaseModel):
+    """30 天按日成本趋势响应。"""
+
+    days: list[DailyCostItem]
+
+
+class LogEntry(BaseModel):
+    """日志条目。"""
+
+    timestamp: str
+    level: str
+    message: str
+    module: str
+    request_id: str | None = None
+    exception: str | None = None
+
+
+class LogsResponse(BaseModel):
+    """日志查询响应。"""
+
+    logs: list[LogEntry]

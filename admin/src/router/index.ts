@@ -54,6 +54,16 @@ const router = createRouter({
       component: () => import("@/views/Settings.vue"),
     },
     {
+      path: "/costs",
+      name: "costs",
+      component: () => import("@/views/ApiCosts.vue"),
+    },
+    {
+      path: "/logs",
+      name: "logs",
+      component: () => import("@/views/Logs.vue"),
+    },
+    {
       path: "/preview",
       name: "preview",
       component: () => import("@/views/Preview.vue"),
