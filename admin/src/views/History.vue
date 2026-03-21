@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import api from "@/api";
+import { formatDate } from "@/utils/format";
+import { getStatus } from "@/utils/status";
 import type {
   HistoryListItem,
   HistoryListResponse,
@@ -14,24 +16,6 @@ const finished = ref(false);
 const items = ref<HistoryListItem[]>([]);
 const page = ref(1);
 const pageSize = 20;
-
-const statusMap: Record<
-  string,
-  { text: string; type: "success" | "warning" | "danger" | "default" }
-> = {
-  published: { text: "已发布", type: "success" },
-  draft: { text: "草稿", type: "warning" },
-  failed: { text: "失败", type: "danger" },
-};
-
-function getStatus(status: string) {
-  return statusMap[status] ?? { text: status, type: "default" as const };
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return `${d.getMonth() + 1}月${d.getDate()}日`;
-}
 
 function formatWeekday(dateStr: string): string {
   const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
@@ -104,7 +88,7 @@ onMounted(loadMore);
         <van-cell
           v-for="item in items"
           :key="item.id"
-          :title="`${formatDate(item.digest_date)} ${formatWeekday(item.digest_date)}`"
+          :title="`${formatDate(item.digest_date, false)} ${formatWeekday(item.digest_date)}`"
           :label="`${item.item_count}条 · v${item.version}`"
           is-link
           @click="goDetail(item.id)"

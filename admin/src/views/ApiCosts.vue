@@ -5,6 +5,9 @@ import type {
   DailyCostsResponse,
 } from "@zhixi/openapi-client";
 import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
 
 const activeTab = ref(0);
 const loading = ref(true);
@@ -36,7 +39,7 @@ onMounted(loadData);
 
 <template>
   <div class="costs-page">
-    <van-nav-bar title="API 成本监控" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="API 成本监控" left-arrow @click-left="router.back()" />
 
     <van-pull-refresh v-model="loading" @refresh="loadData">
       <van-notice-bar

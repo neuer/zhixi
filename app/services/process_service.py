@@ -6,12 +6,13 @@
 import asyncio
 import json
 import logging
-from datetime import UTC, date, datetime
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeAPIError, ClaudeClient
+from app.config import ensure_utc
 from app.models.account import TwitterAccount
 from app.models.api_cost_log import ApiCostLog
 from app.models.topic import Topic
@@ -527,7 +528,7 @@ class ProcessService:
         for tweet in relevant_tweets:
             account = accounts_map.get(tweet.account_id)
             weight = account.weight if account else 1.0
-            tweet_time = _ensure_utc(tweet.tweet_time)
+            tweet_time = ensure_utc(tweet.tweet_time)
             hours = calculate_hours_since_post(tweet_time, ref_time)
             tweet.base_heat_score = calculate_base_score(
                 tweet.likes,
@@ -671,10 +672,3 @@ def _build_thread_data(
         "total_replies": sum(t.replies for t in member_tweets),
         "merged_text": merged_text,
     }
-
-
-def _ensure_utc(dt: datetime) -> datetime:
-    """确保 datetime 有 UTC 时区信息（SQLite 读回可能丢失 tzinfo）。"""
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { formatDate, safeHref } from "@/utils/format";
 import type {
   DigestBriefResponse,
   DigestItemResponse,
 } from "@zhixi/openapi-client";
+import { computed } from "vue";
 
 const props = defineProps<{
   digest: DigestBriefResponse;
@@ -10,17 +12,11 @@ const props = defineProps<{
 }>();
 
 /** 过滤掉已剔除的条目，按 display_order 排序。 */
-function visibleItems(): DigestItemResponse[] {
+const visibleItems = computed(() => {
   return props.items
     .filter((item) => !item.is_excluded)
     .sort((a, b) => a.display_order - b.display_order);
-}
-
-/** 格式化日期为中文。 */
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
-}
+});
 
 /** 解析 perspectives JSON。 */
 function parsePerspectives(raw: string | null): string[] {
@@ -67,7 +63,7 @@ function parseSourceTweets(
     <!-- 条目列表 -->
     <div class="preview-items">
       <div
-        v-for="(item, idx) in visibleItems()"
+        v-for="(item, idx) in visibleItems"
         :key="item.id"
         class="preview-card"
       >
@@ -102,8 +98,9 @@ function parseSourceTweets(
             <a
               v-for="(src, si) in parseSourceTweets(item.snapshot_source_tweets)"
               :key="si"
-              :href="src.url"
+              :href="safeHref(src.url)"
               target="_blank"
+              rel="noopener noreferrer"
               class="source-link"
             >@{{ src.author }}</a>
           </div>
@@ -117,8 +114,9 @@ function parseSourceTweets(
           <div v-if="item.snapshot_author_handle" class="card-author">
             <a
               v-if="item.snapshot_tweet_url"
-              :href="item.snapshot_tweet_url"
+              :href="safeHref(item.snapshot_tweet_url)"
               target="_blank"
+              rel="noopener noreferrer"
               class="author-link"
             >@{{ item.snapshot_author_handle }}</a>
             <span v-else>@{{ item.snapshot_author_handle }}</span>

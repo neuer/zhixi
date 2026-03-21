@@ -3,7 +3,10 @@
 import json
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.clients.claude_client import ClaudeAPIError, ClaudeClient
+from app.clients.notifier import send_alert
 from app.digest.summary_prompts import (
     DEFAULT_SUMMARY,
     EMPTY_DAY_SUMMARY,
@@ -42,19 +45,22 @@ def _serialize_top_items(items: list[DigestItem]) -> str:
 async def generate_summary(
     claude_client: ClaudeClient,
     top_items: list[DigestItem],
-) -> tuple[str, ClaudeResponse | None]:
+    *,
+    db: AsyncSession | None = None,
+) -> tuple[str, ClaudeResponse | None, bool]:
     """生成导读摘要。
 
     Args:
         claude_client: Claude API 客户端。
         top_items: TOP 5 digest_items（已按 heat_score 降序）。
+        db: 可选 AsyncSession，用于发送降级告警。
 
     Returns:
-        (summary_text, claude_response)。失败时返回 (DEFAULT_SUMMARY, None)。
+        (summary_text, claude_response, degraded)。失败时 degraded=True。
     """
     if not top_items:
         logger.info("无可用条目，使用空日导读摘要")
-        return EMPTY_DAY_SUMMARY, None
+        return EMPTY_DAY_SUMMARY, None, False
 
     top_articles_json = _serialize_top_items(top_items)
     prompt = SUMMARY_PROMPT_TEMPLATE.format(top_articles_json=top_articles_json)
@@ -63,10 +69,14 @@ async def generate_summary(
         response = await claude_client.complete(prompt, max_tokens=512)
         summary = response.content.strip()
         logger.info("导读摘要生成成功，长度=%d", len(summary))
-        return summary, response
+        return summary, response, False
     except ClaudeAPIError:
         logger.warning("Claude API 调用失败，使用默认导读摘要", exc_info=True)
-        return DEFAULT_SUMMARY, None
+        if db is not None:
+            await send_alert("摘要生成降级", "Claude API 调用失败，已使用默认导读摘要", db)
+        return DEFAULT_SUMMARY, None, True
     except Exception:
         logger.warning("导读摘要生成异常，使用默认导读摘要", exc_info=True)
-        return DEFAULT_SUMMARY, None
+        if db is not None:
+            await send_alert("摘要生成降级", "导读摘要生成异常，已使用默认导读摘要", db)
+        return DEFAULT_SUMMARY, None, True

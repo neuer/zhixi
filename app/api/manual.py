@@ -44,7 +44,7 @@ async def manual_fetch(
         raise HTTPException(
             status_code=409,
             detail="当前有任务在运行中，请稍后再试",
-        ) from None
+        )
 
     # 创建 job_run
     job_run = JobRun(
@@ -86,7 +86,7 @@ async def manual_fetch(
         # 用 JSONResponse 而非 HTTPException，保证 get_db() 正常 commit
         return JSONResponse(
             status_code=500,
-            content={"detail": f"抓取失败: {str(exc)[:200]}"},
+            content={"detail": "抓取失败，请稍后重试"},
         )
 
 
@@ -106,12 +106,12 @@ async def manual_generate_cover(
     # 检查功能开关
     enable_cover = await get_system_config(db, "enable_cover_generation", "false")
     if enable_cover.lower() != "true":
-        raise HTTPException(status_code=400, detail="封面图功能未开启") from None
+        raise HTTPException(status_code=400, detail="封面图功能未开启")
 
     # 检查 Gemini API Key
     gemini_client = get_gemini_client()
     if gemini_client is None:
-        raise HTTPException(status_code=400, detail="Gemini API Key 未配置") from None
+        raise HTTPException(status_code=400, detail="Gemini API Key 未配置")
 
     # 查找当日草稿
     digest_date = get_today_digest_date()
@@ -122,7 +122,7 @@ async def manual_generate_cover(
     result = await db.execute(stmt)
     digest = result.scalar_one_or_none()
     if digest is None:
-        raise HTTPException(status_code=404, detail="当日无可编辑草稿") from None
+        raise HTTPException(status_code=404, detail="当日无可编辑草稿")
 
     # 查询 digest_items
     items_stmt = (

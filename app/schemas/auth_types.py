@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SetupStatusResponse(BaseModel):
@@ -14,7 +14,7 @@ class SetupStatusResponse(BaseModel):
 class SetupInitRequest(BaseModel):
     """首次设置请求。"""
 
-    password: str
+    password: str = Field(max_length=128)
     notification_webhook_url: str | None = None
 
 
@@ -22,7 +22,7 @@ class LoginRequest(BaseModel):
     """管理员登录请求。"""
 
     username: str
-    password: str
+    password: str = Field(max_length=128)
 
 
 class LoginResponse(BaseModel):

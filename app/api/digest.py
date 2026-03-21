@@ -3,6 +3,7 @@
 import logging
 from datetime import UTC, datetime
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_admin, get_digest_service, require_no_pipeline_lock
 from app.clients.claude_client import get_claude_client
 from app.clients.notifier import send_alert
+from app.clients.x_client import XApiError
 from app.config import get_system_config, get_today_digest_date
 from app.database import get_db
 from app.models.digest import DailyDigest
@@ -350,7 +352,7 @@ async def regenerate_digest(
         # JSONResponse 保证 job_run 持久化
         return JSONResponse(
             status_code=500,
-            content={"detail": f"重新生成失败: {str(exc)[:200]}"},
+            content={"detail": "重新生成失败，请稍后重试"},
         )
 
 
@@ -427,7 +429,7 @@ async def add_tweet(
     # 前置检查：当日必须有可编辑草稿
     digest_svc = DigestService(db, claude_client=claude)
     try:
-        await digest_svc._get_current_draft(digest_date)  # noqa: SLF001
+        await digest_svc.check_draft_editable(digest_date)
     except DigestNotFoundError:
         raise HTTPException(
             status_code=409,
@@ -447,7 +449,7 @@ async def add_tweet(
         raise HTTPException(status_code=400, detail="无效的推文URL") from None
     except TweetAlreadyExistsError:
         raise HTTPException(status_code=409, detail="该推文已存在") from None
-    except Exception:
+    except (httpx.HTTPError, XApiError):
         raise HTTPException(status_code=502, detail="推文抓取失败") from None
 
     # M2: AI 加工（失败时推文保留但不建 item）

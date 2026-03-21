@@ -84,7 +84,6 @@ class FetchService:
         }
         seen_ids: set[str] = set()
 
-        fetcher = get_fetcher(settings.X_API_BEARER_TOKEN)
         started_at = datetime.now(UTC)
 
         success_count = 0
@@ -93,7 +92,7 @@ class FetchService:
         new_tweets_total = 0
         errors: list[dict[str, str]] = []
 
-        try:
+        async with get_fetcher(settings.X_API_BEARER_TOKEN) as fetcher:
             for idx, account in enumerate(accounts):
                 # 跳过无 twitter_user_id 的账号
                 if not account.twitter_user_id:
@@ -136,8 +135,6 @@ class FetchService:
                         account.twitter_handle,
                     )
                     raise
-        finally:
-            await fetcher.close()
 
         # 写入 fetch_log
         finished_at = datetime.now(UTC)
@@ -243,11 +240,8 @@ class FetchService:
             raise TweetAlreadyExistsError
 
         # X API 抓取
-        fetcher = get_fetcher(settings.X_API_BEARER_TOKEN)
-        try:
+        async with get_fetcher(settings.X_API_BEARER_TOKEN) as fetcher:
             raw = await fetcher.fetch_single_tweet(tweet_id)
-        finally:
-            await fetcher.close()
 
         # 记录 API 成本
         cost_log = ApiCostLog(

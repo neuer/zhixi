@@ -13,23 +13,25 @@ from app.publisher.wechat_client import WechatClient, get_wechat_client
 class TestWechatClient:
     """微信客户端空壳测试。"""
 
-    def test_get_access_token_not_implemented(self) -> None:
+    async def test_get_access_token_not_implemented(self) -> None:
         """get_access_token 应 raise NotImplementedError。"""
         client = WechatClient(app_id="test_id", app_secret="test_secret")
         with pytest.raises(NotImplementedError, match="微信API自动发布功能将在公众号认证后实现"):
-            client.get_access_token()
+            await client.get_access_token()
 
-    def test_upload_article_not_implemented(self) -> None:
+    async def test_upload_article_not_implemented(self) -> None:
         """upload_article 应 raise NotImplementedError。"""
         client = WechatClient(app_id="test_id", app_secret="test_secret")
         with pytest.raises(NotImplementedError, match="微信API自动发布功能将在公众号认证后实现"):
-            client.upload_article(title="标题", content="内容", cover_url="https://example.com")
+            await client.upload_article(
+                title="标题", content="内容", cover_url="https://example.com"
+            )
 
-    def test_send_mass_not_implemented(self) -> None:
+    async def test_send_mass_not_implemented(self) -> None:
         """send_mass 应 raise NotImplementedError。"""
         client = WechatClient(app_id="test_id", app_secret="test_secret")
         with pytest.raises(NotImplementedError, match="微信API自动发布功能将在公众号认证后实现"):
-            client.send_mass(media_id="media_123")
+            await client.send_mass(media_id="media_123")
 
     def test_get_wechat_client_unconfigured(self) -> None:
         """WECHAT_APP_ID 为空时 get_wechat_client 应 raise ValueError。"""

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import api from "@/api";
+import { getStatus } from "@/utils/status";
 import type { TodayResponse } from "@zhixi/openapi-client";
 import { showConfirmDialog, showToast } from "vant";
 import { computed, onMounted, ref } from "vue";
@@ -8,22 +9,6 @@ import { useRouter } from "vue-router";
 const router = useRouter();
 const loading = ref(true);
 const data = ref<TodayResponse | null>(null);
-
-type TagType = "primary" | "success" | "warning" | "danger" | "default";
-
-const statusMap: Record<string, { text: string; type: TagType }> = {
-  draft: { text: "待审核", type: "warning" },
-  published: { text: "已发布", type: "success" },
-  failed: { text: "失败", type: "danger" },
-};
-
-function getStatus(status: string | undefined): {
-  text: string;
-  type: TagType;
-} {
-  if (!status) return { text: "无记录", type: "default" };
-  return statusMap[status] ?? { text: status, type: "default" };
-}
 
 /** 过滤已剔除条目，按 display_order 排序。 */
 const visibleItems = computed(() => {

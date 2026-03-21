@@ -124,8 +124,10 @@ def _fix_brackets(text: str) -> str:
 
 def _validate_schema(data: dict, schema: dict, raw_text: str) -> None:
     """校验必需字段存在且类型正确。"""
-    required_fields = schema.get("required", [])
-    properties = schema.get("properties", {})
+    raw_required = schema.get("required", [])
+    required_fields: list[str] = list(raw_required) if isinstance(raw_required, list) else []
+    raw_props = schema.get("properties", {})
+    properties: dict[str, dict] = raw_props if isinstance(raw_props, dict) else {}
 
     for field in required_fields:
         if field not in data:
@@ -139,7 +141,7 @@ def _validate_schema(data: dict, schema: dict, raw_text: str) -> None:
             continue
 
         expected_type = field_schema.get("type")
-        if not expected_type:
+        if not isinstance(expected_type, str):
             continue
 
         python_types = _TYPE_MAP.get(expected_type)

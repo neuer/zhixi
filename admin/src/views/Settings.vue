@@ -7,6 +7,9 @@ import type {
 } from "@zhixi/openapi-client";
 import { closeToast, showLoadingToast, showToast } from "vant";
 import { onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
 
 const loading = ref(true);
 const saving = ref(false);
@@ -136,7 +139,7 @@ onMounted(loadSettings);
 
 <template>
   <div class="settings-page">
-    <van-nav-bar title="系统设置" left-arrow @click-left="$router.back()" />
+    <van-nav-bar title="系统设置" left-arrow @click-left="router.back()" />
 
     <div style="padding: 12px">
       <!-- 推送配置 -->

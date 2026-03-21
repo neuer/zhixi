@@ -56,7 +56,7 @@ async def test_generate_summary_normal() -> None:
         _make_digest_item(snapshot_title="谷歌推出 Gemini 2", snapshot_heat_score=85.0),
     ]
 
-    summary, response = await generate_summary(client, items)
+    summary, response, _degraded = await generate_summary(client, items)
     assert summary == summary_text
     assert response is not None
     assert response.content == summary_text
@@ -118,7 +118,7 @@ async def test_generate_summary_claude_api_error_fallback() -> None:
         _make_digest_item(snapshot_title="测试", snapshot_heat_score=80.0),
     ]
 
-    summary, response = await generate_summary(client, items)
+    summary, response, _degraded = await generate_summary(client, items)
     assert summary == DEFAULT_SUMMARY
     assert response is None
 
@@ -128,7 +128,7 @@ async def test_generate_summary_empty_items() -> None:
     """空 items 列表返回空日导读，不调用 Claude。"""
     client = AsyncMock(spec=ClaudeClient)
 
-    summary, response = await generate_summary(client, [])
+    summary, response, _degraded = await generate_summary(client, [])
     assert summary == EMPTY_DAY_SUMMARY
     assert summary == "今日 AI 领域较为平静"
     assert response is None

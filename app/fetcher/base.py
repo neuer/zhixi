@@ -2,12 +2,21 @@
 
 from abc import ABC, abstractmethod
 from datetime import datetime
+from typing import Self
 
 from app.schemas.fetcher_types import RawTweet
 
 
 class BaseFetcher(ABC):
     """数据抓取器抽象基类，定义统一接口。"""
+
+    async def __aenter__(self) -> Self:
+        """支持 async with 用法。"""
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        """退出时自动关闭资源。"""
+        await self.close()
 
     @abstractmethod
     async def fetch_user_tweets(

@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 from datetime import UTC, datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
@@ -67,6 +66,5 @@ def _log_namer(default_name: str) -> str:
     """自定义日志文件名：app.log.YYYYMMDD → app_YYYYMMDD.log。"""
     base, _, suffix = default_name.rpartition(".")
     if suffix.isdigit() and len(suffix) == 8:
-        directory = os.path.dirname(base)
-        return os.path.join(directory, f"app_{suffix}.log")
+        return str(Path(base).parent / f"app_{suffix}.log")
     return default_name
