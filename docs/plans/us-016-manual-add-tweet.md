@@ -174,3 +174,49 @@ uv run ruff check .                                 # Lint
 uv run ruff format --check .                        # 格式化
 uv run pyright                                      # 类型检查
 ```
+
+---
+
+## 执行结果
+
+### 交付物清单
+
+| 文件 | 操作 | 行数 |
+|------|------|------|
+| `app/fetcher/base.py` | 修改 | +14 |
+| `app/fetcher/x_api.py` | 修改 | +44 |
+| `app/services/fetch_service.py` | 修改 | +118 |
+| `app/services/digest_service.py` | 修改 | +99 |
+| `app/schemas/digest_types.py` | 修改 | +14 |
+| `app/api/digest.py` | 修改 | +68 |
+| `tests/test_add_tweet_api.py` | 新增 | +695 |
+| `docs/plans/us-016-manual-add-tweet.md` | 新增 | 计划文件 |
+| `docs/spec/user-stories.md` | 修改 | 状态更新 |
+
+### 偏离项
+
+| 编号 | 计划 | 实际 | 原因 |
+|------|------|------|------|
+| 1 | 测试 16 个场景 | 实际 18 个（URL 解析 6 + API 9 + 热度 3） | URL 解析拆为独立 TestParseTweetId 类 6 个单元测试 |
+| 2 | X API 抓取失败用 httpx.HTTPStatusError | 改用宽泛 except Exception | 简化错误匹配，fetcher 内部可能抛多种异常 |
+
+### 问题与修复
+
+| 问题 | 解决 |
+|------|------|
+| 测试中 tweet_id 用 `existing_1` 等非数字字符串，正则 `(\d+)` 无法匹配 | 改为纯数字 ID `100001`/`100002`/`100003` |
+| 同理 `new_777` 含下划线不匹配 | 改为 `777777` |
+
+### 质量门禁
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | ✅ All checks passed |
+| ruff format | ✅ 130 files already formatted |
+| lint-imports | ✅ 4 contracts kept, 0 broken |
+| pyright | ✅ 0 errors, 0 warnings |
+| pytest | ✅ 511 passed (含 18 新增) |
+
+### PR 链接
+
+https://github.com/neuer/zhixi/pull/27
