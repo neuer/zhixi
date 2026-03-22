@@ -57,6 +57,7 @@ class DigestBriefResponse(BaseModel):
     item_count: int
     content_markdown: str | None
     created_at: datetime
+    summary_degraded: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -67,6 +68,7 @@ class TodayResponse(BaseModel):
     digest: DigestBriefResponse | None
     items: list[DigestItemResponse]
     low_content_warning: bool
+    cover_failed: bool = False
 
 
 class EditItemRequest(BaseModel):

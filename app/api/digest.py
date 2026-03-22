@@ -72,10 +72,21 @@ async def get_today_digest(
     min_articles = await safe_int_config(db, "min_articles", 1)
     low_content_warning = digest.item_count < min_articles
 
+    # summary_degraded: 判断摘要是否为降级默认值
+    from app.digest.summary_prompts import DEFAULT_SUMMARY
+
+    brief = DigestBriefResponse.model_validate(digest)
+    brief.summary_degraded = digest.summary == DEFAULT_SUMMARY
+
+    # cover_failed: 开启了封面图但未生成
+    enable_cover_str = await get_system_config(db, "enable_cover_generation", "false")
+    cover_failed = enable_cover_str == "true" and not digest.cover_image_path
+
     return TodayResponse(
-        digest=DigestBriefResponse.model_validate(digest),
+        digest=brief,
         items=[DigestItemResponse.model_validate(item) for item in items],
         low_content_warning=low_content_warning,
+        cover_failed=cover_failed,
     )
 
 

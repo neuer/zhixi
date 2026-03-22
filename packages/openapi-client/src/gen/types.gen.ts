@@ -215,6 +215,7 @@ export type DigestBriefResponse = {
     item_count: number;
     content_markdown: (string | null);
     created_at: string;
+    summary_degraded?: boolean;
 };
 
 /**
@@ -683,6 +684,7 @@ export type TodayResponse = {
     digest: (DigestBriefResponse | null);
     items: Array<DigestItemResponse>;
     low_content_warning: boolean;
+    cover_failed?: boolean;
 };
 
 /**
