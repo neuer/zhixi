@@ -14,6 +14,7 @@ const itemType = computed(() => route.params.type as string);
 const itemRefId = computed(() => Number(route.params.id));
 
 const loading = ref(true);
+const refreshing = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const item = ref<DigestItemResponse | null>(null);
@@ -76,6 +77,7 @@ async function loadItem() {
     error.value = "加载失败，下拉刷新重试";
   } finally {
     loading.value = false;
+    refreshing.value = false;
   }
 }
 
@@ -153,7 +155,7 @@ onMounted(loadItem);
       @click-left="router.back()"
     />
 
-    <van-pull-refresh v-model="loading" @refresh="loadItem">
+    <van-pull-refresh v-model="refreshing" @refresh="loadItem">
       <van-empty v-if="!loading && error" :description="error" image="error" />
 
       <template v-else-if="item">

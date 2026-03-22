@@ -38,7 +38,7 @@ export function useAccountActions() {
     }
     try {
       if (account.is_active) {
-        await api.delete(`/accounts/${account.id}`);
+        await api.put(`/accounts/${account.id}`, { is_active: false });
       } else {
         await api.put(`/accounts/${account.id}`, { is_active: true });
       }

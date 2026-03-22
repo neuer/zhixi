@@ -334,7 +334,7 @@ onMounted(async () => {
     <!-- 密钥编辑弹窗 -->
     <van-dialog
       v-model:show="showSecretDialog"
-      :title="`配置 ${editingSecret.label}`"
+      :title="editingSecret.label ? `配置 ${editingSecret.label}` : '配置密钥'"
       show-cancel-button
       :confirm-button-text="savingSecret ? '保存中...' : '保存'"
       :confirm-button-disabled="savingSecret"
