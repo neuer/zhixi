@@ -7,6 +7,7 @@ import json
 import logging
 import secrets
 from datetime import UTC, date, datetime, timedelta
+from typing import NamedTuple
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,16 @@ from app.schemas.digest_types import ReorderInput
 from app.schemas.enums import CallType, DigestStatus, ItemType, TopicType
 
 logger = logging.getLogger(__name__)
+
+
+class SortableItem(NamedTuple):
+    """草稿排序项 — 替代裸元组，提升可读性。"""
+
+    heat_score: float
+    item_type: ItemType
+    source: Tweet | Topic
+    extra: dict[str, object]
+
 
 # 导读摘要取 TOP N 条目
 _SUMMARY_TOP_N = 5
@@ -85,7 +96,7 @@ class DigestService:
         )
 
         # 5. 按 heat_score 降序排序
-        sortable_items.sort(key=lambda x: x[0], reverse=True)
+        sortable_items.sort(key=lambda x: x.heat_score, reverse=True)
 
         # 6. 清理同日期旧记录的 is_current 标记
         await self._db.execute(
@@ -107,14 +118,14 @@ class DigestService:
 
         # 8. 创建 DigestItem 快照
         created_items: list[DigestItem] = []
-        for order, (_score, item_type, source_obj, extra) in enumerate(sortable_items, start=1):
+        for order, si in enumerate(sortable_items, start=1):
             item = self._create_digest_item(
                 digest_id=digest.id,
                 display_order=order,
-                item_type=item_type,
-                source_obj=source_obj,
+                item_type=si.item_type,
+                source_obj=si.source,
                 accounts_map=accounts_map,
-                extra=extra,
+                extra=si.extra,
             )
             self._db.add(item)
             created_items.append(item)
@@ -327,18 +338,18 @@ class DigestService:
         standalone_tweets: list[Tweet],
         topics_with_members: list[tuple[Topic, list[Tweet]]],
         accounts_map: dict[int, TwitterAccount],
-    ) -> list[tuple[float, ItemType, Tweet | Topic, dict[str, object]]]:
-        """构建 (heat_score, item_type, source_obj, extra_data) 元组列表。"""
-        items: list[tuple[float, ItemType, Tweet | Topic, dict[str, object]]] = []
+    ) -> list[SortableItem]:
+        """构建 SortableItem 列表用于热度排序。"""
+        items: list[SortableItem] = []
 
         # 独立推文
         for tweet in standalone_tweets:
-            items.append((tweet.heat_score, ItemType.TWEET, tweet, {}))
+            items.append(SortableItem(tweet.heat_score, ItemType.TWEET, tweet, {}))
 
         # 话题
         for topic, members in topics_with_members:
             extra: dict[str, object] = {"members": members}
-            items.append((topic.heat_score, ItemType.TOPIC, topic, extra))
+            items.append(SortableItem(topic.heat_score, ItemType.TOPIC, topic, extra))
 
         return items
 

@@ -88,3 +88,13 @@ class PublishMode(StrEnum):
 
     API = "api"
     MANUAL = "manual"
+
+
+class SecretKey(StrEnum):
+    """密钥配置键名。"""
+
+    X_API_BEARER_TOKEN = "x_api_bearer_token"
+    ANTHROPIC_API_KEY = "anthropic_api_key"
+    GEMINI_API_KEY = "gemini_api_key"
+    WECHAT_APP_ID = "wechat_app_id"
+    WECHAT_APP_SECRET = "wechat_app_secret"

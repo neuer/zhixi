@@ -274,6 +274,11 @@ async def _aggregate_cost(db: AsyncSession, where_clause: ColumnElement[bool]) -
     return CostSummary(total_cost=total_cost, by_service=by_service)
 
 
+def _digest_priority(d: DailyDigest) -> tuple[bool, bool, int]:
+    """返回 digest 优先级键：published > is_current > version，值越大优先级越高。"""
+    return (d.status == DigestStatus.PUBLISHED, d.is_current, d.version)
+
+
 async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRecord]:
     """获取近 7 天推送记录（每天选一条代表版本）。
 
@@ -288,24 +293,12 @@ async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRec
     )
     all_digests = result.scalars().all()
 
-    # 按日期分组，每天选最优
-    by_date: dict[date, DailyDigest] = {}
+    # 按日期分组，每天选优先级最高的
+    by_date: dict[date, list[DailyDigest]] = defaultdict(list)
     for d in all_digests:
-        existing = by_date.get(d.digest_date)
-        if existing is None:
-            by_date[d.digest_date] = d
-        else:
-            # published 优先
-            if d.status == DigestStatus.PUBLISHED and existing.status != DigestStatus.PUBLISHED:
-                by_date[d.digest_date] = d
-            elif d.status != DigestStatus.PUBLISHED and existing.status == DigestStatus.PUBLISHED:
-                pass  # 保留 existing
-            elif d.is_current and not existing.is_current:
-                by_date[d.digest_date] = d
-            elif not d.is_current and existing.is_current:
-                pass  # 保留 existing
-            elif d.version > existing.version:
-                by_date[d.digest_date] = d
+        by_date[d.digest_date].append(d)
+
+    best_by_date = {dt: max(group, key=_digest_priority) for dt, group in by_date.items()}
 
     records = [
         DigestDayRecord(
@@ -314,7 +307,7 @@ async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRec
             item_count=d.item_count,
             version=d.version,
         )
-        for d in by_date.values()
+        for d in best_by_date.values()
     ]
     records.sort(key=lambda r: r.date, reverse=True)
     return records

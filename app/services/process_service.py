@@ -412,13 +412,19 @@ class ProcessService:
             else:
                 failed += 1
 
+        # 按 topic_id 建立倒排索引，避免对每个 topic 遍历全部 tweet_map（O(N*M) → O(N+M)）
+        tweets_by_topic: dict[int, list[Tweet]] = {}
+        for t in tweet_map.values():
+            if t.topic_id is not None:
+                tweets_by_topic.setdefault(t.topic_id, []).append(t)
+
         # 加工 topics（aggregated + thread）
         for topic in topics:
             if item_index > 0:
                 await asyncio.sleep(1.0)
             item_index += 1
 
-            member_tweets = [t for t in tweet_map.values() if t.topic_id == topic.id]
+            member_tweets = tweets_by_topic.get(topic.id, [])
 
             if topic.type == TopicType.AGGREGATED:
                 success = await self._process_aggregated_with_retry(
@@ -635,15 +641,23 @@ class ProcessService:
 # ──────────────────────────────────────────────────
 
 
+def _account_fields(account: TwitterAccount | None) -> tuple[str, str, str]:
+    """提取账号的 (display_name, twitter_handle, bio)，account 为 None 时返回空字符串。"""
+    if account is None:
+        return ("", "", "")
+    return (account.display_name, account.twitter_handle, account.bio or "")
+
+
 def _build_single_tweet_data(
     tweet: Tweet,
     account: TwitterAccount | None,
 ) -> dict[str, object]:
     """构建单条推文加工输入。"""
+    name, handle, bio = _account_fields(account)
     return {
-        "author_name": account.display_name if account else "",
-        "author_handle": account.twitter_handle if account else "",
-        "author_bio": (account.bio or "") if account else "",
+        "author_name": name,
+        "author_handle": handle,
+        "author_bio": bio,
         "tweet_time": tweet.tweet_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "likes": tweet.likes,
         "retweets": tweet.retweets,
@@ -660,11 +674,12 @@ def _build_aggregated_tweets_data(
     result: list[dict[str, object]] = []
     for tweet in tweets:
         account = accounts_map.get(tweet.account_id)
+        name, handle, bio = _account_fields(account)
         result.append(
             {
-                "author": account.display_name if account else "",
-                "handle": account.twitter_handle if account else "",
-                "bio": (account.bio or "") if account else "",
+                "author": name,
+                "handle": handle,
+                "bio": bio,
                 "text": tweet.original_text,
                 "likes": tweet.likes,
                 "retweets": tweet.retweets,
@@ -689,11 +704,12 @@ def _build_thread_data(
     first_tweet = sorted_tweets[0]
     last_tweet = sorted_tweets[-1]
     account = accounts_map.get(first_tweet.account_id)
+    name, handle, bio = _account_fields(account)
 
     return {
-        "author_name": account.display_name if account else "",
-        "author_handle": account.twitter_handle if account else "",
-        "author_bio": (account.bio or "") if account else "",
+        "author_name": name,
+        "author_handle": handle,
+        "author_bio": bio,
         "thread_start_time": first_tweet.tweet_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "thread_end_time": last_tweet.tweet_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "tweet_count": len(member_tweets),

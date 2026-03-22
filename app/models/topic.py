@@ -15,7 +15,7 @@ class Topic(Base):
     __tablename__ = "topics"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    digest_date: Mapped[date] = mapped_column(Date, nullable=False)
+    digest_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     type: Mapped[TopicType] = mapped_column(String(20), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     topic_label: Mapped[str | None] = mapped_column(String(200), nullable=True)

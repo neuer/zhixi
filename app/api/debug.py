@@ -11,6 +11,7 @@ from app.api.deps import get_current_admin
 from app.config import get_secret_config
 from app.database import get_db
 from app.fetcher.x_api import enrich_tweet_text
+from app.lib.timing import elapsed_ms
 from app.schemas.debug_types import (
     DebugXPingResponse,
     DebugXTweetResponse,
@@ -22,11 +23,6 @@ from app.schemas.debug_types import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _elapsed_ms(start: float) -> int:
-    """计算自 start 以来的耗时毫秒数。"""
-    return int((time.monotonic() - start) * 1000)
 
 
 async def _get_bearer_token(db: AsyncSession) -> str:
@@ -63,19 +59,19 @@ async def debug_x_ping(
     except httpx.HTTPStatusError as exc:
         return DebugXPingResponse(
             status="error",
-            latency_ms=_elapsed_ms(start),
+            latency_ms=elapsed_ms(start),
             raw_response=exc.response.json(),
         )
     except httpx.HTTPError as exc:
         return DebugXPingResponse(
             status="error",
-            latency_ms=_elapsed_ms(start),
+            latency_ms=elapsed_ms(start),
             raw_response={"error": str(exc)},
         )
 
     return DebugXPingResponse(
         status="ok",
-        latency_ms=_elapsed_ms(start),
+        latency_ms=elapsed_ms(start),
         raw_response=raw,
     )
 
@@ -97,7 +93,7 @@ async def debug_x_user(
             params={"user.fields": "profile_image_url,description,public_metrics"},
         )
         raw = resp.json()
-        latency = _elapsed_ms(start)
+        latency = elapsed_ms(start)
 
     data = raw.get("data")
     if not data:
@@ -144,7 +140,7 @@ async def debug_x_tweets(
             tweets=[],
             count=0,
             raw_response=user_payload,
-            latency_ms=_elapsed_ms(start),
+            latency_ms=elapsed_ms(start),
         )
 
     user_id = user_data["id"]
@@ -183,10 +179,10 @@ async def debug_x_tweets(
                 tweets=[],
                 count=0,
                 raw_response={"error": str(exc)},
-                latency_ms=_elapsed_ms(start),
+                latency_ms=elapsed_ms(start),
             )
 
-    latency = _elapsed_ms(start)
+    latency = elapsed_ms(start)
 
     # API 返回错误（如 403 Free 层级不支持）时直接返回原始响应
     if "data" not in raw_payload:
@@ -241,7 +237,7 @@ async def debug_x_tweet(
             },
         )
         raw = resp.json()
-        latency = _elapsed_ms(start)
+        latency = elapsed_ms(start)
 
     data = raw.get("data")
     if not data:

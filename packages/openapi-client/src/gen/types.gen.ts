@@ -553,6 +553,22 @@ export type ReorderRequest = {
 };
 
 /**
+ * 密钥配置键名。
+ */
+export type SecretKey = 'x_api_bearer_token' | 'anthropic_api_key' | 'gemini_api_key' | 'wechat_app_id' | 'wechat_app_secret';
+
+/**
+ * 密钥配置键名。
+ */
+export const SecretKey = {
+    X_API_BEARER_TOKEN: 'x_api_bearer_token',
+    ANTHROPIC_API_KEY: 'anthropic_api_key',
+    GEMINI_API_KEY: 'gemini_api_key',
+    WECHAT_APP_ID: 'wechat_app_id',
+    WECHAT_APP_SECRET: 'wechat_app_secret'
+} as const;
+
+/**
  * 密钥状态响应。
  */
 export type SecretsStatusResponse = {
