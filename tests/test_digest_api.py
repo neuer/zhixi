@@ -174,3 +174,41 @@ async def test_today_requires_auth(client: AsyncClient) -> None:
     """无 JWT 返回 401。"""
     resp = await client.get("/api/digest/today")
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+async def test_today_shows_summary_degraded(
+    _mock_date: object,
+    authed_client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """导读摘要降级时 summary_degraded=True。"""
+    from app.digest.summary_prompts import DEFAULT_SUMMARY
+
+    await _seed_config(db)
+    digest = await _seed_digest_with_items(db, item_count=2)
+    digest.summary = DEFAULT_SUMMARY
+    await db.commit()
+
+    resp = await authed_client.get("/api/digest/today")
+    data = resp.json()
+    assert data["digest"]["summary_degraded"] is True
+
+
+@pytest.mark.asyncio
+@patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE)
+async def test_today_cover_failed(
+    _mock_date: object,
+    authed_client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """封面图开启但未生成时 cover_failed=True。"""
+    await _seed_config(db)
+    db.add(SystemConfig(key="enable_cover_generation", value="true"))
+    await _seed_digest_with_items(db, item_count=2)
+    await db.commit()
+
+    resp = await authed_client.get("/api/digest/today")
+    data = resp.json()
+    assert data["cover_failed"] is True

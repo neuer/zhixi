@@ -283,6 +283,12 @@ onMounted(async () => {
               {{ getApiStatus(entry.data.status).text }}
             </span>
             <span
+              v-if="entry.data.error_detail"
+              class="api-error-detail"
+            >
+              {{ entry.data.error_detail }}
+            </span>
+            <span
               v-if="entry.data.latency_ms != null"
               class="api-latency"
             >
@@ -384,6 +390,12 @@ onMounted(async () => {
 
 .api-latency {
   color: var(--zx-text-disabled);
+  margin-left: var(--zx-space-xs);
+  font-size: var(--zx-text-xs);
+}
+
+.api-error-detail {
+  color: var(--zx-danger);
   margin-left: var(--zx-space-xs);
   font-size: var(--zx-text-xs);
 }

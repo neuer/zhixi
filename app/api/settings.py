@@ -301,9 +301,27 @@ async def _ping_x_api(db: AsyncSession) -> ApiStatusItem:
                 headers={"Authorization": f"Bearer {token}"},
             )
             resp.raise_for_status()
-    except Exception:
+    except httpx.HTTPStatusError as e:
+        logger.warning("X API ping 失败: HTTP %s", e.response.status_code, exc_info=True)
+        return ApiStatusItem(
+            status="error",
+            latency_ms=elapsed_ms(start),
+            error_detail=f"HTTP {e.response.status_code}",
+        )
+    except httpx.TimeoutException:
+        logger.warning("X API ping 超时")
+        return ApiStatusItem(
+            status="error",
+            latency_ms=elapsed_ms(start),
+            error_detail="请求超时",
+        )
+    except Exception as e:
         logger.warning("X API ping 失败", exc_info=True)
-        return ApiStatusItem(status="error", latency_ms=elapsed_ms(start))
+        return ApiStatusItem(
+            status="error",
+            latency_ms=elapsed_ms(start),
+            error_detail=str(e)[:100],
+        )
 
     return ApiStatusItem(status="ok", latency_ms=elapsed_ms(start))
 
@@ -318,9 +336,13 @@ async def _ping_claude_api(db: AsyncSession) -> ApiStatusItem:
     try:
         client = anthropic.AsyncAnthropic(api_key=api_key, timeout=5.0)
         await client.models.list()
-    except Exception:
+    except Exception as e:
         logger.warning("Claude API ping 失败", exc_info=True)
-        return ApiStatusItem(status="error", latency_ms=elapsed_ms(start))
+        return ApiStatusItem(
+            status="error",
+            latency_ms=elapsed_ms(start),
+            error_detail=str(e)[:100],
+        )
 
     return ApiStatusItem(status="ok", latency_ms=elapsed_ms(start))
 

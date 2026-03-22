@@ -111,6 +111,22 @@ async function handleExclude(item: DigestItemResponse) {
         left-icon="info-o"
         :text="`今日资讯较少（${data.digest?.item_count ?? 0}条）`"
       />
+      <!-- 导读摘要降级提示 (R-12) -->
+      <van-notice-bar
+        v-if="data?.digest?.summary_degraded"
+        :color="'var(--zx-warning)'"
+        :background="'var(--zx-warning-bg)'"
+        left-icon="warning-o"
+        text="导读摘要使用了默认模板，请检查 Claude API 配置"
+      />
+      <!-- 封面图失败提示 (R-12) -->
+      <van-notice-bar
+        v-if="data?.cover_failed"
+        :color="'var(--zx-warning)'"
+        :background="'var(--zx-warning-bg)'"
+        left-icon="warning-o"
+        text="封面图生成失败，请检查 Gemini API 配置"
+      />
 
       <!-- 加载失败 -->
       <div v-if="!loading && error" class="empty-state">

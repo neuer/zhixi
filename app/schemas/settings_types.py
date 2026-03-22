@@ -64,6 +64,7 @@ class ApiStatusItem(BaseModel):
 
     status: Literal["ok", "error", "unconfigured"]
     latency_ms: int | None = None
+    error_detail: str | None = None
 
 
 class ApiStatusResponse(BaseModel):
