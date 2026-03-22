@@ -157,6 +157,11 @@ async function toggleActive(account: AccountResponse) {
   }
 }
 
+async function handleToggleActiveAndClose(account: AccountResponse) {
+  await toggleActive(account);
+  showEditDialog.value = false;
+}
+
 async function handleDelete(account: AccountResponse) {
   try {
     await showConfirmDialog({
@@ -384,7 +389,7 @@ onMounted(loadAccounts);
             :type="editingAccount.is_active ? 'warning' : 'success'"
             block
             plain
-            @click="toggleActive(editingAccount).then(() => { showEditDialog = false })"
+            @click="handleToggleActiveAndClose(editingAccount)"
           >
             {{ editingAccount.is_active ? "停用账号" : "启用账号" }}
           </van-button>

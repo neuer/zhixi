@@ -317,47 +317,47 @@ git commit -m "fix: 枚举类型改造 + 代码规范修复 + 注释更新 (I-9~
 
 **文件：** `admin/src/views/Settings.vue`
 
-- [ ] **Step 1:** 读取 Settings.vue，找到手写的 `SecretItem` interface
-- [ ] **Step 2:** 替换为 `import type { SecretStatusItem } from "@zhixi/openapi-client"`，更新所有引用点
+- [x] **Step 1:** 读取 Settings.vue，找到手写的 `SecretItem` interface
+- [x] **Step 2:** 替换为 `import type { SecretStatusItem } from "@zhixi/openapi-client"`，更新所有引用点
 
 ### 5.2 I-17: Settings.vue SettingsForm 派生
 
 **文件：** `admin/src/views/Settings.vue`
 
-- [ ] **Step 1:** 将手写的 `SettingsForm` 改为从 `SettingsResponse` 用 `Pick<>` 派生
-- [ ] **Step 2:** 确认所有字段映射正确
+- [x] **Step 1:** 将手写的 `SettingsForm` 改为从 `SettingsResponse` 用 `Pick<>` 派生
+- [x] **Step 2:** 确认所有字段映射正确（移除了不再需要的 PublishMode import）
 
 ### 5.3 I-18: ApiDebug.vue TweetItem 替换
 
 **文件：** `admin/src/views/ApiDebug.vue`
 
-- [ ] **Step 1:** 将手写的 `TweetItem` 替换为从 `@zhixi/openapi-client` 导入的 `RawTweet`
-- [ ] **Step 2:** 更新所有引用点
+- [x] **Step 1:** 将手写的 `TweetItem` 替换为从 `@zhixi/openapi-client` 导入的 `RawTweet`
+- [x] **Step 2:** 更新所有引用点（模板中 public_metrics 字段添加 `?? 0` 兜底，因 PublicMetrics 字段为可选）
 
 ### 5.4 I-19: PerspectiveItem 提取到共享模块
 
-**文件：** `admin/src/utils/digest.ts`（新建）, `admin/src/views/DigestEdit.vue`, `admin/src/components/ArticlePreview.vue`
+**文件：** `admin/src/utils/digest.ts`（已有，追加）, `admin/src/views/DigestEdit.vue`, `admin/src/components/ArticlePreview.vue`
 
-- [ ] **Step 1:** 新建 `admin/src/utils/digest.ts`，将 `PerspectiveItem` 和 `parsePerspectives` 提取到此处
-- [ ] **Step 2:** 更新 DigestEdit.vue 和 ArticlePreview.vue，import 替代本地定义
-- [ ] **Step 3:** 确认功能不变
+- [x] **Step 1:** 在已有的 `admin/src/utils/digest.ts` 中追加 `PerspectiveItem` 和 `parsePerspectives`
+- [x] **Step 2:** 更新 DigestEdit.vue 和 ArticlePreview.vue，import 替代本地定义
+- [x] **Step 3:** 确认功能不变
 
 ### 5.5 I-20: Accounts.vue 模板 .then() 链修复
 
 **文件：** `admin/src/views/Accounts.vue`
 
-- [ ] **Step 1:** 将 `@click="toggleActive(editingAccount).then(...)"`  提取为独立 async 方法
-- [ ] **Step 2:** 模板中改为调用该方法
+- [x] **Step 1:** 将 `@click="toggleActive(editingAccount).then(...)"`  提取为独立 async 方法 `handleToggleActiveAndClose`
+- [x] **Step 2:** 模板中改为调用该方法
 
 ### 第 5 轮验证
 
-- [ ] **运行前端门禁**
+- [x] **运行前端门禁**
 
 ```bash
 cd admin && bunx biome check . && bunx vue-tsc --noEmit && bun run build
 ```
 
-- [ ] **提交本轮修复**
+- [x] **提交本轮修复**
 
 ```bash
 git add admin/src/

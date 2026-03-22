@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import api from "@/api";
+import type { PerspectiveItem } from "@/utils/digest";
+import { parsePerspectives } from "@/utils/digest";
 import type { DigestItemResponse, TodayResponse } from "@zhixi/openapi-client";
 import { showConfirmDialog, showToast } from "vant";
 import { computed, onMounted, ref } from "vue";
@@ -32,41 +34,9 @@ const isTopic = computed(
   () => item.value?.snapshot_topic_type === "aggregated",
 );
 
-/** 解析 perspectives JSON 为可读列表。 */
-interface PerspectiveItem {
-  author: string;
-  handle: string;
-  viewpoint: string;
-}
-
-const parsedPerspectives = computed<PerspectiveItem[]>(() => {
-  const raw = form.value.perspectives;
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const results: PerspectiveItem[] = [];
-    for (const p of parsed) {
-      if (typeof p === "string") {
-        results.push({ author: "", handle: "", viewpoint: p });
-      } else if (
-        typeof p === "object" &&
-        p !== null &&
-        typeof (p as Record<string, unknown>).viewpoint === "string"
-      ) {
-        const obj = p as Record<string, unknown>;
-        results.push({
-          author: typeof obj.author === "string" ? obj.author : "",
-          handle: typeof obj.handle === "string" ? obj.handle : "",
-          viewpoint: obj.viewpoint as string,
-        });
-      }
-    }
-    return results;
-  } catch {
-    return [];
-  }
-});
+const parsedPerspectives = computed<PerspectiveItem[]>(() =>
+  parsePerspectives(form.value.perspectives || null),
+);
 
 async function loadItem() {
   loading.value = true;

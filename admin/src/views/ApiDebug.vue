@@ -1,23 +1,11 @@
 <script setup lang="ts">
 import api from "@/api";
+import type { RawTweet } from "@zhixi/openapi-client";
 import { showToast } from "vant";
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
-
-// ── 推文类型 ──
-interface TweetItem {
-  tweet_id: string;
-  text: string;
-  created_at: string;
-  tweet_url: string;
-  public_metrics: {
-    like_count: number;
-    retweet_count: number;
-    reply_count: number;
-  };
-}
 
 // ── 实验记录类型 ──
 interface ExperimentLog {
@@ -27,7 +15,7 @@ interface ExperimentLog {
   latencyMs: number | null;
   status: "ok" | "error";
   summary: string;
-  tweets: TweetItem[] | null;
+  tweets: RawTweet[] | null;
   rawJson: string;
   expanded: boolean;
   showRaw: boolean;
@@ -42,7 +30,7 @@ function addLog(
   latencyMs: number | null,
   summary: string,
   rawData: unknown,
-  tweets: TweetItem[] | null = null,
+  tweets: RawTweet[] | null = null,
 ): void {
   logs.value.unshift({
     id: ++logIdSeq,
@@ -199,7 +187,7 @@ async function doFetchTweets() {
       hours_back: hoursBack.value,
     });
     const d = data as {
-      tweets: TweetItem[];
+      tweets: RawTweet[];
       count: number;
       raw_response: unknown;
       latency_ms: number;
@@ -241,7 +229,7 @@ async function doTweetQuery() {
   try {
     const { data } = await api.get(`/debug/x/tweet/${tweetId}`);
     const d = data as {
-      tweet: TweetItem | null;
+      tweet: RawTweet | null;
       raw_response: unknown;
       latency_ms: number;
     };
@@ -430,9 +418,9 @@ async function doTweetQuery() {
                         {{ formatTime(tweet.created_at) }}
                       </span>
                       <span class="tweet-metrics">
-                        <span title="点赞">&#x2661; {{ formatNumber(tweet.public_metrics.like_count) }}</span>
-                        <span title="转推">&#x21BB; {{ formatNumber(tweet.public_metrics.retweet_count) }}</span>
-                        <span title="回复">&#x2709; {{ formatNumber(tweet.public_metrics.reply_count) }}</span>
+                        <span title="点赞">&#x2661; {{ formatNumber(tweet.public_metrics.like_count ?? 0) }}</span>
+                        <span title="转推">&#x21BB; {{ formatNumber(tweet.public_metrics.retweet_count ?? 0) }}</span>
+                        <span title="回复">&#x2709; {{ formatNumber(tweet.public_metrics.reply_count ?? 0) }}</span>
                       </span>
                       <a
                         v-if="tweet.tweet_url"

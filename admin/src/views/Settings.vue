@@ -2,7 +2,7 @@
 import api from "@/api";
 import type {
   ApiStatusResponse,
-  PublishMode,
+  SecretStatusItem,
   SettingsResponse,
   SettingsUpdate,
 } from "@zhixi/openapi-client";
@@ -20,17 +20,18 @@ const router = useRouter();
 const loading = ref(true);
 const saving = ref(false);
 
-// 表单数据
-interface SettingsForm {
-  push_time: string;
-  push_days: number[];
-  top_n: number;
-  min_articles: number;
-  publish_mode: PublishMode;
-  enable_cover_generation: boolean;
-  cover_generation_timeout: number;
-  notification_webhook_url: string;
-}
+// 表单数据（从 SettingsResponse 派生，只取可编辑字段）
+type SettingsForm = Pick<
+  SettingsResponse,
+  | "push_time"
+  | "push_days"
+  | "top_n"
+  | "min_articles"
+  | "publish_mode"
+  | "enable_cover_generation"
+  | "cover_generation_timeout"
+  | "notification_webhook_url"
+>;
 
 const form = ref<SettingsForm>({
   push_time: "08:00",
@@ -62,15 +63,7 @@ const apiEntries = computed(() => {
 });
 
 // 密钥管理
-interface SecretItem {
-  key: string;
-  label: string;
-  configured: boolean;
-  masked: string;
-  source: "db" | "env" | "none";
-}
-
-const secretsStatus = ref<SecretItem[]>([]);
+const secretsStatus = ref<SecretStatusItem[]>([]);
 const showSecretDialog = ref(false);
 const editingSecret = ref({ key: "", label: "", value: "" });
 const savingSecret = ref(false);
@@ -158,7 +151,7 @@ async function checkApiStatus() {
 
 async function loadSecretsStatus() {
   try {
-    const resp = await api.get<{ items: SecretItem[] }>(
+    const resp = await api.get<{ items: SecretStatusItem[] }>(
       "/settings/secrets-status",
     );
     secretsStatus.value = resp.data.items;
@@ -167,7 +160,7 @@ async function loadSecretsStatus() {
   }
 }
 
-function openSecretDialog(item: SecretItem) {
+function openSecretDialog(item: SecretStatusItem) {
   editingSecret.value = { key: item.key, label: item.label, value: "" };
   showSecretDialog.value = true;
 }
@@ -193,7 +186,7 @@ async function saveSecret() {
   }
 }
 
-async function clearSecret(item: SecretItem) {
+async function clearSecret(item: SecretStatusItem) {
   try {
     await showConfirmDialog({
       title: "清除密钥",
