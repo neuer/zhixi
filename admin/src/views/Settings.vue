@@ -132,6 +132,18 @@ function formatBackupTime(dt: string | null): string {
   return new Date(dt).toLocaleString("zh-CN");
 }
 
+/**
+ * 密钥弹窗 before-close 回调。
+ * 取消时直接关闭；确认时先执行保存，保存完成后再关闭，
+ * 避免 savingSecret 在 @confirm 异步执行前还未设置为 true 的时序问题。
+ */
+async function handleSecretDialogClose(action: string): Promise<boolean> {
+  if (action !== "confirm") return true;
+  if (savingSecret.value) return false;
+  await saveSecret();
+  return true;
+}
+
 onMounted(async () => {
   await Promise.all([loadSettings(), loadSecretsStatus()]);
 });
@@ -338,8 +350,7 @@ onMounted(async () => {
       show-cancel-button
       :confirm-button-text="savingSecret ? '保存中...' : '保存'"
       :confirm-button-disabled="savingSecret"
-      @confirm="saveSecret"
-      :before-close="(action: string) => action !== 'confirm' || !savingSecret"
+      :before-close="handleSecretDialogClose"
     >
       <div class="dialog-body">
         <van-field

@@ -120,7 +120,11 @@ router.beforeEach(async (to) => {
       if (axios.isAxiosError(e) && e.response?.status === 401) {
         return "/login";
       }
-      // 非认证错误：放行导航，让页面自身处理
+      // 非认证错误：检查本地 token 有效性再决定放行
+      if (!isTokenValid()) {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        return "/login";
+      }
       return true;
     }
   }

@@ -3,7 +3,11 @@ import api from "@/api";
 import { useAsyncData } from "@/composables/useAsyncData";
 import { filterVisibleItems } from "@/utils/digest";
 import { getStatus } from "@/utils/status";
-import type { DigestItemResponse, TodayResponse } from "@zhixi/openapi-client";
+import type {
+  DigestItemResponse,
+  MessageResponse,
+  TodayResponse,
+} from "@zhixi/openapi-client";
 import { showConfirmDialog, showToast } from "vant";
 import { type Ref, computed, ref } from "vue";
 import { useRouter } from "vue-router";
@@ -43,7 +47,7 @@ async function confirmAndExecute(options: {
   }
   options.loadingRef.value = true;
   try {
-    await api.post(options.apiPath);
+    await api.post<MessageResponse>(options.apiPath);
     showToast(options.successMsg);
   } catch {
     // API 失败已由拦截器处理
@@ -83,7 +87,9 @@ async function handleExclude(item: DigestItemResponse) {
     return;
   }
   try {
-    await api.post(`/digest/exclude/${item.item_type}/${item.item_ref_id}`);
+    await api.post<MessageResponse>(
+      `/digest/exclude/${item.item_type}/${item.item_ref_id}`,
+    );
     showToast("已剔除");
     await execute();
   } catch {

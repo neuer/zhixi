@@ -6,6 +6,7 @@ import type {
   HistoryListItem,
   HistoryListResponse,
 } from "@zhixi/openapi-client";
+import { showToast } from "vant";
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
@@ -26,13 +27,14 @@ async function loadMore() {
   loading.value = true;
   error.value = null;
 
+  const isFirstPage = page.value === 1;
   try {
     const resp = await api.get<HistoryListResponse>("/history", {
       params: { page: page.value, page_size: pageSize },
     });
     const data = resp.data;
 
-    if (page.value === 1) {
+    if (isFirstPage) {
       items.value = data.items;
     } else {
       items.value.push(...data.items);
@@ -43,7 +45,12 @@ async function loadMore() {
     }
     page.value += 1;
   } catch {
-    error.value = "加载失败，下拉刷新重试";
+    if (isFirstPage) {
+      error.value = "加载失败，下拉刷新重试";
+    } else {
+      showToast("加载更多失败，请重试");
+      // 翻页失败不设置 error，允许用户再次触发加载
+    }
   } finally {
     loading.value = false;
     isLoadingMore = false;
