@@ -21,3 +21,26 @@ export function safeHref(url: string): string {
   if (/^https?:\/\//i.test(url)) return url;
   return "#";
 }
+
+/** ISO 时间字符串格式化为简短日期时间。 */
+export function formatTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("zh-CN", {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return iso;
+  }
+}
+
+/** 数字缩写（万/千）。 */
+export function formatNumber(n: number): string {
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}w`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
