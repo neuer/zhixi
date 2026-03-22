@@ -30,6 +30,10 @@ class TestClaudeClient:
 
     @pytest.fixture
     def client(self) -> ClaudeClient:
+        # I-35 局限性说明：通过构造函数 _async_client 参数注入 mock 客户端，
+        # 测试中直接访问 client._client 内部属性来设置 mock 返回值。
+        # 这与实现细节耦合较深，若 ClaudeClient 内部重命名 _client 属性，
+        # 所有测试都会失败。更好的做法是通过公开接口或依赖注入模式解耦。
         return ClaudeClient(
             api_key="test-key",
             model="claude-sonnet-4-20250514",

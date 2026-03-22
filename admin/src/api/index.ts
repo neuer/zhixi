@@ -62,9 +62,11 @@ api.interceptors.response.use(
         const { default: router } = await import("@/router");
         router.push("/login");
         showToast("登录已过期，请重新登录");
-        setTimeout(() => {
+        // 导航完成后重置标志，比固定 setTimeout 更可靠
+        const unregister = router.afterEach(() => {
           isRedirectingToLogin = false;
-        }, 2000);
+          unregister();
+        });
       }
     } else if (status === 409 || status === 423) {
       showToast(detail);

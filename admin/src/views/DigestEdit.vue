@@ -2,7 +2,11 @@
 import api from "@/api";
 import type { PerspectiveItem } from "@/utils/digest";
 import { parsePerspectives } from "@/utils/digest";
-import type { DigestItemResponse, TodayResponse } from "@zhixi/openapi-client";
+import type {
+  DigestItemResponse,
+  MessageResponse,
+  TodayResponse,
+} from "@zhixi/openapi-client";
 import { showConfirmDialog, showToast } from "vant";
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -136,7 +140,9 @@ async function handleExclude() {
 
   try {
     const endpoint = item.value.is_excluded ? "restore" : "exclude";
-    await api.post(`/digest/${endpoint}/${itemType.value}/${itemRefId.value}`);
+    await api.post<MessageResponse>(
+      `/digest/${endpoint}/${itemType.value}/${itemRefId.value}`,
+    );
     showToast(`已${action}`);
     router.back();
   } catch {

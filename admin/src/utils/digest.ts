@@ -9,7 +9,12 @@ export function filterVisibleItems(
     .sort((a, b) => a.display_order - b.display_order);
 }
 
-/** 观点对象（后端格式：{author, handle, viewpoint}）。 */
+/**
+ * 观点对象（后端格式：{author, handle, viewpoint}）。
+ *
+ * 注意：后端 snapshot_perspectives 字段为 JSON 字符串，无独立 OpenAPI Schema。
+ * 此类型需与后端 app/schemas/processor_types.py 中 AnalysisResult.perspectives 结构保持同步。
+ */
 export interface PerspectiveItem {
   author: string;
   handle: string;

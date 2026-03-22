@@ -84,6 +84,34 @@ class TestCalculateBaseScore:
         score = calculate_base_score(likes=0, retweets=0, replies=0, author_weight=1.5, hours=5)
         assert score == 0.0
 
+    # I-46: 负值输入边界测试
+    def test_negative_likes(self):
+        """负 likes 不应导致异常（数据异常兜底）。"""
+        score = calculate_base_score(likes=-10, retweets=5, replies=2, author_weight=1.0, hours=0)
+        # engagement = -10 + 15 + 4 = 9，仍可计算
+        assert isinstance(score, float)
+
+    def test_negative_retweets(self):
+        """负 retweets 不应导致异常。"""
+        score = calculate_base_score(likes=10, retweets=-5, replies=2, author_weight=1.0, hours=0)
+        assert isinstance(score, float)
+
+    # I-46: 极大值输入边界测试
+    def test_extreme_large_engagement(self):
+        """极大互动量不应溢出。"""
+        score = calculate_base_score(
+            likes=10_000_000, retweets=5_000_000, replies=2_000_000, author_weight=3.0, hours=0
+        )
+        assert score > 0
+        assert isinstance(score, float)
+
+    def test_extreme_large_hours(self):
+        """极大时间衰减应趋近于零但不为负。"""
+        score = calculate_base_score(
+            likes=1000, retweets=100, replies=50, author_weight=1.0, hours=10000
+        )
+        assert score >= 0
+
     def test_large_hours_decay(self):
         score = calculate_base_score(
             likes=100, retweets=10, replies=5, author_weight=1.0, hours=100

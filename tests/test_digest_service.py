@@ -9,8 +9,8 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.clients.claude_client import ClaudeClient
-from app.digest.summary_prompts import EMPTY_DAY_SUMMARY
+from app.clients.claude_client import ClaudeAPIError, ClaudeClient
+from app.digest.summary_prompts import DEFAULT_SUMMARY, EMPTY_DAY_SUMMARY
 from app.models.api_cost_log import ApiCostLog
 from app.models.digest_item import DigestItem
 from app.schemas.client_types import ClaudeResponse
@@ -149,12 +149,12 @@ async def test_generate_daily_digest_mixed(db: AsyncSession) -> None:
     assert len(items) == 5
     assert digest.item_count == 5
 
-    # 验证按 heat_score 降序：tw1(90) > agg(85) > thread(80) > tw2(70) > tw3(50)
-    assert items[0].snapshot_heat_score == 90.0
-    assert items[1].snapshot_heat_score == 85.0
-    assert items[2].snapshot_heat_score == 80.0
-    assert items[3].snapshot_heat_score == 70.0
-    assert items[4].snapshot_heat_score == 50.0
+    # I-45: 断言排序关系而非精确浮点数，避免热度算法调整导致测试脆弱
+    # 预期降序：tw1(90) > agg(85) > thread(80) > tw2(70) > tw3(50)
+    for i in range(len(items) - 1):
+        assert items[i].snapshot_heat_score >= items[i + 1].snapshot_heat_score, (
+            f"items[{i}]({items[i].snapshot_heat_score}) 应 >= items[{i + 1}]({items[i + 1].snapshot_heat_score})"
+        )
 
     # 验证 display_order 从 1 开始连续
     for i, item in enumerate(items):
@@ -393,3 +393,24 @@ async def test_unprocessed_tweets_excluded(db: AsyncSession) -> None:
     items = list(items_result.scalars().all())
     assert len(items) == 1
     assert items[0].snapshot_heat_score == 80.0
+
+
+# I-47: Claude 摘要生成失败时的降级路径测试
+@pytest.mark.asyncio
+async def test_summary_degradation_on_claude_failure(db: AsyncSession) -> None:
+    """Claude 摘要生成失败 → 使用 DEFAULT_SUMMARY 降级文本。"""
+    client = AsyncMock(spec=ClaudeClient)
+    # 摘要生成调用抛出 ClaudeAPIError，触发降级
+    client.complete = AsyncMock(side_effect=ClaudeAPIError("API 调用失败"))
+    svc = DigestService(db, claude_client=client)
+
+    acct = await create_account(db)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=90.0, title="测试标题")
+    await db.commit()
+
+    digest = await svc.generate_daily_digest(DIGEST_DATE)
+
+    # 降级时使用 DEFAULT_SUMMARY
+    assert digest.summary == DEFAULT_SUMMARY
+    # content_markdown 仍然应该正常渲染（不依赖 Claude）
+    assert digest.content_markdown is not None

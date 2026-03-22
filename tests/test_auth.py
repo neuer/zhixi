@@ -77,6 +77,16 @@ class TestPassword:
         with pytest.raises(WeakPasswordError, match="数字"):
             validate_password_strength("AdminPwd")
 
+    # I-22: 密码恰好 8 位边界测试
+    def test_validate_strength_exact_8_chars(self) -> None:
+        """恰好 8 位且满足复杂度 → 不抛异常。"""
+        validate_password_strength("Admin12x")  # 8 位：大写+小写+数字
+
+    def test_validate_strength_7_chars_rejected(self) -> None:
+        """7 位 → 抛 WeakPasswordError。"""
+        with pytest.raises(WeakPasswordError, match="至少8位"):
+            validate_password_strength("Admin1x")
+
 
 class TestJwt:
     """JWT 创建与验证。"""
@@ -114,6 +124,25 @@ class TestJwt:
         token = pyjwt.encode(expired_payload, "wrong_secret", algorithm="HS256")
         with pytest.raises(InvalidTokenError):
             verify_jwt(token)
+
+    # I-22: JWT payload 缺少 sub 字段的测试
+    def test_missing_sub_field_still_returns_payload(self) -> None:
+        """payload 无 sub 字段 → verify_jwt 不抛异常（验证只检查签名和过期）。
+
+        注：verify_jwt 仅校验签名和过期，不校验 sub 是否存在。
+        调用方（get_current_admin）负责从 payload["sub"] 取值，
+        若 sub 缺失会导致 KeyError → 500，这是一个已知局限。
+        """
+        from datetime import UTC, datetime, timedelta
+
+        import jwt as pyjwt
+
+        from app.config import settings
+
+        no_sub_payload = {"exp": datetime.now(UTC) + timedelta(hours=1)}
+        token = pyjwt.encode(no_sub_payload, settings.JWT_SECRET_KEY, algorithm="HS256")
+        payload = verify_jwt(token)
+        assert "sub" not in payload
 
 
 class TestRateLimiter:
@@ -277,6 +306,20 @@ async def test_jwt_protects_accounts(client: AsyncClient, seeded_db: AsyncSessio
 async def test_jwt_invalid_token(client: AsyncClient, seeded_db: AsyncSession) -> None:
     """无效 token → 401。"""
     resp = await client.get("/api/accounts", headers=_auth_header("invalid.token.here"))
+    assert resp.status_code == 401
+
+
+# I-22: Authorization header 格式异常测试
+async def test_jwt_no_bearer_prefix(client: AsyncClient, seeded_db: AsyncSession) -> None:
+    """Authorization 缺少 Bearer 前缀 → 401。"""
+    token, _ = create_jwt("admin")
+    resp = await client.get("/api/accounts", headers={"Authorization": token})
+    assert resp.status_code == 401
+
+
+async def test_jwt_empty_authorization(client: AsyncClient, seeded_db: AsyncSession) -> None:
+    """Authorization header 为空字符串 → 401。"""
+    resp = await client.get("/api/accounts", headers={"Authorization": ""})
     assert resp.status_code == 401
 
 

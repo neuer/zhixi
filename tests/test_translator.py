@@ -1,5 +1,6 @@
 """逐条/逐话题 AI 加工测试（US-021）。"""
 
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -17,11 +18,12 @@ from app.schemas.client_types import ClaudeResponse
 # 测试辅助
 # ──────────────────────────────────────────────────
 
-FIXTURE_DIR = "tests/fixtures/translator"
+# I-28: 使用绝对路径，避免对 cwd 的隐式依赖
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "translator"
 
 
 def _load_fixture(name: str) -> str:
-    with open(f"{FIXTURE_DIR}/{name}") as f:
+    with open(FIXTURE_DIR / name) as f:
         return f.read()
 
 

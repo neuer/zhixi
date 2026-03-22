@@ -399,7 +399,11 @@ async def test_error_details_json(db: AsyncSession):
 
 @respx.mock
 async def test_rate_limit_429_retry_success(db: AsyncSession):
-    """首次 429 → 退避重试 → 第二次成功。"""
+    """首次 429 → 退避重试 → 第二次成功。
+
+    I-36 局限性说明：此测试仅验证重试最终成功，未验证退避时间间隔是否符合预期。
+    验证退避需要 mock asyncio.sleep 并断言调用参数，暂不改造。
+    """
     await _seed_accounts(db, 1)
 
     route = respx.get(_tweets_url("uid_1"))
