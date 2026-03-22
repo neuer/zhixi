@@ -58,13 +58,13 @@ async def debug_x_ping(
                 "https://api.x.com/2/users/by/username/x",
                 headers={"Authorization": f"Bearer {token}"},
             )
-            raw = resp.json()
             resp.raise_for_status()
-    except httpx.HTTPStatusError:
+            raw = resp.json()
+    except httpx.HTTPStatusError as exc:
         return DebugXPingResponse(
             status="error",
             latency_ms=_elapsed_ms(start),
-            raw_response=raw,
+            raw_response=exc.response.json(),
         )
     except httpx.HTTPError as exc:
         return DebugXPingResponse(
@@ -198,8 +198,7 @@ async def debug_x_tweets(
         )
 
     # 解析推文
-    fetcher = XApiFetcher(bearer_token=token)
-    try:
+    async with XApiFetcher(bearer_token=token) as fetcher:
         included_tweets, media_url_map = fetcher._build_includes_index(raw_payload)
         tweets = []
         data_list = raw_payload.get("data", [])
@@ -212,8 +211,6 @@ async def debug_x_tweets(
             parsed = fetcher._parse_tweet(raw_tweet, included_tweets, media_url_map)
             if parsed is not None:
                 tweets.append(parsed)
-    finally:
-        await fetcher.close()
 
     return DebugXTweetsResponse(
         tweets=tweets,
@@ -253,13 +250,10 @@ async def debug_x_tweet(
     # 复用 XApiFetcher 的解析逻辑
     from app.fetcher.x_api import XApiFetcher
 
-    fetcher = XApiFetcher(bearer_token=token)
-    try:
+    async with XApiFetcher(bearer_token=token) as fetcher:
         included_tweets, media_url_map = fetcher._build_includes_index(raw)
         if isinstance(data, dict):
             enrich_tweet_text(data)
         tweet = fetcher._parse_tweet(data, included_tweets, media_url_map)
-    finally:
-        await fetcher.close()
 
     return DebugXTweetResponse(tweet=tweet, raw_response=raw, latency_ms=latency)

@@ -20,7 +20,7 @@ from app.models.account import TwitterAccount
 from app.models.api_cost_log import ApiCostLog
 from app.models.fetch_log import FetchLog
 from app.models.tweet import Tweet
-from app.schemas.enums import ServiceType, TweetSource
+from app.schemas.enums import CallType, ServiceType, TweetSource
 from app.schemas.fetcher_types import KEEP_TYPES, FetchResult, RawTweet, TweetType
 
 logger = logging.getLogger(__name__)
@@ -199,7 +199,7 @@ class FetchService:
         cost_log = ApiCostLog(
             call_date=digest_date,
             service=ServiceType.X,
-            call_type="fetch_tweets",
+            call_type=CallType.FETCH_TWEETS,
             endpoint=f"/users/{account.twitter_user_id}/tweets",
             success=True,
             duration_ms=duration_ms,
@@ -266,7 +266,7 @@ class FetchService:
         cost_log = ApiCostLog(
             call_date=digest_date,
             service=ServiceType.X,
-            call_type="fetch_single_tweet",
+            call_type=CallType.FETCH_SINGLE_TWEET,
             success=True,
         )
         self.db.add(cost_log)

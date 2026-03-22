@@ -6,7 +6,7 @@ from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, Stri
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base, _utcnow
-from app.schemas.enums import ServiceType
+from app.schemas.enums import CallType, ServiceType
 
 
 class ApiCostLog(Base):
@@ -17,7 +17,7 @@ class ApiCostLog(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     call_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     service: Mapped[ServiceType] = mapped_column(String(20), nullable=False)
-    call_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    call_type: Mapped[CallType] = mapped_column(String(50), nullable=False)
     endpoint: Mapped[str | None] = mapped_column(String(200), nullable=True)
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)

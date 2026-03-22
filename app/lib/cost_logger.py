@@ -7,13 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_today_digest_date
 from app.models.api_cost_log import ApiCostLog
 from app.schemas.client_types import ClaudeResponse
-from app.schemas.enums import ServiceType
+from app.schemas.enums import CallType, ServiceType
 
 
 def record_api_cost(
     db: AsyncSession,
     response: ClaudeResponse,
-    call_type: str,
+    call_type: CallType,
     digest_date: date | None,
     service: ServiceType = ServiceType.CLAUDE,
 ) -> None:
@@ -35,7 +35,7 @@ def record_api_cost(
 
 def record_api_cost_failure(
     db: AsyncSession,
-    call_type: str,
+    call_type: CallType,
     digest_date: date | None,
     service: ServiceType = ServiceType.CLAUDE,
 ) -> None:

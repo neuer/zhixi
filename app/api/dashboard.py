@@ -5,6 +5,7 @@ import json
 from collections import defaultdict, deque
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import ColumnElement, and_, desc, func, select
@@ -127,7 +128,7 @@ async def get_api_costs_daily(
 
 @router.get("/logs", response_model=LogsResponse)
 async def get_logs(
-    level: str = Query(default="INFO"),
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Query(default="INFO"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _admin: str = Depends(get_current_admin),

@@ -39,7 +39,7 @@ from app.processor.translator import (
     process_thread,
 )
 from app.schemas.client_types import ClaudeResponse
-from app.schemas.enums import TopicType
+from app.schemas.enums import CallType, TopicType
 from app.schemas.processor_types import AnalysisResult, ProcessResult, TopicResult
 
 _T = TypeVar("_T")
@@ -166,7 +166,7 @@ class ProcessService:
         tweet.ai_comment = str(result["comment"])
         tweet.is_processed = True
 
-        self._record_cost(response, "single_process", tweet.digest_date)
+        self._record_cost(response, CallType.SINGLE_PROCESS, tweet.digest_date)
         await self._db.flush()
 
     # ──────────────────────────────────────────────────
@@ -275,7 +275,7 @@ class ProcessService:
 
         async def _call() -> AnalysisResult:
             analysis, response = await run_global_analysis(self._claude, tweets_json)
-            self._record_cost(response, "global_analysis", digest_date)
+            self._record_cost(response, CallType.GLOBAL_ANALYSIS, digest_date)
             logger.info(
                 "全局分析完成: filtered=%d, topics=%d",
                 len(analysis.filtered_ids),
@@ -294,7 +294,7 @@ class ProcessService:
 
         async def _call() -> AnalysisResult:
             deduped, response = await run_dedup_analysis(self._claude, merged_data)
-            self._record_cost(response, "dedup_analysis", digest_date)
+            self._record_cost(response, CallType.DEDUP_ANALYSIS, digest_date)
             return deduped
 
         return await self._retry_ai_call(_call, _ANALYSIS_MAX_RETRIES, "去重分析")
@@ -490,13 +490,13 @@ class ProcessService:
             tweet.translated_text = str(result["translation"])
             tweet.ai_comment = str(result["comment"])
             tweet.is_processed = True
-            self._record_cost(response, "single_process", digest_date)
+            self._record_cost(response, CallType.SINGLE_PROCESS, digest_date)
             return True
 
         try:
             return await self._retry_ai_call(_call, _ITEM_MAX_RETRIES, f"单条加工 {tweet.tweet_id}")
         except (ClaudeAPIError, JsonValidationError):
-            self._record_cost_failure("single_process", digest_date)
+            self._record_cost_failure(CallType.SINGLE_PROCESS, digest_date)
             return False
 
     async def _process_aggregated_with_retry(
@@ -522,13 +522,13 @@ class ProcessService:
                 ensure_ascii=False,
             )
             topic.ai_comment = str(result["comment"])
-            self._record_cost(response, "topic_process", digest_date)
+            self._record_cost(response, CallType.TOPIC_PROCESS, digest_date)
             return True
 
         try:
             return await self._retry_ai_call(_call, _ITEM_MAX_RETRIES, f"聚合加工 topic {topic.id}")
         except (ClaudeAPIError, JsonValidationError):
-            self._record_cost_failure("topic_process", digest_date)
+            self._record_cost_failure(CallType.TOPIC_PROCESS, digest_date)
             return False
 
     async def _process_thread_with_retry(
@@ -549,7 +549,7 @@ class ProcessService:
                 result["translation"]
             )  # Thread prompt 返回 "translation" 字段，映射到 topic.summary（与单推文一致）
             topic.ai_comment = str(result["comment"])
-            self._record_cost(response, "thread_process", digest_date)
+            self._record_cost(response, CallType.THREAD_PROCESS, digest_date)
             return True
 
         try:
@@ -557,7 +557,7 @@ class ProcessService:
                 _call, _ITEM_MAX_RETRIES, f"Thread 加工 topic {topic.id}"
             )
         except (ClaudeAPIError, JsonValidationError):
-            self._record_cost_failure("thread_process", digest_date)
+            self._record_cost_failure(CallType.THREAD_PROCESS, digest_date)
             return False
 
     def _calculate_all_heat_scores(
@@ -619,13 +619,13 @@ class ProcessService:
     def _record_cost(
         self,
         response: ClaudeResponse,
-        call_type: str,
+        call_type: CallType,
         digest_date: date | None,
     ) -> None:
         """记录 API 调用成本。"""
         record_api_cost(self._db, response, call_type, digest_date)
 
-    def _record_cost_failure(self, call_type: str, digest_date: date | None) -> None:
+    def _record_cost_failure(self, call_type: CallType, digest_date: date | None) -> None:
         """记录失败的 API 调用。"""
         record_api_cost_failure(self._db, call_type, digest_date)
 

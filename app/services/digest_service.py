@@ -32,7 +32,7 @@ from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
 from app.schemas.digest_types import ReorderInput
-from app.schemas.enums import DigestStatus, ItemType, TopicType
+from app.schemas.enums import CallType, DigestStatus, ItemType, TopicType
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class DigestService:
         if degraded:
             logger.warning("导读摘要使用了降级默认文本 (digest_date=%s)", digest_date)
         if cost_response:
-            self._record_cost(cost_response, "summary", digest_date)
+            self._record_cost(cost_response, CallType.SUMMARY, digest_date)
 
         # 10. 渲染 Markdown
         top_n = await safe_int_config(self._db, "top_n", 10)
@@ -486,7 +486,9 @@ class DigestService:
     # 成本记录
     # ──────────────────────────────────────────────────
 
-    def _record_cost(self, response: ClaudeResponse, call_type: str, digest_date: date) -> None:
+    def _record_cost(
+        self, response: ClaudeResponse, call_type: CallType, digest_date: date
+    ) -> None:
         """写入 api_cost_log。"""
         record_api_cost(self._db, response, call_type, digest_date)
 

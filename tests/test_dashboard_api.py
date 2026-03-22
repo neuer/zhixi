@@ -14,6 +14,7 @@ from app.models.api_cost_log import ApiCostLog
 from app.models.config import SystemConfig
 from app.models.digest import DailyDigest
 from app.models.job_run import JobRun
+from app.schemas.enums import CallType
 
 TODAY = date(2026, 3, 20)
 
@@ -104,7 +105,7 @@ async def test_overview_with_data(
     cost1 = ApiCostLog(
         call_date=TODAY,
         service="claude",
-        call_type="global_analysis",
+        call_type=CallType.GLOBAL_ANALYSIS,
         input_tokens=50000,
         output_tokens=2000,
         estimated_cost=0.18,
@@ -113,7 +114,7 @@ async def test_overview_with_data(
     cost2 = ApiCostLog(
         call_date=TODAY,
         service="claude",
-        call_type="single_process",
+        call_type=CallType.SINGLE_PROCESS,
         input_tokens=10000,
         output_tokens=500,
         estimated_cost=0.04,
@@ -122,7 +123,7 @@ async def test_overview_with_data(
     cost3 = ApiCostLog(
         call_date=TODAY,
         service="x",
-        call_type="fetch_tweets",
+        call_type=CallType.FETCH_TWEETS,
         input_tokens=0,
         output_tokens=0,
         estimated_cost=0.0,
@@ -207,7 +208,7 @@ async def test_overview_cost_aggregation(
             ApiCostLog(
                 call_date=TODAY,
                 service="claude",
-                call_type=f"call_{i}",
+                call_type=CallType.SINGLE_PROCESS,
                 input_tokens=1000 * (i + 1),
                 output_tokens=100 * (i + 1),
                 estimated_cost=0.01 * (i + 1),
@@ -340,7 +341,7 @@ async def test_api_costs_with_data(
         ApiCostLog(
             call_date=TODAY,
             service="claude",
-            call_type="global_analysis",
+            call_type=CallType.GLOBAL_ANALYSIS,
             input_tokens=50000,
             output_tokens=2000,
             estimated_cost=0.18,
@@ -352,7 +353,7 @@ async def test_api_costs_with_data(
         ApiCostLog(
             call_date=date(2026, 3, 5),
             service="claude",
-            call_type="single_process",
+            call_type=CallType.SINGLE_PROCESS,
             input_tokens=10000,
             output_tokens=500,
             estimated_cost=0.04,
@@ -364,7 +365,7 @@ async def test_api_costs_with_data(
         ApiCostLog(
             call_date=date(2026, 2, 28),
             service="claude",
-            call_type="global_analysis",
+            call_type=CallType.GLOBAL_ANALYSIS,
             input_tokens=50000,
             output_tokens=2000,
             estimated_cost=0.18,
@@ -407,7 +408,7 @@ async def test_api_costs_daily_with_data(
             ApiCostLog(
                 call_date=d,
                 service="claude",
-                call_type="global_analysis",
+                call_type=CallType.GLOBAL_ANALYSIS,
                 input_tokens=50000,
                 output_tokens=2000,
                 estimated_cost=0.18,
@@ -418,7 +419,7 @@ async def test_api_costs_daily_with_data(
             ApiCostLog(
                 call_date=d,
                 service="x",
-                call_type="fetch_tweets",
+                call_type=CallType.FETCH_TWEETS,
                 input_tokens=0,
                 output_tokens=0,
                 estimated_cost=0.01,
