@@ -9,8 +9,9 @@ const router = useRouter();
 const loading = ref(false);
 const refreshing = ref(false);
 const finished = ref(false);
-type LogEntry = LogsResponse["logs"][number] & { _uid: number };
-const logs = ref<LogEntry[]>([]);
+/** 扩展日志条目：附加前端生成的唯一 _uid 用于列表 key，避免与生成类型 LogEntry 混淆 */
+type LogEntryWithUid = LogsResponse["logs"][number] & { _uid: number };
+const logs = ref<LogEntryWithUid[]>([]);
 const selectedLevel = ref<"DEBUG" | "INFO" | "WARNING" | "ERROR">("INFO");
 const pageVal = ref(1);
 const pageSize = 50;
@@ -37,6 +38,7 @@ function getLevelStyle(level: string) {
   return levelStyleMap[level] ?? levelStyleDefault;
 }
 
+// 用 let 而非 ref：isLoadingMore 仅作为并发锁防止重复请求，无需触发视图更新
 let isLoadingMore = false;
 
 async function loadLogs() {

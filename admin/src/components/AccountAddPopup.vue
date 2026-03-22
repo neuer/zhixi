@@ -49,6 +49,8 @@ async function handleAdd() {
       twitter_handle: handle,
       weight: addForm.value.weight,
     };
+    // 手动模式：后端收到 display_name 后会跳过 X API 用户信息查询，
+    // 直接使用前端提交的 display_name 和 bio 创建账号记录
     if (manualMode.value) {
       payload.display_name = manualForm.value.display_name.trim() || handle;
       payload.bio = manualForm.value.bio.trim() || null;

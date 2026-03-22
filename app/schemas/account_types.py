@@ -36,7 +36,13 @@ class AccountUpdate(BaseModel):
 
 
 class AccountResponse(BaseModel):
-    """账号响应模型。"""
+    """账号响应模型。
+
+    当前阶段 AccountResponse 直接复用 DB Model 全部字段，
+    因为 Account 表字段较少且无敏感信息。
+    若后续字段增多或需要区分列表/详情场景，再拆分为
+    AccountBriefResponse / AccountDetailResponse。
+    """
 
     id: int
     twitter_handle: str

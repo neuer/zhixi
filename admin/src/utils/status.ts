@@ -28,9 +28,9 @@ const defaultStatus: StatusInfo = {
   color: "#969799",
 };
 
-export function getStatus(status: string | null | undefined): StatusInfo {
+export function getStatus(status: KnownStatus | null | undefined): StatusInfo {
   if (status && status in statusMap) {
-    return statusMap[status as KnownStatus];
+    return statusMap[status];
   }
   return defaultStatus;
 }
