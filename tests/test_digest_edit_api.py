@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, date, datetime
+from typing import Any
 
 import pytest
 from freezegun import freeze_time
@@ -107,7 +108,7 @@ async def _setup_draft_with_topic_item(
         content_markdown="# 旧 Markdown",
     )
 
-    extra_kwargs: dict[str, object] = {}
+    extra_kwargs: dict[str, Any] = {}
     if topic_type == "aggregated":
         extra_kwargs["snapshot_summary"] = "话题摘要"
         extra_kwargs["snapshot_perspectives"] = topic.perspectives

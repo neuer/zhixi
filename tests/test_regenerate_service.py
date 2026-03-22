@@ -1,6 +1,7 @@
 """DigestService.regenerate_digest() 单元测试（US-035）。"""
 
 from datetime import UTC, date, datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -19,7 +20,7 @@ DIGEST_DATE = date(2026, 3, 20)
 TWEET_TIME = datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC)
 
 # create_tweet 的公共默认参数，匹配原 _seed_tweet 行为
-_TW = dict(
+_TW: dict[str, Any] = dict(
     digest_date=DIGEST_DATE,
     tweet_time=TWEET_TIME,
     is_processed=True,

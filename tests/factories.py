@@ -1,6 +1,7 @@
 """统一测试数据工厂 — 所有 seed 操作的单一入口。"""
 
 from datetime import UTC, date, datetime
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,7 +74,7 @@ async def create_account(
     is_active: bool = True,
     twitter_user_id: str | None = None,
     followers_count: int = 0,
-    **overrides: object,
+    **overrides: Any,
 ) -> TwitterAccount:
     """创建测试账号。"""
     fields: dict[str, object] = {
@@ -117,7 +118,7 @@ async def create_tweet(
     base_heat_score: float = 0,
     heat_score: float = 0,
     topic_id: int | None = None,
-    **overrides: object,
+    **overrides: Any,
 ) -> Tweet:
     """创建测试推文。"""
     actual_time = tweet_time or DEFAULT_TWEET_TIME
@@ -166,7 +167,7 @@ async def create_topic(
     heat_score: float = 60.0,
     ai_importance_score: float = 80.0,
     tweet_count: int = 2,
-    **overrides: object,
+    **overrides: Any,
 ) -> Topic:
     """创建测试话题。"""
     fields: dict[str, object] = {
@@ -201,7 +202,7 @@ async def create_digest(
     summary: str | None = None,
     content_markdown: str | None = None,
     published_at: datetime | None = None,
-    **overrides: object,
+    **overrides: Any,
 ) -> DailyDigest:
     """创建测试日报。"""
     fields: dict[str, object] = {
@@ -244,7 +245,7 @@ async def create_digest_item(
     snapshot_summary: str | None = None,
     snapshot_perspectives: str | None = None,
     snapshot_source_tweets: str | None = None,
-    **overrides: object,
+    **overrides: Any,
 ) -> DigestItem:
     """创建测试日报条目。"""
     fields: dict[str, object] = {
