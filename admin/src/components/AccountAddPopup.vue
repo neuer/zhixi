@@ -68,6 +68,13 @@ async function handleAdd() {
       addError.value = "X API 不可用，请手动填写信息";
       return;
     }
+    // 非 502 错误：显示错误信息给用户
+    if (axios.isAxiosError(e) && e.response?.data) {
+      const detail = (e.response.data as { detail?: string }).detail;
+      addError.value = detail ?? "添加失败，请重试";
+    } else {
+      addError.value = "添加失败，请重试";
+    }
   } finally {
     adding.value = false;
   }
