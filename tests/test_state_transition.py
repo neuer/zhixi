@@ -18,90 +18,61 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_digest_service
 from app.main import app
-from app.models.config import SystemConfig
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.models.job_run import JobRun
+from tests.factories import (
+    create_account,
+    create_digest,
+    create_digest_item,
+    create_tweet,
+    seed_config_keys,
+)
 
 DIGEST_DATE = date(2026, 3, 20)
+
+TWEET_TIME = datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC)
 
 
 # ── 辅助函数 ──
 
 
-async def _seed_config(db: AsyncSession) -> None:
-    """预置必要的 system_config。"""
-    existing = await db.execute(select(SystemConfig).where(SystemConfig.key == "top_n"))
-    if existing.scalar_one_or_none() is None:
-        db.add_all(
-            [
-                SystemConfig(key="top_n", value="10"),
-                SystemConfig(key="min_articles", value="1"),
-            ]
-        )
-        await db.flush()
-
-
-async def _seed_digest(
-    db: AsyncSession,
-    *,
-    version: int = 1,
-    status: str = "draft",
-    is_current: bool = True,
-) -> DailyDigest:
-    """创建测试 digest。"""
-    digest = DailyDigest(
-        digest_date=DIGEST_DATE,
-        version=version,
-        is_current=is_current,
-        status=status,
-        summary="测试摘要",
-        item_count=2,
-        content_markdown="# 版本内容",
-    )
-    db.add(digest)
-    await db.flush()
-    return digest
-
-
-async def _seed_digest_with_item(
+async def _setup_digest_with_item(
     db: AsyncSession,
     *,
     version: int = 1,
     status: str = "draft",
 ) -> tuple[DailyDigest, DigestItem]:
-    """创建 digest + 一条 item。"""
-    from app.models.account import TwitterAccount
-    from app.models.tweet import Tweet
+    """创建 config + account + tweet + digest + item 的完整组合。"""
+    await seed_config_keys(db, top_n="10", min_articles="1")
 
-    await _seed_config(db)
-
-    acct = TwitterAccount(twitter_handle="stuser", display_name="ST User")
-    db.add(acct)
-    await db.flush()
-
-    tweet = Tweet(
+    acct = await create_account(db, twitter_handle="stuser", display_name="ST User")
+    tweet = await create_tweet(
+        db,
+        acct,
         tweet_id=f"st_tweet_v{version}",
-        account_id=acct.id,
         digest_date=DIGEST_DATE,
-        original_text="Text",
-        tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
+        tweet_time=TWEET_TIME,
         title="标题",
         translated_text="翻译",
         ai_comment="点评",
-        is_ai_relevant=True,
         is_processed=True,
     )
-    db.add(tweet)
-    await db.flush()
 
-    digest = await _seed_digest(db, version=version, status=status)
+    digest = await create_digest(
+        db,
+        digest_date=DIGEST_DATE,
+        version=version,
+        status=status,
+        summary="测试摘要",
+        item_count=2,
+        content_markdown="# 版本内容",
+    )
 
-    item = DigestItem(
-        digest_id=digest.id,
-        item_type="tweet",
+    item = await create_digest_item(
+        db,
+        digest,
         item_ref_id=tweet.id,
-        display_order=1,
         snapshot_title="标题",
         snapshot_translation="翻译",
         snapshot_comment="点评",
@@ -109,10 +80,8 @@ async def _seed_digest_with_item(
         snapshot_author_name="ST User",
         snapshot_author_handle="stuser",
         snapshot_tweet_url="https://x.com/stuser/status/1",
-        snapshot_tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
+        snapshot_tweet_time=TWEET_TIME,
     )
-    db.add(item)
-    await db.flush()
     return digest, item
 
 
@@ -208,7 +177,13 @@ class TestDraftToPublished:
         db: AsyncSession,
     ) -> None:
         """draft → mark-published → published + published_at 有值。"""
-        await _seed_digest(db)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         resp = await authed_client.post("/api/digest/mark-published")
@@ -224,7 +199,13 @@ class TestDraftToPublished:
         db: AsyncSession,
     ) -> None:
         """发布后 is_current 保持 true。"""
-        await _seed_digest(db)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         await authed_client.post("/api/digest/mark-published")
@@ -246,7 +227,14 @@ class TestDraftRegenerateV2:
         db: AsyncSession,
     ) -> None:
         """draft v1 → regenerate → v2 draft, v1.is_current=false。"""
-        await _seed_digest(db, version=1)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2 = _make_regenerate_patches(db, new_version=2)
@@ -269,8 +257,15 @@ class TestDraftRegenerateV2:
         db: AsyncSession,
     ) -> None:
         """regenerate 后新版本可编辑（不返回 409）。"""
-        await _seed_config(db)
-        await _seed_digest(db, version=1)
+        await seed_config_keys(db, top_n="10", min_articles="1")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2 = _make_regenerate_patches(db, new_version=2)
@@ -290,7 +285,14 @@ class TestDraftRegenerateV2:
         db: AsyncSession,
     ) -> None:
         """v2 draft → mark-published → v2 published。"""
-        await _seed_digest(db, version=1)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2 = _make_regenerate_patches(db, new_version=2)
@@ -318,7 +320,15 @@ class TestPublishedRegenerateNewDraft:
         db: AsyncSession,
     ) -> None:
         """published v1 → regenerate → draft v2。"""
-        await _seed_digest(db, version=1, status="published")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            status="published",
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2 = _make_regenerate_patches(db, new_version=2)
@@ -341,7 +351,7 @@ class TestPublishedRegenerateNewDraft:
         db: AsyncSession,
     ) -> None:
         """regenerate 后旧版本 items 快照不受影响。"""
-        digest, item = await _seed_digest_with_item(db, version=1, status="published")
+        digest, item = await _setup_digest_with_item(db, version=1, status="published")
         original_title = item.snapshot_title
         await db.commit()
 
@@ -368,7 +378,15 @@ class TestFailedRegenerateNewDraft:
         db: AsyncSession,
     ) -> None:
         """failed v1 → regenerate → draft v2。"""
-        await _seed_digest(db, version=1, status="failed")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            status="failed",
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2 = _make_regenerate_patches(db, new_version=2)
@@ -387,7 +405,15 @@ class TestFailedRegenerateNewDraft:
         db: AsyncSession,
     ) -> None:
         """failed v1 → regenerate → v2 draft → mark-published → v2 published。"""
-        await _seed_digest(db, version=1, status="failed")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            status="failed",
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2 = _make_regenerate_patches(db, new_version=2)
@@ -414,7 +440,15 @@ class TestFailedRetryPublish:
         db: AsyncSession,
     ) -> None:
         """failed → mark-published → published。"""
-        await _seed_digest(db, version=1, status="failed")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            status="failed",
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         resp = await authed_client.post("/api/digest/mark-published")
@@ -429,7 +463,15 @@ class TestFailedRetryPublish:
         db: AsyncSession,
     ) -> None:
         """failed → published 后 published_at 有值。"""
-        await _seed_digest(db, version=1, status="failed")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            status="failed",
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         await authed_client.post("/api/digest/mark-published")
@@ -465,7 +507,15 @@ class TestPublishedNoEdit:
         body: dict[str, object] | None,
     ) -> None:
         """published → 编辑 → 409。"""
-        await _seed_digest(db, version=1, status="published")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            status="published",
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         kwargs: dict[str, object] = {}
@@ -488,7 +538,14 @@ class TestIsCurrentSwitch:
         db: AsyncSession,
     ) -> None:
         """regenerate: 旧 false, 新 true。"""
-        await _seed_digest(db, version=1)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2 = _make_regenerate_patches(db, new_version=2)
@@ -506,7 +563,14 @@ class TestIsCurrentSwitch:
         db: AsyncSession,
     ) -> None:
         """v1 → regen → v2 → regen → v3，仅 v3 is_current=true。"""
-        await _seed_digest(db, version=1)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         # v1 → v2
@@ -532,11 +596,27 @@ class TestIsCurrentSwitch:
         db: AsyncSession,
     ) -> None:
         """GET /today 只返回 is_current=true 的版本。"""
-        await _seed_config(db)
+        await seed_config_keys(db, top_n="10", min_articles="1")
         # v1: 旧版本
-        await _seed_digest(db, version=1, is_current=False)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=1,
+            is_current=False,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         # v2: 当前版本
-        await _seed_digest(db, version=2, is_current=True)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            version=2,
+            is_current=True,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         resp = await authed_client.get("/api/digest/today")
@@ -563,7 +643,13 @@ class TestRegenerateFailureRollback:
         db: AsyncSession,
     ) -> None:
         """regenerate 失败 → 500。"""
-        await _seed_digest(db)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2, p3 = _make_regenerate_failure_patches()
@@ -579,7 +665,13 @@ class TestRegenerateFailureRollback:
         db: AsyncSession,
     ) -> None:
         """regenerate 失败 → job_run.status=failed + error_message。"""
-        await _seed_digest(db)
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            summary="测试摘要",
+            item_count=2,
+            content_markdown="# 版本内容",
+        )
         await db.commit()
 
         p1, p2, p3 = _make_regenerate_failure_patches()

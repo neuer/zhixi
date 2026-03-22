@@ -35,6 +35,7 @@ class TestClaudeClient:
             model="claude-sonnet-4-20250514",
             input_price=3.0,
             output_price=15.0,
+            _async_client=AsyncMock(),
         )
 
     async def test_complete_returns_claude_response(self, client: ClaudeClient):

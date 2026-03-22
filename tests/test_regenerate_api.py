@@ -10,30 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_digest_service
 from app.main import app
-from app.models.digest import DailyDigest
 from app.models.job_run import JobRun
+from tests.factories import create_digest
 
 DIGEST_DATE = date(2026, 3, 20)
-
-
-async def _seed_draft(
-    db: AsyncSession,
-    version: int = 1,
-    status: str = "draft",
-) -> DailyDigest:
-    """创建测试 digest。"""
-    digest = DailyDigest(
-        digest_date=DIGEST_DATE,
-        version=version,
-        is_current=True,
-        status=status,
-        summary="摘要",
-        item_count=2,
-        content_markdown="# 旧版本",
-    )
-    db.add(digest)
-    await db.flush()
-    return digest
 
 
 def _mock_regenerate_digest() -> AsyncMock:
@@ -58,7 +38,9 @@ class TestRegenerateSuccess:
         db: AsyncSession,
     ) -> None:
         """POST /api/digest/regenerate → 200 + digest 信息。"""
-        await _seed_draft(db)
+        await create_digest(
+            db, digest_date=DIGEST_DATE, summary="摘要", item_count=2, content_markdown="# 旧版本"
+        )
         await db.commit()
 
         mock_digest = _mock_regenerate_digest()
@@ -124,7 +106,9 @@ class TestRegenerateFailure:
         db: AsyncSession,
     ) -> None:
         """失败 → 500 + job_run 持久化为 failed。"""
-        await _seed_draft(db)
+        await create_digest(
+            db, digest_date=DIGEST_DATE, summary="摘要", item_count=2, content_markdown="# 旧版本"
+        )
         await db.commit()
 
         mock_svc = AsyncMock()

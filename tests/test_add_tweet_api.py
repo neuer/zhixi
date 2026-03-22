@@ -1,10 +1,12 @@
 """US-016: 手动补录推文 — API 集成测试。"""
 
 from datetime import UTC, date, datetime
+from typing import NamedTuple
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,13 +15,19 @@ from app.auth import create_jwt
 from app.database import get_db
 from app.main import app
 from app.models.account import TwitterAccount
-from app.models.config import SystemConfig
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
 from app.schemas.fetcher_types import PublicMetrics, RawTweet
 from app.services.fetch_service import _parse_tweet_url
+from tests.factories import (
+    create_account,
+    create_digest,
+    create_digest_item,
+    create_tweet,
+    seed_config_keys,
+)
 
 DIGEST_DATE = date(2026, 3, 21)
 TWEET_URL = "https://x.com/testuser/status/999888777"
@@ -27,7 +35,7 @@ TWEET_ID = "999888777"
 
 
 # ──────────────────────────────────────────────────
-# Fixtures
+# Mock 数据构造
 # ──────────────────────────────────────────────────
 
 
@@ -59,94 +67,76 @@ def _mock_claude_response() -> ClaudeResponse:
 
 async def _seed_environment(db: AsyncSession) -> tuple[TwitterAccount, DailyDigest, list[Tweet]]:
     """预置完整测试环境：config + account + tweets(已处理) + digest + items。"""
-    # system_config
-    configs = [
-        SystemConfig(key="top_n", value="10"),
-        SystemConfig(key="min_articles", value="1"),
-        SystemConfig(key="push_time", value="08:00"),
-        SystemConfig(key="push_days", value="1,2,3,4,5,6,7"),
-        SystemConfig(key="display_mode", value="simple"),
-        SystemConfig(key="publish_mode", value="manual"),
-    ]
-    db.add_all(configs)
+    await seed_config_keys(
+        db,
+        top_n="10",
+        min_articles="1",
+        push_time="08:00",
+        push_days="1,2,3,4,5,6,7",
+        display_mode="simple",
+        publish_mode="manual",
+    )
 
-    # 账号
-    account = TwitterAccount(
+    account = await create_account(
+        db,
         twitter_handle="testuser",
         twitter_user_id="uid_test",
         display_name="Test User",
         weight=2.0,
-        is_active=True,
     )
-    db.add(account)
-    await db.flush()
 
-    # 已有推文（3 条，不同 base_heat_score）
-    tweets = []
-    for i, (base_score, heat_score) in enumerate(
-        [(10.0, 40.0), (50.0, 60.0), (100.0, 85.0)], start=1
-    ):
-        t = Tweet(
+    tweet_time = datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC)
+    tweets: list[Tweet] = []
+    for i, (base_score, hs) in enumerate([(10.0, 40.0), (50.0, 60.0), (100.0, 85.0)], start=1):
+        t = await create_tweet(
+            db,
+            account,
             tweet_id=f"{100000 + i}",
-            account_id=account.id,
+            text=f"Existing tweet {i}",
             digest_date=DIGEST_DATE,
-            original_text=f"Existing tweet {i}",
-            tweet_url=f"https://x.com/testuser/status/{100000 + i}",
-            tweet_time=datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC),
+            tweet_time=tweet_time,
             likes=50,
             retweets=10,
             replies=5,
-            is_ai_relevant=True,
             is_processed=True,
             title=f"标题{i}",
             translated_text=f"翻译{i}",
             ai_comment=f"点评{i}",
             base_heat_score=base_score,
             ai_importance_score=70.0,
-            heat_score=heat_score,
-            source="auto",
+            heat_score=hs,
         )
         tweets.append(t)
-    db.add_all(tweets)
-    await db.flush()
 
-    # DailyDigest
-    digest = DailyDigest(
+    digest = await create_digest(
+        db,
         digest_date=DIGEST_DATE,
-        version=1,
-        status="draft",
-        is_current=True,
         item_count=3,
         summary="今日AI摘要",
         content_markdown="# 测试",
     )
-    db.add(digest)
-    await db.flush()
 
-    # DigestItems
     for i, t in enumerate(tweets, start=1):
-        item = DigestItem(
-            digest_id=digest.id,
-            item_type="tweet",
+        await create_digest_item(
+            db,
+            digest,
             item_ref_id=t.id,
             display_order=i,
             snapshot_title=t.title,
             snapshot_translation=t.translated_text,
             snapshot_comment=t.ai_comment,
-            snapshot_heat_score=t.heat_score,
+            snapshot_heat_score=t.heat_score or 0,
             snapshot_author_name=account.display_name,
             snapshot_author_handle=account.twitter_handle,
             snapshot_tweet_url=t.tweet_url,
             snapshot_tweet_time=t.tweet_time,
         )
-        db.add(item)
-    await db.flush()
 
     return account, digest, tweets
 
 
 # ──────────────────────────────────────────────────
-# 辅助：构造带认证的客户端
+# 辅助：构造 mock 对象
 # ──────────────────────────────────────────────────
 
 
@@ -174,6 +164,55 @@ def _make_mock_claude(success: bool = True):
 
         mock.complete = AsyncMock(side_effect=ClaudeAPIError("Claude API 错误"))
     return mock
+
+
+# ──────────────────────────────────────────────────
+# 公共 Fixtures — 消除 patch 重复
+# ──────────────────────────────────────────────────
+
+
+class MockServices(NamedTuple):
+    """打包所有 mock 服务对象，便于测试中按需定制。"""
+
+    claude: AsyncMock
+    fetcher: AsyncMock
+
+
+@pytest_asyncio.fixture
+async def api_mocks(db: AsyncSession):
+    """提供带认证的 AsyncClient + 全部 patch 就绪的 MockServices。
+
+    自动完成：
+    - DB 依赖注入覆盖
+    - Claude client / XApiFetcher / get_today_digest_date 三处 patch
+    - JWT 认证 header 注入
+
+    Yields (client, mocks):
+        client: 带认证 header 的 AsyncClient
+        mocks: MockServices(claude, fetcher)，测试可在 yield 前修改 mock 行为
+    """
+    mock_claude = _make_mock_claude()
+    mock_fetcher = _make_mock_fetcher()
+
+    async def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    token, _ = create_jwt("admin")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with (
+        patch("app.clients.claude_client.get_claude_client", AsyncMock(return_value=mock_claude)),
+        patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
+        patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
+        patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
+        patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
+    ):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
+            yield c, MockServices(claude=mock_claude, fetcher=mock_fetcher)
+
+    app.dependency_overrides.clear()
 
 
 # ──────────────────────────────────────────────────
@@ -216,36 +255,14 @@ class TestParseTweetUrl:
 class TestAddTweetApi:
     """POST /api/digest/add-tweet 集成测试。"""
 
-    async def test_success_full_flow(self, db: AsyncSession):
+    async def test_success_full_flow(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T1: 正常补录完整链路。"""
         account, digest, existing_tweets = await _seed_environment(db)
+        client, _mocks = api_mocks
 
-        mock_fetcher = _make_mock_fetcher()
-        mock_claude = _make_mock_claude()
-
-        async def override_get_db():
-            yield db
-
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client", AsyncMock(return_value=mock_claude)
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
         assert resp.status_code == 200
         data = resp.json()
@@ -267,208 +284,84 @@ class TestAddTweetApi:
         updated_digest = digest_result.scalar_one()
         assert updated_digest.item_count == 4
 
-    async def test_invalid_url(self, db: AsyncSession):
+    async def test_invalid_url(self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]):
         """T2: URL 格式无效 → 400。"""
         await _seed_environment(db)
+        client, _mocks = api_mocks
 
-        async def override_get_db():
-            yield db
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": "not-a-valid-url"})
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": "not-a-valid-url"})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 400
         assert "无效的推文URL" in resp.json()["detail"]
 
-    async def test_tweet_already_exists(self, db: AsyncSession):
+    async def test_tweet_already_exists(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T3: tweet_id 已存在 → 409。"""
         account, digest, existing_tweets = await _seed_environment(db)
-
-        async def override_get_db():
-            yield db
-
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
+        client, _mocks = api_mocks
 
         # URL 对应的 tweet_id 已在数据库中（100001）
         existing_url = f"https://x.com/testuser/status/{existing_tweets[0].tweet_id}"  # "100001"
 
-        mock_fetcher = _make_mock_fetcher()
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": existing_url})
 
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": existing_url})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 409
         assert "该推文已存在" in resp.json()["detail"]
 
-    async def test_no_draft(self, db: AsyncSession):
+    async def test_no_draft(self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]):
         """T4: 当日无草稿 → 409。"""
         # 只创建 config，不创建 digest
-        configs = [
-            SystemConfig(key="top_n", value="10"),
-            SystemConfig(key="min_articles", value="1"),
-        ]
-        db.add_all(configs)
-        await db.flush()
+        await seed_config_keys(db, top_n="10", min_articles="1")
+        client, _mocks = api_mocks
 
-        async def override_get_db():
-            yield db
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 409
         assert "今日草稿尚未生成" in resp.json()["detail"]
 
-    async def test_draft_published(self, db: AsyncSession):
+    async def test_draft_published(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T5: 草稿已发布 → 409。"""
-        configs = [SystemConfig(key="top_n", value="10")]
-        db.add_all(configs)
-        digest = DailyDigest(
-            digest_date=DIGEST_DATE,
-            version=1,
-            status="published",
-            is_current=True,
-            item_count=0,
-        )
-        db.add(digest)
-        await db.flush()
+        await seed_config_keys(db, top_n="10")
+        await create_digest(db, digest_date=DIGEST_DATE, status="published", item_count=0)
+        client, _mocks = api_mocks
 
-        async def override_get_db():
-            yield db
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 409
         assert "当前版本不可编辑" in resp.json()["detail"]
 
-    async def test_x_api_failure(self, db: AsyncSession):
+    async def test_x_api_failure(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T6: X API 抓取失败 → 502。"""
         await _seed_environment(db)
+        client, mocks = api_mocks
 
-        mock_fetcher = _make_mock_fetcher(error=httpx.HTTPError("X API down"))
+        # 覆盖 fetcher 行为为抛异常
+        mocks.fetcher.fetch_single_tweet = AsyncMock(side_effect=httpx.HTTPError("X API down"))
 
-        async def override_get_db():
-            yield db
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 502
         assert "推文抓取失败" in resp.json()["detail"]
 
-    async def test_ai_processing_failure(self, db: AsyncSession):
+    async def test_ai_processing_failure(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T7: AI 加工失败 → 502, 推文保留但无 DigestItem。"""
         await _seed_environment(db)
+        client, mocks = api_mocks
 
-        mock_fetcher = _make_mock_fetcher()
-        mock_claude = _make_mock_claude(success=False)
+        # 覆盖 claude 行为为失败
+        from app.clients.claude_client import ClaudeAPIError
 
-        async def override_get_db():
-            yield db
+        mocks.claude.complete = AsyncMock(side_effect=ClaudeAPIError("Claude API 错误"))
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client", AsyncMock(return_value=mock_claude)
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 502
         assert "推文已入库但AI加工失败" in resp.json()["detail"]
 
@@ -497,29 +390,19 @@ class TestAddTweetApi:
         app.dependency_overrides.clear()
         assert resp.status_code == 401
 
-    async def test_unknown_author_creates_temp_account(self, db: AsyncSession):
+    async def test_unknown_author_creates_temp_account(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T11: 推文作者不在大V列表 → 创建临时账号。"""
         # 只创建环境，不创建 testuser 账号——让系统自动创建
-        configs = [
-            SystemConfig(key="top_n", value="10"),
-            SystemConfig(key="min_articles", value="1"),
-            SystemConfig(key="display_mode", value="simple"),
-            SystemConfig(key="publish_mode", value="manual"),
-        ]
-        db.add_all(configs)
-
-        digest = DailyDigest(
-            digest_date=DIGEST_DATE,
-            version=1,
-            status="draft",
-            is_current=True,
-            item_count=0,
-            content_markdown="",
+        await seed_config_keys(
+            db, top_n="10", min_articles="1", display_mode="simple", publish_mode="manual"
         )
-        db.add(digest)
-        await db.flush()
+        await create_digest(db, digest_date=DIGEST_DATE, item_count=0, content_markdown="")
 
-        # 用一个不存在的 author
+        client, mocks = api_mocks
+
+        # 覆盖 fetcher 返回未知作者的推文
         raw = RawTweet(
             tweet_id="777777",
             author_id="uid_unknown",
@@ -530,35 +413,13 @@ class TestAddTweetApi:
             media_urls=[],
             tweet_url="https://x.com/uid_unknown/status/777777",
         )
-        mock_fetcher = _make_mock_fetcher(raw_tweet=raw)
-        mock_claude = _make_mock_claude()
+        mocks.fetcher.fetch_single_tweet = AsyncMock(return_value=raw)
 
-        async def override_get_db():
-            yield db
+        resp = await client.post(
+            "/api/digest/add-tweet",
+            json={"tweet_url": "https://x.com/unknownuser/status/777777"},
+        )
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client", AsyncMock(return_value=mock_claude)
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post(
-                    "/api/digest/add-tweet",
-                    json={"tweet_url": "https://x.com/unknownuser/status/777777"},
-                )
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 200
 
         # 验证创建了临时账号
@@ -583,36 +444,29 @@ class TestManualHeatCalculation:
         """T8: 已有推文不足 2 条 → normalized=50。"""
         from app.services.digest_service import DigestService
 
-        configs = [SystemConfig(key="top_n", value="10")]
-        db.add_all(configs)
+        await seed_config_keys(db, top_n="10")
 
-        account = TwitterAccount(
+        account = await create_account(
+            db,
             twitter_handle="user1",
             display_name="User 1",
-            weight=1.0,
-            is_active=True,
         )
-        db.add(account)
-        await db.flush()
 
         # 只有 1 条已处理推文
-        t = Tweet(
+        await create_tweet(
+            db,
+            account,
             tweet_id="only_one",
-            account_id=account.id,
+            text="Only one",
             digest_date=DIGEST_DATE,
-            original_text="Only one",
             tweet_time=datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC),
             likes=50,
             retweets=10,
             replies=5,
-            is_ai_relevant=True,
             is_processed=True,
             base_heat_score=50.0,
             heat_score=50.0,
-            source="auto",
         )
-        db.add(t)
-        await db.flush()
 
         # 构造新推文（不入库，只测计算）
         new_tweet = Tweet(
@@ -641,34 +495,28 @@ class TestManualHeatCalculation:
         """T9: base_score > max → normalized 截断为 100。"""
         from app.services.digest_service import DigestService
 
-        account = TwitterAccount(
+        account = await create_account(
+            db,
             twitter_handle="user2",
             display_name="User 2",
-            weight=1.0,
-            is_active=True,
         )
-        db.add(account)
-        await db.flush()
 
         # 2 条已有推文，base_heat_score 范围 [10, 50]
         for i, bs in enumerate([10.0, 50.0], start=1):
-            t = Tweet(
+            await create_tweet(
+                db,
+                account,
                 tweet_id=f"clamp_h_{i}",
-                account_id=account.id,
+                text=f"Tweet {i}",
                 digest_date=DIGEST_DATE,
-                original_text=f"Tweet {i}",
                 tweet_time=datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC),
                 likes=10,
                 retweets=2,
                 replies=1,
-                is_ai_relevant=True,
                 is_processed=True,
                 base_heat_score=bs,
                 heat_score=50.0,
-                source="auto",
             )
-            db.add(t)
-        await db.flush()
 
         # 新推文 base_score 远超 max=50（用超高互动量）
         new_tweet = Tweet(
@@ -696,34 +544,28 @@ class TestManualHeatCalculation:
         """T10: base_score < min → normalized 截断为 0。"""
         from app.services.digest_service import DigestService
 
-        account = TwitterAccount(
+        account = await create_account(
+            db,
             twitter_handle="user3",
             display_name="User 3",
-            weight=1.0,
-            is_active=True,
         )
-        db.add(account)
-        await db.flush()
 
         # 2 条已有推文，base_heat_score 范围 [100, 500]
         for i, bs in enumerate([100.0, 500.0], start=1):
-            t = Tweet(
+            await create_tweet(
+                db,
+                account,
                 tweet_id=f"clamp_l_{i}",
-                account_id=account.id,
+                text=f"Tweet {i}",
                 digest_date=DIGEST_DATE,
-                original_text=f"Tweet {i}",
                 tweet_time=datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC),
                 likes=10,
                 retweets=2,
                 replies=1,
-                is_ai_relevant=True,
                 is_processed=True,
                 base_heat_score=bs,
                 heat_score=50.0,
-                source="auto",
             )
-            db.add(t)
-        await db.flush()
 
         # 新推文 base_score 低于 min=100（几乎没有互动 + 时间衰减大）
         new_tweet = Tweet(

@@ -14,7 +14,7 @@ class TestGeminiClient:
 
     def _make_client(self) -> GeminiClient:
         """创建测试用 GeminiClient。"""
-        return GeminiClient(api_key="test-key")
+        return GeminiClient(api_key="test-key", _genai_client=MagicMock())
 
     def _make_mock_response(self, image_bytes: bytes = b"fake-png-data") -> MagicMock:
         """构造 mock generate_images 响应。"""

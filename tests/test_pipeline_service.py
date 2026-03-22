@@ -13,6 +13,7 @@ from app.models.job_run import JobRun
 from app.schemas.enums import TriggerSource
 from app.schemas.fetcher_types import FetchResult
 from app.schemas.processor_types import ProcessResult
+from tests.factories import seed_config_keys
 
 # ── fixtures ──────────────────────────────────────────────
 
@@ -53,13 +54,6 @@ def mock_digest() -> AsyncMock:
 def mock_alert() -> AsyncMock:
     """Mock send_alert。"""
     return AsyncMock()
-
-
-def _seed_push_days(db_add_fn: AsyncSession, push_days: str = "1,2,3,4,5,6,7") -> None:
-    """向 system_config 写入 push_days。"""
-    from app.models.config import SystemConfig
-
-    db_add_fn.add(SystemConfig(key="push_days", value=push_days))
 
 
 _MODULE = "app.services.pipeline_service"
@@ -118,8 +112,7 @@ class TestPipelineHappyPath:
         """fetch → process → digest 全部成功，job_run 状态为 completed。"""
         from app.services.pipeline_service import run_pipeline
 
-        _seed_push_days(db)
-        await db.flush()
+        await seed_config_keys(db, push_days="1,2,3,4,5,6,7")
 
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
             result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
@@ -163,8 +156,7 @@ class TestPipelineNotPushDay:
         """push_days 不含周日 → skipped。"""
         from app.services.pipeline_service import run_pipeline
 
-        _seed_push_days(db, "1,2,3,4,5")  # 周一~周五
-        await db.flush()
+        await seed_config_keys(db, push_days="1,2,3,4,5")  # 周一~周五
 
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
             result = await run_pipeline(db, trigger_source=TriggerSource.CRON)
@@ -195,8 +187,7 @@ class TestPipelineFetchFails:
         """fetch 抛异常 → failed + webhook。"""
         from app.services.pipeline_service import run_pipeline
 
-        _seed_push_days(db)
-        await db.flush()
+        await seed_config_keys(db, push_days="1,2,3,4,5,6,7")
 
         mock_fetch.side_effect = RuntimeError("X API timeout")
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
@@ -235,8 +226,7 @@ class TestPipelineProcessFails:
         """process 抛异常 → failed，fetch 已调用。"""
         from app.services.pipeline_service import run_pipeline
 
-        _seed_push_days(db)
-        await db.flush()
+        await seed_config_keys(db, push_days="1,2,3,4,5,6,7")
 
         mock_process.side_effect = RuntimeError("Claude API error")
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
@@ -264,8 +254,7 @@ class TestPipelineDigestFails:
         """digest 抛异常 → failed。"""
         from app.services.pipeline_service import run_pipeline
 
-        _seed_push_days(db)
-        await db.flush()
+        await seed_config_keys(db, push_days="1,2,3,4,5,6,7")
 
         mock_digest.side_effect = RuntimeError("Digest creation error")
         with _patch_pipeline(mock_fetch, mock_process, mock_digest, mock_alert):
@@ -292,7 +281,7 @@ class TestPipelineAlreadyRunning:
         """同日有 running pipeline → skipped，不创建新 job_run。"""
         from app.services.pipeline_service import run_pipeline
 
-        _seed_push_days(db)
+        await seed_config_keys(db, push_days="1,2,3,4,5,6,7")
         # 预插入一个 running pipeline
         existing = JobRun(
             job_type="pipeline",
@@ -332,7 +321,7 @@ class TestPipelineStaleCleanup:
         """超时 running job 被清理后，新 pipeline 正常运行。"""
         from app.services.pipeline_service import run_pipeline
 
-        _seed_push_days(db)
+        await seed_config_keys(db, push_days="1,2,3,4,5,6,7")
         # 3 小时前的 running pipeline（超过 2h 阈值）
         stale = JobRun(
             job_type="pipeline",
@@ -370,8 +359,7 @@ class TestPipelineWebhookFailure:
         """pipeline 失败 + webhook 也失败 → 返回 failed，无异常。"""
         from app.services.pipeline_service import run_pipeline
 
-        _seed_push_days(db)
-        await db.flush()
+        await seed_config_keys(db, push_days="1,2,3,4,5,6,7")
 
         mock_fetch.side_effect = RuntimeError("fetch error")
         mock_alert.side_effect = RuntimeError("webhook down")

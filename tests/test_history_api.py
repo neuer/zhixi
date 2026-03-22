@@ -9,18 +9,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.main import app
 from app.models.account import TwitterAccount
 from app.models.digest import DailyDigest
-from app.models.digest_item import DigestItem
-from app.models.tweet import Tweet
+from tests.factories import (
+    create_account,
+    create_digest,
+    create_digest_item,
+    create_tweet,
+)
 
 # ── 辅助函数 ──
 
 
 async def _seed_account(db: AsyncSession) -> TwitterAccount:
     """创建测试账号。"""
-    acct = TwitterAccount(twitter_handle="histuser", display_name="Hist User")
-    db.add(acct)
-    await db.flush()
-    return acct
+    return await create_account(db, twitter_handle="histuser", display_name="Hist User")
 
 
 async def _seed_digest(
@@ -34,7 +35,8 @@ async def _seed_digest(
     item_count: int = 2,
 ) -> DailyDigest:
     """创建 DailyDigest + items。"""
-    digest = DailyDigest(
+    digest = await create_digest(
+        db,
         digest_date=digest_date,
         version=version,
         is_current=is_current,
@@ -44,25 +46,21 @@ async def _seed_digest(
         content_markdown=f"# {digest_date}",
         published_at=datetime.now(UTC) if status == "published" else None,
     )
-    db.add(digest)
-    await db.flush()
 
     for i in range(1, item_count + 1):
-        tweet = Tweet(
+        tweet = await create_tweet(
+            db,
+            acct,
             tweet_id=f"hist_{digest_date}_{version}_{i}",
-            account_id=acct.id,
             digest_date=digest_date,
-            original_text=f"Tweet {i}",
+            text=f"Tweet {i}",
             tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
             is_ai_relevant=True,
             is_processed=True,
         )
-        db.add(tweet)
-        await db.flush()
-
-        item = DigestItem(
-            digest_id=digest.id,
-            item_type="tweet",
+        await create_digest_item(
+            db,
+            digest,
             item_ref_id=tweet.id,
             display_order=i,
             snapshot_title=f"标题{i}",
@@ -74,9 +72,7 @@ async def _seed_digest(
             snapshot_tweet_url=f"https://x.com/histuser/status/{i}",
             snapshot_tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
         )
-        db.add(item)
 
-    await db.flush()
     return digest
 
 

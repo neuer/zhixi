@@ -37,11 +37,13 @@ class ClaudeClient:
         model: str,
         input_price: float,
         output_price: float,
+        *,
+        _async_client: anthropic.AsyncAnthropic | None = None,
     ) -> None:
         self._model = model
         self._input_price = input_price
         self._output_price = output_price
-        self._client = anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0)
+        self._client = _async_client or anthropic.AsyncAnthropic(api_key=api_key, timeout=60.0)
 
     async def complete(
         self,

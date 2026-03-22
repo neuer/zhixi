@@ -15,19 +15,9 @@ from app.models.config import SystemConfig
 from app.models.digest import DailyDigest
 from app.models.job_run import JobRun
 from app.schemas.enums import CallType
+from tests.factories import seed_config_keys
 
 TODAY = date(2026, 3, 20)
-
-
-async def _seed_config(db: AsyncSession) -> None:
-    """预置 system_config。"""
-    db.add_all(
-        [
-            SystemConfig(key="top_n", value="10"),
-            SystemConfig(key="min_articles", value="1"),
-        ]
-    )
-    await db.flush()
 
 
 # ── 认证 ──
@@ -77,7 +67,7 @@ async def test_overview_with_data(
     db: AsyncSession,
 ) -> None:
     """有 job_run + digest + cost_log 时正确聚合。"""
-    await _seed_config(db)
+    await seed_config_keys(db, top_n="10", min_articles="1")
 
     # 今日 pipeline completed
     job = JobRun(

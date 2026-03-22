@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, date, datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,12 +11,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
-from app.models.account import TwitterAccount
 from app.models.api_cost_log import ApiCostLog
 from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
 from app.services.process_service import ProcessService
+from tests.factories import create_account, create_tweet
 
 # ──────────────────────────────────────────────────
 # 测试辅助
@@ -24,12 +25,8 @@ from app.services.process_service import ProcessService
 DIGEST_DATE = date(2026, 3, 19)
 
 
-def _load_fixture(path: str) -> str:
-    with open(path) as f:
-        return f.read()
-
-
 def _mock_claude_response(content: str) -> ClaudeResponse:
+    """构造 ClaudeResponse mock 对象。"""
     return ClaudeResponse(
         content=content,
         input_tokens=1000,
@@ -40,58 +37,126 @@ def _mock_claude_response(content: str) -> ClaudeResponse:
     )
 
 
-ANALYSIS_FIXTURE = _load_fixture("tests/fixtures/analyzer/global_analysis_response.json")
-SINGLE_FIXTURE = _load_fixture("tests/fixtures/translator/single_tweet_response.json")
-TOPIC_FIXTURE = _load_fixture("tests/fixtures/translator/topic_response.json")
-THREAD_FIXTURE = _load_fixture("tests/fixtures/translator/thread_response.json")
+def _build_analysis_response(
+    filtered_ids: list[str],
+    topics: list[dict[str, Any]],
+) -> str:
+    """构建全局分析 AI 响应 JSON。
 
+    Args:
+        filtered_ids: 被过滤的 tweet_id 列表。
+        topics: 话题列表，每项包含 type, ai_importance_score, tweet_ids 等字段。
 
-async def _seed_account(db: AsyncSession, **overrides: object) -> TwitterAccount:
-    """创建测试账号。"""
-    defaults: dict[str, object] = {
-        "twitter_handle": "testuser",
-        "display_name": "Test User",
-        "bio": "AI researcher",
-        "weight": 1.0,
-        "is_active": True,
-    }
-    defaults.update(overrides)
-    account = TwitterAccount(**defaults)
-    db.add(account)
-    await db.flush()
-    return account
-
-
-async def _seed_tweet(
-    db: AsyncSession,
-    account: TwitterAccount,
-    tweet_id: str = "t1",
-    text: str = "AI tweet",
-    tweet_time: datetime | None = None,
-    likes: int = 100,
-    retweets: int = 20,
-    replies: int = 10,
-    is_quote: bool = False,
-    is_self_reply: bool = False,
-) -> Tweet:
-    """创建测试推文。"""
-    tweet = Tweet(
-        tweet_id=tweet_id,
-        account_id=account.id,
-        digest_date=DIGEST_DATE,
-        original_text=text,
-        tweet_time=tweet_time or datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
-        likes=likes,
-        retweets=retweets,
-        replies=replies,
-        is_quote_tweet=is_quote,
-        is_self_thread_reply=is_self_reply,
-        tweet_url=f"https://x.com/{account.twitter_handle}/status/{tweet_id}",
-        source="auto",
+    Returns:
+        JSON 字符串，模拟 Claude 全局分析的输出。
+    """
+    return json.dumps(
+        {
+            "filtered_ids": filtered_ids,
+            "filtered_count": len(filtered_ids),
+            "topics": topics,
+        }
     )
-    db.add(tweet)
-    await db.flush()
-    return tweet
+
+
+def _build_single_response(
+    title: str = "OpenAI发布GPT-5模型",
+    translation: str = (
+        "我们很高兴地宣布 GPT-5 正式发布。这是我们迄今为止最强大的模型，"
+        "在推理能力（Reasoning）和多模态理解方面取得了突破性进展。"
+    ),
+    comment: str = (
+        "GPT-5 的发布标志着大语言模型（LLM）进入新阶段。推理能力的提升意味着 "
+        "AI 在复杂任务上将更加可靠，这对企业级应用部署具有重要意义。"
+    ),
+) -> str:
+    """构建单条推文加工 AI 响应 JSON。"""
+    return json.dumps({"title": title, "translation": translation, "comment": comment})
+
+
+def _build_topic_response(
+    title: str = "GPT-5引发行业热议",
+    summary: str = (
+        "OpenAI 正式发布 GPT-5 模型，引发 AI 行业广泛讨论。多位大V从不同角度分析了这一事件的影响。"
+        "Sam Altman 强调了模型在推理能力上的突破，Yann LeCun 则对其架构创新表示肯定但指出仍有局限性。"
+    ),
+    perspectives: list[dict[str, str]] | None = None,
+    comment: str = (
+        "GPT-5 的发布是 2026 年最重要的 AI 事件之一。行业内的分歧反映了当前 AI 发展路线之争"
+        "——规模化 vs 新架构。值得关注的是，竞争对手如何应对。"
+    ),
+) -> str:
+    """构建聚合话题加工 AI 响应 JSON。"""
+    if perspectives is None:
+        perspectives = [
+            {
+                "author": "Sam Altman",
+                "handle": "sama",
+                "viewpoint": "GPT-5 在推理和多模态方面实现了重大突破，将推动 AI 在企业级场景的广泛应用。",
+            },
+            {
+                "author": "Yann LeCun",
+                "handle": "ylecun",
+                "viewpoint": "架构上有创新但离真正的 AGI 仍有距离，需要在世界模型方面继续突破。",
+            },
+        ]
+    return json.dumps(
+        {
+            "title": title,
+            "summary": summary,
+            "perspectives": perspectives,
+            "comment": comment,
+        }
+    )
+
+
+def _build_thread_response(
+    title: str = "Karpathy解读AI安全现状",
+    translation: str = (
+        "今天想聊聊 AI 安全（AI Safety）的现状。\n\n"
+        "第一部分：当前 AI 系统面临的主要安全隐患包括提示注入（Prompt Injection）、"
+        "幻觉（Hallucination）以及对齐失败（Alignment Failure）。\n\n"
+        "第二部分：解决方案方面，我们需要从系统架构层面而非仅仅依赖后期微调来解决这些问题。"
+        "形式化验证（Formal Verification）和红队测试（Red Teaming）是关键工具。"
+    ),
+    comment: str = (
+        'Karpathy 对 AI 安全的系统性分析非常有价值。他提出的"架构级安全"思路与当前主流的'
+        '"对齐微调"路线形成互补，值得行业关注。'
+    ),
+) -> str:
+    """构建 Thread 加工 AI 响应 JSON。"""
+    return json.dumps({"title": title, "translation": translation, "comment": comment})
+
+
+# 预构建默认 fixture 字符串，供 _make_process_service 及各测试使用
+ANALYSIS_FIXTURE = _build_analysis_response(
+    filtered_ids=["tweet_filtered_1"],
+    topics=[
+        {
+            "type": "aggregated",
+            "topic_label": "GPT-5 发布",
+            "ai_importance_score": 90,
+            "tweet_ids": ["tweet_agg_1", "tweet_agg_2"],
+            "reason": "多位大V讨论同一事件",
+        },
+        {
+            "type": "single",
+            "ai_importance_score": 70,
+            "tweet_ids": ["tweet_single_1"],
+            "reason": None,
+        },
+        {
+            "type": "thread",
+            "ai_importance_score": 80,
+            "tweet_ids": ["tweet_thread_1", "tweet_thread_2"],
+            "merged_text": "This is a thread about AI safety. Part 1: concerns. Part 2: solutions.",
+            "reason": "同一作者连续自回复Thread",
+        },
+    ],
+)
+SINGLE_FIXTURE = _build_single_response()
+TOPIC_FIXTURE = _build_topic_response()
+THREAD_FIXTURE = _build_thread_response()
 
 
 def _make_process_service(
@@ -143,8 +208,8 @@ class TestProcessServiceFullFlow:
     @pytest_asyncio.fixture
     async def seeded_data(self, db: AsyncSession):
         """预置 6 条推文，匹配 fixture 中的 tweet_id。"""
-        account = await _seed_account(db)
-        account2 = await _seed_account(
+        account = await create_account(db)
+        account2 = await create_account(
             db,
             twitter_handle="user2",
             display_name="User Two",
@@ -152,68 +217,74 @@ class TestProcessServiceFullFlow:
         )
 
         # filtered 推文
-        filtered = await _seed_tweet(
+        filtered = await create_tweet(
             db,
             account,
             tweet_id="tweet_filtered_1",
             text="Just had a great lunch",
+            digest_date=DIGEST_DATE,
             likes=5,
             retweets=0,
             replies=1,
         )
 
         # single 推文
-        single = await _seed_tweet(
+        single = await create_tweet(
             db,
             account,
             tweet_id="tweet_single_1",
             text="New breakthrough in AI reasoning",
+            digest_date=DIGEST_DATE,
             likes=200,
             retweets=50,
             replies=30,
         )
 
         # aggregated 推文
-        agg1 = await _seed_tweet(
+        agg1 = await create_tweet(
             db,
             account,
             tweet_id="tweet_agg_1",
             text="GPT-5 is amazing",
+            digest_date=DIGEST_DATE,
             likes=500,
             retweets=100,
             replies=50,
         )
-        agg2 = await _seed_tweet(
+        agg2 = await create_tweet(
             db,
             account2,
             tweet_id="tweet_agg_2",
             text="GPT-5 analysis",
+            digest_date=DIGEST_DATE,
             likes=300,
             retweets=80,
             replies=40,
         )
 
         # thread 推文
-        thread1 = await _seed_tweet(
+        thread1 = await create_tweet(
             db,
             account,
             tweet_id="tweet_thread_1",
             text="Thread part 1",
+            digest_date=DIGEST_DATE,
             likes=150,
             retweets=30,
             replies=20,
-            is_self_reply=False,
+            is_self_thread_reply=False,
             tweet_time=datetime(2026, 3, 19, 8, 0, 0, tzinfo=UTC),
         )
-        thread2 = await _seed_tweet(
+        thread2 = await create_tweet(
             db,
             account,
             tweet_id="tweet_thread_2",
             text="Thread part 2",
+            digest_date=DIGEST_DATE,
             likes=80,
             retweets=15,
             replies=10,
-            is_self_reply=True,
+            is_self_thread_reply=True,
             tweet_time=datetime(2026, 3, 19, 8, 30, 0, tzinfo=UTC),
         )
 
@@ -383,8 +454,8 @@ class TestProcessServiceFailures:
     @pytest_asyncio.fixture
     async def one_tweet(self, db: AsyncSession):
         """预置 1 条推文。"""
-        account = await _seed_account(db)
-        tweet = await _seed_tweet(db, account, tweet_id="only_tweet")
+        account = await create_account(db)
+        tweet = await create_tweet(db, account, tweet_id="only_tweet", digest_date=DIGEST_DATE)
         await db.commit()
         return tweet
 
@@ -468,8 +539,8 @@ class TestProcessServiceEmptyTopics:
 
     async def test_empty_topics_all_as_single(self, db: AsyncSession):
         """空 topics 列表 → 所有推文作为 single 处理。"""
-        account = await _seed_account(db)
-        await _seed_tweet(db, account, tweet_id="solo_tweet")
+        account = await create_account(db)
+        await create_tweet(db, account, tweet_id="solo_tweet", digest_date=DIGEST_DATE)
         await db.commit()
 
         empty_analysis = json.dumps(
@@ -504,15 +575,19 @@ class TestBatchProcessing:
     @pytest_asyncio.fixture
     async def two_tweets(self, db: AsyncSession):
         """预置 2 条推文，不同账号。"""
-        account1 = await _seed_account(db, twitter_handle="heavy", weight=3.0)
-        account2 = await _seed_account(
+        account1 = await create_account(db, twitter_handle="heavy", weight=3.0)
+        account2 = await create_account(
             db,
             twitter_handle="light",
             display_name="Light User",
             weight=1.0,
         )
-        t1 = await _seed_tweet(db, account1, tweet_id="heavy_t1", text="Heavy tweet")
-        t2 = await _seed_tweet(db, account2, tweet_id="light_t1", text="Light tweet")
+        t1 = await create_tweet(
+            db, account1, tweet_id="heavy_t1", text="Heavy tweet", digest_date=DIGEST_DATE
+        )
+        t2 = await create_tweet(
+            db, account2, tweet_id="light_t1", text="Light tweet", digest_date=DIGEST_DATE
+        )
         await db.commit()
         return {"account1": account1, "account2": account2, "t1": t1, "t2": t2}
 

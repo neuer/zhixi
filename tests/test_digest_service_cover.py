@@ -5,54 +5,44 @@ from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.account import TwitterAccount
-from app.models.config import SystemConfig
-from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
+from tests.factories import create_account, create_tweet, seed_config_keys
 
 
 async def _seed_data(db: AsyncSession, digest_date: date) -> None:
     """写入测试所需的基础数据。"""
-    # system_config
-    configs = [
-        SystemConfig(key="top_n", value="10"),
-        SystemConfig(key="min_articles", value="1"),
-        SystemConfig(key="enable_cover_generation", value="true"),
-        SystemConfig(key="cover_generation_timeout", value="30"),
-    ]
-    db.add_all(configs)
+    await seed_config_keys(
+        db,
+        top_n="10",
+        min_articles="1",
+        enable_cover_generation="true",
+        cover_generation_timeout="30",
+    )
 
-    # account + tweet
-    account = TwitterAccount(
-        id=1,
+    account = await create_account(
+        db,
         twitter_user_id="u1",
         twitter_handle="testuser",
         display_name="Test User",
-        weight=1.0,
-        is_active=True,
     )
-    db.add(account)
-    await db.flush()
 
-    tweet = Tweet(
+    await create_tweet(
+        db,
+        account,
         tweet_id="t1",
-        account_id=1,
-        original_text="Test tweet about AI",
+        text="Test tweet about AI",
         tweet_time=datetime(2026, 3, 19, 10, 0, 0),
-        tweet_url="https://x.com/testuser/status/t1",
         likes=100,
         retweets=50,
         replies=10,
         title="AI 新突破",
         translated_text="AI 新突破翻译",
         ai_comment="这是一条重要的 AI 新闻",
-        ai_importance_score=8,
+        ai_importance_score=8.0,
         heat_score=85.0,
         is_processed=True,
         digest_date=digest_date,
     )
-    db.add(tweet)
-    await db.flush()
 
 
 class TestDigestServiceCoverIntegration:
