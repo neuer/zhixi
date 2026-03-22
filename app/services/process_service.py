@@ -121,6 +121,16 @@ class ProcessService:
                 digest_date,
             )
 
+        # 全部失败时抛出异常，让 pipeline 标记为 FAILED
+        if total > 0 and failed_count == total:
+            await send_alert(
+                "AI 加工全部失败",
+                f"日期={digest_date}, 失败={failed_count}/{total}, 过滤={filtered_count}",
+                self._db,
+            )
+            msg = f"AI 加工全部失败: {failed_count}/{total} 条均失败, digest_date={digest_date}"
+            raise RuntimeError(msg)
+
         # C-2: 有失败时发送告警通知
         if failed_count > 0:
             await send_alert(
