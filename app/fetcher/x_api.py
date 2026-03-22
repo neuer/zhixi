@@ -1,4 +1,11 @@
-"""XApiFetcher — X API 实现（US-011 + US-015 限流重试）。"""
+"""XApiFetcher — X API v2 实现（US-011 + US-015 限流重试）。
+
+参考 xdk 官方 Python SDK 的字段配置和最佳实践：
+- tweet.fields 包含 article / note_tweet / entities 以支持长文、Article、短链展开
+- exclude 同时排除 retweets 和 replies
+- User-Agent 标识便于 X API 调试追踪
+- _enrich_tweet_text 在解析前预处理文本（短链展开 + 长文补全 + Article 正文提取）
+"""
 
 import asyncio
 import logging
@@ -16,6 +23,87 @@ logger = logging.getLogger(__name__)
 # 分页最大页数，防止无限循环
 MAX_PAGES = 5
 
+# 统一的 tweet.fields 配置（参考 xdk 官方 SDK + X API 文档）
+_TWEET_FIELDS = (
+    "author_id,created_at,public_metrics,attachments,referenced_tweets,entities,note_tweet,article"
+)
+_EXPANSIONS = "attachments.media_keys,referenced_tweets.id"
+_MEDIA_FIELDS = "url,type"
+
+
+def enrich_tweet_text(tweet_data: dict[str, object]) -> None:
+    """用 note_tweet 补全长推文、entities.urls 展开 t.co 短链、article.plain_text 提取文章正文。
+
+    直接修改 tweet_data["text"]，供后续 _parse_tweet 使用。
+
+    处理优先级：
+    1. note_tweet.text — 长推文（>280 字符）完整文本
+    2. entities.urls — 展开 t.co 短链，提取链接 title / description
+    3. article.plain_text — X Article 完整正文
+    """
+    # 1. 优先用 note_tweet 的完整文本（长推文 >280 字符）
+    note_tweet = tweet_data.get("note_tweet")
+    if isinstance(note_tweet, dict):
+        full_text = note_tweet.get("text")
+        if isinstance(full_text, str) and full_text:
+            tweet_data["text"] = full_text
+
+    # 2. 用 entities.urls 展开 t.co 短链，并提取链接标题/描述
+    text = tweet_data.get("text")
+    if not isinstance(text, str):
+        return
+
+    # entities 可能在顶层或 note_tweet 内
+    entities = tweet_data.get("entities")
+    if not isinstance(entities, dict):
+        if isinstance(note_tweet, dict):
+            entities = note_tweet.get("entities")
+        if not isinstance(entities, dict):
+            entities = None
+
+    extra_parts: list[str] = []
+    if isinstance(entities, dict):
+        urls = entities.get("urls")
+        if isinstance(urls, list):
+            for url_obj in urls:
+                if not isinstance(url_obj, dict):
+                    continue
+                short_url = url_obj.get("url")
+                expanded_url = url_obj.get("expanded_url")
+                if isinstance(short_url, str) and isinstance(expanded_url, str):
+                    text = text.replace(short_url, expanded_url)
+
+                title = url_obj.get("title")
+                description = url_obj.get("description")
+                if isinstance(title, str) and title:
+                    extra_parts.append(f"[{title}]")
+                if isinstance(description, str) and description:
+                    extra_parts.append(description)
+
+    # 3. 检查 article 字段（X Article 类型推文）
+    article = tweet_data.get("article")
+    if isinstance(article, dict):
+        article_text = article.get("plain_text")
+        if isinstance(article_text, str) and article_text:
+            article_title = article.get("title")
+            if isinstance(article_title, str) and article_title:
+                text = f"[{article_title}]\n\n{article_text}"
+            else:
+                text = article_text
+            tweet_data["text"] = text
+            return
+
+        # 退而求次：只有 title 没有 plain_text
+        article_title = article.get("title")
+        if isinstance(article_title, str) and article_title:
+            extra_parts.insert(0, f"[{article_title}]")
+
+    # 追加标题和描述作为内容补充
+    if extra_parts:
+        text = text.rstrip() + "\n\n" + "\n".join(extra_parts)
+
+    tweet_data["text"] = text
+
 
 class XApiFetcher(BaseFetcher):
     """通过 X (Twitter) API v2 抓取推文。"""
@@ -28,7 +116,10 @@ class XApiFetcher(BaseFetcher):
         """
         self._client = httpx.AsyncClient(
             base_url="https://api.x.com/2",
-            headers={"Authorization": f"Bearer {bearer_token}"},
+            headers={
+                "Authorization": f"Bearer {bearer_token}",
+                "User-Agent": "zhixi/1.0",
+            },
             timeout=30.0,
         )
 
@@ -53,13 +144,13 @@ class XApiFetcher(BaseFetcher):
 
         for _page in range(MAX_PAGES):
             params: dict[str, str] = {
-                "exclude": "retweets",
+                "exclude": "retweets,replies",
                 "max_results": "100",
                 "start_time": since.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "end_time": until.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "tweet.fields": "created_at,public_metrics,attachments,referenced_tweets",
-                "expansions": "attachments.media_keys,referenced_tweets.id",
-                "media.fields": "url,type",
+                "tweet.fields": _TWEET_FIELDS,
+                "expansions": _EXPANSIONS,
+                "media.fields": _MEDIA_FIELDS,
             }
             if next_token:
                 params["pagination_token"] = next_token
@@ -76,6 +167,8 @@ class XApiFetcher(BaseFetcher):
             page_data = payload.get("data", [])
             parse_fail_count = 0
             for raw in page_data:
+                if isinstance(raw, dict):
+                    enrich_tweet_text(raw)
                 tweet = self._parse_tweet(raw, included_tweets, media_url_map)
                 if tweet is not None:
                     results.append(tweet)
@@ -142,7 +235,7 @@ class XApiFetcher(BaseFetcher):
         """将 API 返回的单条 tweet dict 解析为 RawTweet。
 
         Args:
-            raw: API 返回的推文字典
+            raw: API 返回的推文字典（已经过 enrich_tweet_text 预处理）
             included_tweets: tweet_id -> author_id 映射（来自 includes.tweets）
             media_url_map: media_key -> url 映射（来自 includes.media）
 
@@ -238,6 +331,12 @@ class XApiFetcher(BaseFetcher):
                 await asyncio.sleep(delay)
             try:
                 response = await self._client.get(url, params=params)
+
+                # 记录剩余限额（参考 xdk 官方建议）
+                remaining = response.headers.get("x-rate-limit-remaining")
+                if remaining is not None:
+                    logger.debug("X API rate-limit-remaining: %s (url=%s)", remaining, url)
+
                 if response.status_code != 429:
                     response.raise_for_status()
                     return response
@@ -283,9 +382,9 @@ class XApiFetcher(BaseFetcher):
             ValueError: 解析失败
         """
         params: dict[str, str] = {
-            "tweet.fields": "author_id,created_at,public_metrics,attachments,referenced_tweets",
-            "expansions": "attachments.media_keys,referenced_tweets.id",
-            "media.fields": "url,type",
+            "tweet.fields": _TWEET_FIELDS,
+            "expansions": _EXPANSIONS,
+            "media.fields": _MEDIA_FIELDS,
         }
         response = await self._request_with_retry(f"/tweets/{tweet_id}", params)
         payload = response.json()
@@ -297,6 +396,8 @@ class XApiFetcher(BaseFetcher):
 
         included_tweets, media_url_map = self._build_includes_index(payload)
 
+        if isinstance(data, dict):
+            enrich_tweet_text(data)
         tweet = self._parse_tweet(data, included_tweets, media_url_map)
         if tweet is None:
             msg = f"解析推文失败: {tweet_id}"

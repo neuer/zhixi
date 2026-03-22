@@ -286,16 +286,20 @@ async def _get_raw_config(db: AsyncSession, key: str) -> str:
 
 
 async def _ping_x_api(db: AsyncSession) -> ApiStatusItem:
-    """Ping X API: GET /2/users/me。"""
+    """Ping X API: GET /2/users/by/username/x（Bearer Token App-Only 兼容）。
+
+    /2/users/me 需要 OAuth 1.0a/2.0 User Context，Bearer Token 不支持。
+    改用查询公开用户信息的端点来验证 Token 有效性。
+    """
     token = await get_secret_config(db, "x_api_bearer_token")
     if not token:
         return ApiStatusItem(status="unconfigured")
 
     start = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=5.0, headers={"User-Agent": "zhixi/1.0"}) as client:
             resp = await client.get(
-                "https://api.x.com/2/users/me",
+                "https://api.x.com/2/users/by/username/x",
                 headers={"Authorization": f"Bearer {token}"},
             )
             resp.raise_for_status()

@@ -36,7 +36,7 @@ async def lookup_user(bearer_token: str, handle: str) -> XUserProfile:
     params = {"user.fields": "profile_image_url,description,public_metrics"}
     headers = {"Authorization": f"Bearer {bearer_token}"}
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
+    async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": "zhixi/1.0"}) as client:
         try:
             response = await client.get(url, params=params, headers=headers)
             response.raise_for_status()

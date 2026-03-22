@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.accounts import router as accounts_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
+from app.api.debug import router as debug_router
 from app.api.digest import router as digest_router
 from app.api.history import router as history_router
 from app.api.manual import router as manual_router
@@ -75,6 +76,7 @@ app.include_router(manual_router, prefix="/api/manual", tags=["手动操作"])
 app.include_router(settings_router, prefix="/api/settings", tags=["设置"])
 app.include_router(dashboard_router, prefix="/api/dashboard", tags=["仪表盘"])
 app.include_router(history_router, prefix="/api/history", tags=["历史记录"])
+app.include_router(debug_router, prefix="/api/debug", tags=["调试"])
 
 
 # 全局异常处理器

@@ -136,6 +136,65 @@ export type DashboardOverviewResponse = {
 };
 
 /**
+ * X API 连通性检测响应。
+ */
+export type DebugXPingResponse = {
+    status: 'ok' | 'error' | 'unconfigured';
+    latency_ms?: (number | null);
+    raw_response?: ({
+    [key: string]: unknown;
+} | null);
+};
+
+/**
+ * 单条推文查询响应。
+ */
+export type DebugXTweetResponse = {
+    tweet?: (RawTweet | null);
+    raw_response: {
+        [key: string]: unknown;
+    };
+    latency_ms: number;
+};
+
+/**
+ * 推文抓取请求。
+ */
+export type DebugXTweetsRequest = {
+    /**
+     * Twitter 用户名（不含 @）
+     */
+    handle: string;
+    /**
+     * 向前查找的小时数
+     */
+    hours_back?: number;
+};
+
+/**
+ * 推文抓取响应。
+ */
+export type DebugXTweetsResponse = {
+    tweets: Array<RawTweet>;
+    count: number;
+    raw_response: {
+        [key: string]: unknown;
+    };
+    latency_ms: number;
+};
+
+/**
+ * X API 用户查询响应。
+ */
+export type DebugXUserResponse = {
+    user?: (XUserProfile | null);
+    raw_response: {
+        [key: string]: unknown;
+    };
+    latency_ms: number;
+};
+
+/**
  * 日报摘要响应。
  */
 export type DigestBriefResponse = {
@@ -411,6 +470,15 @@ export type PreviewResponse = {
 };
 
 /**
+ * 推文互动指标。
+ */
+export type PublicMetrics = {
+    like_count?: number;
+    retweet_count?: number;
+    reply_count?: number;
+};
+
+/**
  * 发布模式。
  */
 export type PublishMode = 'api' | 'manual';
@@ -422,6 +490,32 @@ export const PublishMode = {
     API: 'api',
     MANUAL: 'manual'
 } as const;
+
+/**
+ * 从 X API 获取的原始推文。
+ */
+export type RawTweet = {
+    tweet_id: string;
+    author_id: string;
+    text: string;
+    created_at: string;
+    public_metrics: PublicMetrics;
+    referenced_tweets?: Array<ReferencedTweet>;
+    media_urls?: Array<(string)>;
+    tweet_url?: string;
+};
+
+/**
+ * 被引用推文信息。
+ *
+ * type 字段为 str 而非 ReferenceType 枚举，因为 X API 可能返回未知引用类型，
+ * 分类器需要能容错处理（记录 warning 后兜底为 ORIGINAL）。
+ */
+export type ReferencedTweet = {
+    type: string;
+    id: string;
+    author_id: string;
+};
 
 /**
  * 重新生成草稿响应。
@@ -587,4 +681,15 @@ export type ValidationError = {
     ctx?: {
         [key: string]: unknown;
     };
+};
+
+/**
+ * X API 返回的用户资料。
+ */
+export type XUserProfile = {
+    twitter_user_id: string;
+    display_name: string;
+    bio?: (string | null);
+    avatar_url?: (string | null);
+    followers_count?: number;
 };
