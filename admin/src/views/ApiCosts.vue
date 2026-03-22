@@ -1,49 +1,43 @@
 <script setup lang="ts">
 import api from "@/api";
+import { useAsyncData } from "@/composables/useAsyncData";
 import type {
   ApiCostsResponse,
   DailyCostsResponse,
 } from "@zhixi/openapi-client";
-import { onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
-
 const activeTab = ref(0);
-const loading = ref(true);
-const error = ref<string | null>(null);
-const costsData = ref<ApiCostsResponse | null>(null);
-const dailyData = ref<DailyCostsResponse | null>(null);
 
-async function loadData() {
-  loading.value = true;
-  error.value = null;
-  try {
+interface CostsPageData {
+  costs: ApiCostsResponse;
+  daily: DailyCostsResponse;
+}
+
+const { data, loading, refreshing, error, refresh } =
+  useAsyncData<CostsPageData>(async () => {
     const [costsResp, dailyResp] = await Promise.all([
       api.get<ApiCostsResponse>("/dashboard/api-costs"),
       api.get<DailyCostsResponse>("/dashboard/api-costs/daily"),
     ]);
-    costsData.value = costsResp.data;
-    dailyData.value = dailyResp.data;
-  } catch {
-    error.value = "加载失败，下拉刷新重试";
-  } finally {
-    loading.value = false;
-  }
-}
+    return { costs: costsResp.data, daily: dailyResp.data };
+  });
+
+const costsData = computed(() => data.value?.costs ?? null);
+const dailyData = computed(() => data.value?.daily ?? null);
 
 function formatCost(cost: number | null | undefined): string {
   return `$${(cost ?? 0).toFixed(4)}`;
 }
-
-onMounted(loadData);
 </script>
 
 <template>
   <div class="zx-page costs-page">
     <van-nav-bar title="API 成本监控" left-arrow @click-left="router.back()" />
 
-    <van-pull-refresh v-model="loading" @refresh="loadData">
+    <van-pull-refresh v-model="refreshing" @refresh="refresh">
       <van-notice-bar
         :color="'var(--zx-info)'"
         :background="'var(--zx-info-bg)'"

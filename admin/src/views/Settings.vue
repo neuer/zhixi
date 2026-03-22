@@ -1,24 +1,33 @@
 <script setup lang="ts">
 import api from "@/api";
-import type {
-  ApiStatusResponse,
-  SecretStatusItem,
-  SettingsResponse,
-  SettingsUpdate,
-} from "@zhixi/openapi-client";
+import { useApiStatus } from "@/composables/useApiStatus";
 import {
-  closeToast,
-  showConfirmDialog,
-  showLoadingToast,
-  showToast,
-} from "vant";
-import { computed, onMounted, ref } from "vue";
+  getSourceLabel,
+  useSecretsManager,
+} from "@/composables/useSecretsManager";
+import type { SettingsResponse, SettingsUpdate } from "@zhixi/openapi-client";
+import { showToast } from "vant";
+import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
 
 const loading = ref(true);
 const saving = ref(false);
+
+// API 状态 & 密钥管理
+const { checkingApi, apiEntries, checkApiStatus, getApiStatus } =
+  useApiStatus();
+const {
+  secretsStatus,
+  showSecretDialog,
+  editingSecret,
+  savingSecret,
+  loadSecretsStatus,
+  openSecretDialog,
+  saveSecret,
+  clearSecret,
+} = useSecretsManager(checkApiStatus);
 
 // 表单数据（从 SettingsResponse 派生，只取可编辑字段）
 type SettingsForm = Pick<
@@ -47,26 +56,6 @@ const form = ref<SettingsForm>({
 // DB 信息
 const dbSizeMb = ref(0);
 const lastBackupAt = ref<string | null>(null);
-
-// API 状态
-const apiStatus = ref<ApiStatusResponse | null>(null);
-const checkingApi = ref(false);
-
-const apiEntries = computed(() => {
-  if (!apiStatus.value) return [];
-  return [
-    { label: "X API", data: apiStatus.value.x_api },
-    { label: "Claude API", data: apiStatus.value.claude_api },
-    { label: "Gemini API", data: apiStatus.value.gemini_api },
-    { label: "微信 API", data: apiStatus.value.wechat_api },
-  ].filter((e) => e.data != null);
-});
-
-// 密钥管理
-const secretsStatus = ref<SecretStatusItem[]>([]);
-const showSecretDialog = ref(false);
-const editingSecret = ref({ key: "", label: "", value: "" });
-const savingSecret = ref(false);
 
 // 时间选择器
 const showTimePicker = ref(false);
@@ -126,101 +115,16 @@ async function saveSettings() {
     await api.put("/settings", payload);
     showToast("配置已保存");
   } catch {
-    // 拦截器已 toast；重载服务端数据恢复表单
     await loadSettings();
   } finally {
     saving.value = false;
   }
 }
 
-async function checkApiStatus() {
-  checkingApi.value = true;
-  showLoadingToast({ message: "检测中...", duration: 0 });
-  try {
-    const resp = await api.get<ApiStatusResponse>("/settings/api-status");
-    apiStatus.value = resp.data;
-    closeToast();
-  } catch {
-    closeToast();
-  } finally {
-    checkingApi.value = false;
-  }
-}
-
-// ---- 密钥管理 ----
-
-async function loadSecretsStatus() {
-  try {
-    const resp = await api.get<{ items: SecretStatusItem[] }>(
-      "/settings/secrets-status",
-    );
-    secretsStatus.value = resp.data.items;
-  } catch {
-    showToast("密钥状态加载失败");
-  }
-}
-
-function openSecretDialog(item: SecretStatusItem) {
-  editingSecret.value = { key: item.key, label: item.label, value: "" };
-  showSecretDialog.value = true;
-}
-
-async function saveSecret() {
-  if (!editingSecret.value.value.trim()) {
-    showToast("请输入密钥值");
-    return;
-  }
-  savingSecret.value = true;
-  try {
-    await api.put("/settings/secrets", {
-      [editingSecret.value.key]: editingSecret.value.value.trim(),
-    });
-    showToast("密钥已保存");
-    showSecretDialog.value = false;
-    await loadSecretsStatus();
-    await checkApiStatus();
-  } catch {
-    // 拦截器已处理
-  } finally {
-    savingSecret.value = false;
-  }
-}
-
-async function clearSecret(item: SecretStatusItem) {
-  try {
-    await showConfirmDialog({
-      title: "清除密钥",
-      message: `确定清除 ${item.label} 的 DB 配置？将恢复使用 .env 中的值（如有）。`,
-    });
-    await api.delete(`/settings/secrets/${item.key}`);
-    showToast("密钥已清除");
-    await loadSecretsStatus();
-    await checkApiStatus();
-  } catch {
-    // 用户取消或请求失败
-  }
-}
-
-function getSourceLabel(source: string): string {
-  if (source === "db") return "后台配置";
-  if (source === "env") return "环境变量";
-  return "";
-}
-
 function onTimeConfirm({ selectedValues }: { selectedValues: string[] }) {
   if (selectedValues.length < 2) return;
   form.value.push_time = `${selectedValues[0]}:${selectedValues[1]}`;
   showTimePicker.value = false;
-}
-
-const apiStatusMap: Record<string, { text: string; color: string }> = {
-  ok: { text: "正常", color: "var(--zx-success)" },
-  error: { text: "异常", color: "var(--zx-danger)" },
-};
-const apiStatusDefault = { text: "未配置", color: "var(--zx-text-disabled)" };
-
-function getApiStatus(status: string) {
-  return apiStatusMap[status] ?? apiStatusDefault;
 }
 
 function formatBackupTime(dt: string | null): string {

@@ -1,31 +1,14 @@
 <script setup lang="ts">
 import api from "@/api";
+import { useAsyncData } from "@/composables/useAsyncData";
 import { getStatus } from "@/utils/status";
 import type { DashboardOverviewResponse } from "@zhixi/openapi-client";
-import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
-const loading = ref(true);
-const data = ref<DashboardOverviewResponse | null>(null);
-const error = ref<string | null>(null);
-
-async function loadData() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const resp = await api.get<DashboardOverviewResponse>(
-      "/dashboard/overview",
-    );
-    data.value = resp.data;
-  } catch {
-    error.value = "加载失败，下拉刷新重试";
-  } finally {
-    loading.value = false;
-  }
-}
-
-onMounted(loadData);
+const { data, loading, refreshing, error, refresh } = useAsyncData(() =>
+  api.get<DashboardOverviewResponse>("/dashboard/overview").then((r) => r.data),
+);
 </script>
 
 <template>
@@ -36,7 +19,7 @@ onMounted(loadData);
       </template>
     </van-nav-bar>
 
-    <van-pull-refresh v-model="loading" @refresh="loadData">
+    <van-pull-refresh v-model="refreshing" @refresh="refresh">
       <!-- 错误态 -->
       <van-empty v-if="!loading && error" :description="error" image="error" />
 

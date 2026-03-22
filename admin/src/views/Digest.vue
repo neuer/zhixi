@@ -1,36 +1,25 @@
 <script setup lang="ts">
 import api from "@/api";
+import { useAsyncData } from "@/composables/useAsyncData";
 import { filterVisibleItems } from "@/utils/digest";
 import { getStatus } from "@/utils/status";
 import type { DigestItemResponse, TodayResponse } from "@zhixi/openapi-client";
 import { showConfirmDialog, showToast } from "vant";
-import { type Ref, computed, onMounted, ref } from "vue";
+import { type Ref, computed, ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
-const loading = ref(true);
-const data = ref<TodayResponse | null>(null);
-const error = ref<string | null>(null);
 const publishing = ref(false);
 const regenerating = ref(false);
+
+const { data, loading, refreshing, error, execute, refresh } = useAsyncData(
+  () => api.get<TodayResponse>("/digest/today").then((r) => r.data),
+);
 
 const visibleItems = computed(() => {
   if (!data.value) return [];
   return filterVisibleItems(data.value.items);
 });
-
-async function loadData() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const resp = await api.get<TodayResponse>("/digest/today");
-    data.value = resp.data;
-  } catch {
-    error.value = "加载失败，下拉刷新重试";
-  } finally {
-    loading.value = false;
-  }
-}
 
 function getItemLabel(item: DigestItemResponse): string {
   if (item.snapshot_author_handle) return `@${item.snapshot_author_handle}`;
@@ -60,7 +49,7 @@ async function confirmAndExecute(options: {
     // API 失败已由拦截器处理
   } finally {
     options.loadingRef.value = false;
-    await loadData();
+    await execute();
   }
 }
 
@@ -96,13 +85,11 @@ async function handleExclude(item: DigestItemResponse) {
   try {
     await api.post(`/digest/exclude/${item.item_type}/${item.item_ref_id}`);
     showToast("已剔除");
-    await loadData();
+    await execute();
   } catch {
     // 拦截器已处理
   }
 }
-
-onMounted(loadData);
 </script>
 
 <template>
@@ -115,7 +102,7 @@ onMounted(loadData);
       :border="false"
     />
 
-    <van-pull-refresh v-model="loading" @refresh="loadData">
+    <van-pull-refresh v-model="refreshing" @refresh="refresh">
       <!-- 低内容提示 (US-045) -->
       <van-notice-bar
         v-if="data?.low_content_warning"
