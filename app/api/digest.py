@@ -321,9 +321,13 @@ async def mark_published(
     _lock: None = Depends(require_no_pipeline_lock),
 ) -> MessageResponse | JSONResponse:
     """标记当前草稿为已发布。根据 publish_mode 分支：manual 直接标记，api 返回 501。"""
-    # 检查 publish_mode
-    publish_mode = await get_system_config(db, "publish_mode", "manual")
-    if publish_mode == PublishMode.API:
+    # 检查 publish_mode（DB 存储为字符串，显式转换为枚举以确保比较安全）
+    publish_mode_raw = await get_system_config(db, "publish_mode", "manual")
+    try:
+        mode = PublishMode(publish_mode_raw)
+    except ValueError:
+        mode = PublishMode.MANUAL
+    if mode == PublishMode.API:
         return JSONResponse(
             status_code=501,
             content={"detail": "微信API自动发布功能将在公众号认证后实现"},

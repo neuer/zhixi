@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
 from app.clients.gemini_client import get_gemini_client
+from app.clients.notifier import send_alert
 from app.config import (
     ensure_utc,
     get_system_config,
@@ -163,6 +164,11 @@ class DigestService:
                 digest.cover_image_path = cover_path
                 if cover_path is None:
                     logger.warning("封面图生成失败，日报将无封面 (digest_date=%s)", digest_date)
+                    await send_alert(
+                        "封面图生成失败",
+                        f"日期={digest_date}，日报将使用无封面模式",
+                        self._db,
+                    )
 
         await self._db.flush()
         logger.info(
