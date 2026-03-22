@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, date, datetime
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -24,12 +25,8 @@ from tests.factories import create_account, create_tweet
 DIGEST_DATE = date(2026, 3, 19)
 
 
-def _load_fixture(path: str) -> str:
-    with open(path) as f:
-        return f.read()
-
-
 def _mock_claude_response(content: str) -> ClaudeResponse:
+    """构造 ClaudeResponse mock 对象。"""
     return ClaudeResponse(
         content=content,
         input_tokens=1000,
@@ -40,10 +37,126 @@ def _mock_claude_response(content: str) -> ClaudeResponse:
     )
 
 
-ANALYSIS_FIXTURE = _load_fixture("tests/fixtures/analyzer/global_analysis_response.json")
-SINGLE_FIXTURE = _load_fixture("tests/fixtures/translator/single_tweet_response.json")
-TOPIC_FIXTURE = _load_fixture("tests/fixtures/translator/topic_response.json")
-THREAD_FIXTURE = _load_fixture("tests/fixtures/translator/thread_response.json")
+def _build_analysis_response(
+    filtered_ids: list[str],
+    topics: list[dict[str, Any]],
+) -> str:
+    """构建全局分析 AI 响应 JSON。
+
+    Args:
+        filtered_ids: 被过滤的 tweet_id 列表。
+        topics: 话题列表，每项包含 type, ai_importance_score, tweet_ids 等字段。
+
+    Returns:
+        JSON 字符串，模拟 Claude 全局分析的输出。
+    """
+    return json.dumps(
+        {
+            "filtered_ids": filtered_ids,
+            "filtered_count": len(filtered_ids),
+            "topics": topics,
+        }
+    )
+
+
+def _build_single_response(
+    title: str = "OpenAI发布GPT-5模型",
+    translation: str = (
+        "我们很高兴地宣布 GPT-5 正式发布。这是我们迄今为止最强大的模型，"
+        "在推理能力（Reasoning）和多模态理解方面取得了突破性进展。"
+    ),
+    comment: str = (
+        "GPT-5 的发布标志着大语言模型（LLM）进入新阶段。推理能力的提升意味着 "
+        "AI 在复杂任务上将更加可靠，这对企业级应用部署具有重要意义。"
+    ),
+) -> str:
+    """构建单条推文加工 AI 响应 JSON。"""
+    return json.dumps({"title": title, "translation": translation, "comment": comment})
+
+
+def _build_topic_response(
+    title: str = "GPT-5引发行业热议",
+    summary: str = (
+        "OpenAI 正式发布 GPT-5 模型，引发 AI 行业广泛讨论。多位大V从不同角度分析了这一事件的影响。"
+        "Sam Altman 强调了模型在推理能力上的突破，Yann LeCun 则对其架构创新表示肯定但指出仍有局限性。"
+    ),
+    perspectives: list[dict[str, str]] | None = None,
+    comment: str = (
+        "GPT-5 的发布是 2026 年最重要的 AI 事件之一。行业内的分歧反映了当前 AI 发展路线之争"
+        "——规模化 vs 新架构。值得关注的是，竞争对手如何应对。"
+    ),
+) -> str:
+    """构建聚合话题加工 AI 响应 JSON。"""
+    if perspectives is None:
+        perspectives = [
+            {
+                "author": "Sam Altman",
+                "handle": "sama",
+                "viewpoint": "GPT-5 在推理和多模态方面实现了重大突破，将推动 AI 在企业级场景的广泛应用。",
+            },
+            {
+                "author": "Yann LeCun",
+                "handle": "ylecun",
+                "viewpoint": "架构上有创新但离真正的 AGI 仍有距离，需要在世界模型方面继续突破。",
+            },
+        ]
+    return json.dumps(
+        {
+            "title": title,
+            "summary": summary,
+            "perspectives": perspectives,
+            "comment": comment,
+        }
+    )
+
+
+def _build_thread_response(
+    title: str = "Karpathy解读AI安全现状",
+    translation: str = (
+        "今天想聊聊 AI 安全（AI Safety）的现状。\n\n"
+        "第一部分：当前 AI 系统面临的主要安全隐患包括提示注入（Prompt Injection）、"
+        "幻觉（Hallucination）以及对齐失败（Alignment Failure）。\n\n"
+        "第二部分：解决方案方面，我们需要从系统架构层面而非仅仅依赖后期微调来解决这些问题。"
+        "形式化验证（Formal Verification）和红队测试（Red Teaming）是关键工具。"
+    ),
+    comment: str = (
+        'Karpathy 对 AI 安全的系统性分析非常有价值。他提出的"架构级安全"思路与当前主流的'
+        '"对齐微调"路线形成互补，值得行业关注。'
+    ),
+) -> str:
+    """构建 Thread 加工 AI 响应 JSON。"""
+    return json.dumps({"title": title, "translation": translation, "comment": comment})
+
+
+# 预构建默认 fixture 字符串，供 _make_process_service 及各测试使用
+ANALYSIS_FIXTURE = _build_analysis_response(
+    filtered_ids=["tweet_filtered_1"],
+    topics=[
+        {
+            "type": "aggregated",
+            "topic_label": "GPT-5 发布",
+            "ai_importance_score": 90,
+            "tweet_ids": ["tweet_agg_1", "tweet_agg_2"],
+            "reason": "多位大V讨论同一事件",
+        },
+        {
+            "type": "single",
+            "ai_importance_score": 70,
+            "tweet_ids": ["tweet_single_1"],
+            "reason": None,
+        },
+        {
+            "type": "thread",
+            "ai_importance_score": 80,
+            "tweet_ids": ["tweet_thread_1", "tweet_thread_2"],
+            "merged_text": "This is a thread about AI safety. Part 1: concerns. Part 2: solutions.",
+            "reason": "同一作者连续自回复Thread",
+        },
+    ],
+)
+SINGLE_FIXTURE = _build_single_response()
+TOPIC_FIXTURE = _build_topic_response()
+THREAD_FIXTURE = _build_thread_response()
 
 
 def _make_process_service(
