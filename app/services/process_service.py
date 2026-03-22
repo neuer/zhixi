@@ -327,6 +327,9 @@ class ProcessService:
         merged_texts: dict[int, str] = {}
 
         # 收集非 single 的 topic_result 与对应 ORM 对象
+        # 注意：TopicResult.type 包含 "single"/"aggregated"/"thread"，
+        # 但 DB 层 TopicType 枚举只有 aggregated/thread。
+        # "single" 类型不创建 Topic 记录，直接作为独立推文处理。
         topic_pairs: list[tuple[Topic, TopicResult]] = []
         for topic_result in analysis.topics:
             if topic_result.type == "single":

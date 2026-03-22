@@ -162,7 +162,7 @@ class TestPublicEndpoints:
         """POST /api/auth/login 无 JWT 也能访问（返回认证错误而非缺 token）。"""
         resp = await client.post(
             "/api/auth/login",
-            json={"username": "admin", "password": "wrong"},
+            json={"username": "admin", "password": "WrongPwd1"},
         )
         # 401 是密码错误，不是缺 JWT
         assert resp.status_code == 401

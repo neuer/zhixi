@@ -140,9 +140,8 @@ async def get_logs(
         return LogsResponse(logs=[], total=0)
 
     # 文件读取 + 解析 + 过滤全部在线程池中执行，避免阻塞事件循环
-    all_entries = await asyncio.to_thread(
-        _parse_log_file, LOG_FILE_PATH, min_severity, offset + limit
-    )
+    # 不限制 max_entries 以获取准确的 total，然后在内存中切片取当页
+    all_entries = await asyncio.to_thread(_parse_log_file, LOG_FILE_PATH, min_severity, 0)
 
     total = len(all_entries)
     page_entries = all_entries[offset : offset + limit]
@@ -184,8 +183,8 @@ def _parse_log_file(log_path: Path, min_severity: int, max_entries: int) -> list
             )
         )
 
-        # 提前终止：已收集够所需条数
-        if len(entries) >= max_entries:
+        # 提前终止：已收集够所需条数（max_entries=0 表示不限制）
+        if max_entries > 0 and len(entries) >= max_entries:
             break
 
     return entries

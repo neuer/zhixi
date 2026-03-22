@@ -51,6 +51,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _set_degraded_flag(brief: DigestBriefResponse, digest_summary: str | None) -> None:
+    """设置 summary_degraded 标记：摘要是否为降级默认值。
+
+    将 DEFAULT_SUMMARY 常量的 import 收拢到此处，路由层不直接 import digest 模块常量。
+    """
+    from app.digest.summary_prompts import DEFAULT_SUMMARY
+
+    brief.summary_degraded = digest_summary == DEFAULT_SUMMARY
+
+
 @router.get("/today", response_model=TodayResponse)
 async def get_today_digest(
     db: AsyncSession = Depends(get_db),
@@ -73,10 +83,8 @@ async def get_today_digest(
     low_content_warning = digest.item_count < min_articles
 
     # summary_degraded: 判断摘要是否为降级默认值
-    from app.digest.summary_prompts import DEFAULT_SUMMARY
-
     brief = DigestBriefResponse.model_validate(digest)
-    brief.summary_degraded = digest.summary == DEFAULT_SUMMARY
+    _set_degraded_flag(brief, digest.summary)
 
     # cover_failed: 开启了封面图但未生成
     enable_cover_str = await get_system_config(db, "enable_cover_generation", "false")
@@ -108,8 +116,11 @@ async def get_preview(
     if digest is None:
         raise HTTPException(status_code=404, detail="今日草稿不存在") from None
 
+    brief = DigestBriefResponse.model_validate(digest)
+    _set_degraded_flag(brief, digest.summary)
+
     return PreviewResponse(
-        digest=DigestBriefResponse.model_validate(digest),
+        digest=brief,
         items=[DigestItemResponse.model_validate(item) for item in items],
         content_markdown=digest.content_markdown or "",
     )
@@ -147,8 +158,12 @@ async def get_preview_by_token(
         digest, items = await svc.get_preview_by_token(token)
     except PreviewTokenInvalidError:
         raise HTTPException(status_code=403, detail="链接已失效或过期") from None
+
+    brief = DigestBriefResponse.model_validate(digest)
+    _set_degraded_flag(brief, digest.summary)
+
     return PreviewResponse(
-        digest=DigestBriefResponse.model_validate(digest),
+        digest=brief,
         items=[DigestItemResponse.model_validate(item) for item in items],
         content_markdown=digest.content_markdown or "",
     )
