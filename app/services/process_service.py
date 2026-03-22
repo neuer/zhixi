@@ -40,7 +40,7 @@ from app.processor.translator import (
 )
 from app.schemas.client_types import ClaudeResponse
 from app.schemas.enums import TopicType
-from app.schemas.processor_types import AnalysisResult, ProcessResult
+from app.schemas.processor_types import AnalysisResult, ProcessResult, TopicResult
 
 _T = TypeVar("_T")
 
@@ -325,6 +325,8 @@ class ProcessService:
         topics: list[Topic] = []
         merged_texts: dict[int, str] = {}
 
+        # 收集非 single 的 topic_result 与对应 ORM 对象
+        topic_pairs: list[tuple[Topic, TopicResult]] = []
         for topic_result in analysis.topics:
             if topic_result.type == "single":
                 continue
@@ -337,15 +339,19 @@ class ProcessService:
                 tweet_count=len(topic_result.tweet_ids),
             )
             self._db.add(topic)
-            await self._db.flush()  # 获取 topic.id
+            topic_pairs.append((topic, topic_result))
 
-            # 关联推文
+        # 批量 flush 一次，SQLAlchemy 自动填充所有 topic.id
+        if topic_pairs:
+            await self._db.flush()
+
+        # 遍历关联推文和缓存 merged_text
+        for topic, topic_result in topic_pairs:
             for tid in topic_result.tweet_ids:
                 tweet = tweet_map.get(tid)
                 if tweet:
                     tweet.topic_id = topic.id
 
-            # Thread: 缓存 merged_text
             if topic_result.type == TopicType.THREAD and topic_result.merged_text:
                 merged_texts[topic.id] = topic_result.merged_text
 

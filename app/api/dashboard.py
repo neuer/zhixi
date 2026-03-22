@@ -138,12 +138,26 @@ async def get_logs(
     if not LOG_FILE_PATH.exists():
         return LogsResponse(logs=[], total=0)
 
-    all_entries: list[LogEntry] = []
-    text = await asyncio.to_thread(LOG_FILE_PATH.read_text, encoding="utf-8")
-    # 只保留最后 5000 行，避免大文件全量加载到内存
+    # 文件读取 + 解析 + 过滤全部在线程池中执行，避免阻塞事件循环
+    all_entries = await asyncio.to_thread(
+        _parse_log_file, LOG_FILE_PATH, min_severity, offset + limit
+    )
+
+    total = len(all_entries)
+    page_entries = all_entries[offset : offset + limit]
+
+    return LogsResponse(logs=page_entries, total=total)
+
+
+def _parse_log_file(log_path: Path, min_severity: int, max_entries: int) -> list[LogEntry]:
+    """同步读取并解析日志文件（在线程池中调用）。
+
+    读取文件 → 取最后 5000 行 → 倒序解析 JSON → 按级别过滤。
+    """
+    text = log_path.read_text(encoding="utf-8")
     lines = deque(text.splitlines(), maxlen=5000)
 
-    # 倒序遍历获取最新日志
+    entries: list[LogEntry] = []
     for line in reversed(lines):
         line = line.strip()
         if not line:
@@ -158,7 +172,7 @@ async def get_logs(
         if entry_severity < min_severity:
             continue
 
-        all_entries.append(
+        entries.append(
             LogEntry(
                 timestamp=obj.get("timestamp", ""),
                 level=entry_level,
@@ -169,14 +183,11 @@ async def get_logs(
             )
         )
 
-        # 提前终止：已收集够 offset + limit 条
-        if len(all_entries) >= offset + limit:
+        # 提前终止：已收集够所需条数
+        if len(entries) >= max_entries:
             break
 
-    total = len(all_entries)
-    page_entries = all_entries[offset : offset + limit]
-
-    return LogsResponse(logs=page_entries, total=total)
+    return entries
 
 
 # ── 内部辅助函数 ──

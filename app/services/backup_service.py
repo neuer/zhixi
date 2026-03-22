@@ -61,8 +61,8 @@ class BackupService:
         self._db.add(job)
         await self._db.flush()  # 获取自增 id，但不提交
 
-        # 确保备份目录存在
-        Path(backup_dir).mkdir(parents=True, exist_ok=True)
+        # 确保备份目录存在（同步 I/O，通过 to_thread 避免阻塞事件循环）
+        await asyncio.to_thread(Path(backup_dir).mkdir, parents=True, exist_ok=True)
         backup_path = str(Path(backup_dir) / backup_filename)
 
         try:
@@ -83,8 +83,7 @@ class BackupService:
             job.finished_at = datetime.now(UTC)
             # 若备份文件已创建但内容不完整，尝试清理
             try:
-                if Path(backup_path).exists():
-                    Path(backup_path).unlink()
+                await asyncio.to_thread(self._cleanup_failed_backup, backup_path)
             except OSError as cleanup_err:
                 logger.warning(
                     "备份失败后清理残留文件也失败: path=%s, error=%s",
@@ -92,6 +91,13 @@ class BackupService:
                     cleanup_err,
                 )
             return BackupResult(success=False, error=error_msg)
+
+    @staticmethod
+    def _cleanup_failed_backup(backup_path: str) -> None:
+        """同步清理失败的备份文件（在线程池中调用）。"""
+        p = Path(backup_path)
+        if p.exists():
+            p.unlink()
 
     @staticmethod
     def _sync_backup(db_path: str, backup_path: str) -> None:
@@ -118,6 +124,11 @@ class BackupService:
 
         返回删除的文件数量。
         """
+        return await asyncio.to_thread(self._sync_cleanup, backup_dir, logs_dir)
+
+    @staticmethod
+    def _sync_cleanup(backup_dir: str, logs_dir: str) -> int:
+        """同步执行过期文件清理（在线程池中调用）。"""
         cutoff = time.time() - RETENTION_DAYS * 86400
         removed = 0
 
