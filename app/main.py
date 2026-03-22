@@ -1,5 +1,6 @@
 """FastAPI 应用入口 — 路由注册、中间件、SPA 静态文件。"""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -47,7 +48,7 @@ def _run_alembic_upgrade() -> None:
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """应用生命周期 — 启动/关闭钩子。"""
     setup_logging(settings.LOG_LEVEL)
-    _run_alembic_upgrade()
+    await asyncio.to_thread(_run_alembic_upgrade)
     yield
     await engine.dispose()
 

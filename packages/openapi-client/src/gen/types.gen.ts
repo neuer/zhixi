@@ -55,6 +55,14 @@ export type AddTweetRequest = {
 };
 
 /**
+ * 手动补录推文响应。
+ */
+export type AddTweetResponse = {
+    message: string;
+    item: DigestItemResponse;
+};
+
+/**
  * 告警条目。
  */
 export type AlertItem = {

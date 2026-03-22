@@ -218,7 +218,11 @@ async def restore_item(
 # ── US-035: 重新生成草稿 ──
 
 
-@router.post("/regenerate", response_model=RegenerateResponse)
+@router.post(
+    "/regenerate",
+    response_model=RegenerateResponse,
+    responses={500: {"description": "重新生成失败"}},
+)
 async def regenerate_digest(
     db: AsyncSession = Depends(get_db),
     svc: DigestService = Depends(get_digest_service),
@@ -294,7 +298,11 @@ async def get_markdown(
     return MarkdownResponse(content_markdown=content)
 
 
-@router.post("/mark-published", response_model=None)
+@router.post(
+    "/mark-published",
+    response_model=MessageResponse,
+    responses={501: {"description": "微信API自动发布功能尚未实现"}},
+)
 async def mark_published(
     db: AsyncSession = Depends(get_db),
     svc: DigestService = Depends(get_digest_service),
@@ -324,7 +332,11 @@ async def mark_published(
 # ── US-016: 手动补录推文 ──
 
 
-@router.post("/add-tweet", response_model=None)
+@router.post(
+    "/add-tweet",
+    response_model=AddTweetResponse,
+    responses={502: {"description": "推文已入库但AI加工失败"}},
+)
 async def add_tweet(
     body: AddTweetRequest,
     db: AsyncSession = Depends(get_db),
