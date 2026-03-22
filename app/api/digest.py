@@ -17,7 +17,7 @@ from app.api.deps import (
 )
 from app.clients.notifier import send_alert
 from app.clients.x_client import XApiError
-from app.config import get_system_config, get_today_digest_date, safe_int_config
+from app.config import get_system_config, get_today_digest_date
 from app.database import get_db
 from app.models.job_run import JobRun
 from app.schemas.digest_types import (
@@ -63,7 +63,6 @@ def _set_degraded_flag(brief: DigestBriefResponse, digest_summary: str | None) -
 
 @router.get("/today", response_model=TodayResponse)
 async def get_today_digest(
-    db: AsyncSession = Depends(get_db),
     svc: DigestService = Depends(get_digest_service),
     _admin: str = Depends(get_current_admin),
 ) -> TodayResponse:
@@ -78,17 +77,13 @@ async def get_today_digest(
     if digest is None:
         return TodayResponse(digest=None, items=[], low_content_warning=False)
 
-    # low_content_warning
-    min_articles = await safe_int_config(db, "min_articles", 1)
-    low_content_warning = digest.item_count < min_articles
+    # 业务判断委托 Service 层
+    low_content_warning = await svc.check_low_content_warning(digest)
+    cover_failed = await svc.check_cover_failed(digest)
 
     # summary_degraded: 判断摘要是否为降级默认值
     brief = DigestBriefResponse.model_validate(digest)
     _set_degraded_flag(brief, digest.summary)
-
-    # cover_failed: 开启了封面图但未生成
-    enable_cover_str = await get_system_config(db, "enable_cover_generation", "false")
-    cover_failed = enable_cover_str == "true" and not digest.cover_image_path
 
     return TodayResponse(
         digest=brief,
@@ -375,7 +370,14 @@ async def add_tweet(
     fetch_svc: FetchService = Depends(get_fetch_service),
     process_svc: ProcessService = Depends(get_process_service),
 ) -> AddTweetResponse | JSONResponse:
-    """手动补录推文 — M1 抓取 → 入库 → M2 AI 加工 → M3 热度计算 + 建 item。"""
+    """手动补录推文 — M1 抓取 → 入库 → M2 AI 加工 → M3 热度计算 + 建 item。
+
+    TOCTOU 说明：check_draft_editable 与后续 add_manual_tweet_item 之间存在
+    先检查后执行（TOCTOU）竞态窗口 —— 草稿状态可能在检查通过后、实际写入前
+    被并发请求改变（如同时触发重新生成或发布）。
+    当前缓解：SQLite WAL 模式下写操作串行化，单管理员系统并发极低，实际风险可控。
+    迁移 PostgreSQL 后需用 SELECT FOR UPDATE 对 DailyDigest 行加锁修复。
+    """
     digest_date = get_today_digest_date()
     try:
         await digest_svc.check_draft_editable(digest_date)

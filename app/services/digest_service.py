@@ -210,6 +210,16 @@ class DigestService:
         items = list(items_result.scalars().all())
         return digest, items
 
+    async def check_low_content_warning(self, digest: DailyDigest) -> bool:
+        """检查日报条目数是否低于最低文章数阈值。"""
+        min_articles = await safe_int_config(self._db, "min_articles", 1)
+        return digest.item_count < min_articles
+
+    async def check_cover_failed(self, digest: DailyDigest) -> bool:
+        """检查封面图是否开启但未生成。"""
+        enable_cover_str = await get_system_config(self._db, "enable_cover_generation", "false")
+        return enable_cover_str == "true" and not digest.cover_image_path
+
     async def get_markdown_content(self, digest_date: date) -> str:
         """获取指定日期 is_current=true digest 的 Markdown 内容。
 

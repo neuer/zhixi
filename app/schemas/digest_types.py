@@ -47,7 +47,11 @@ class DigestItemResponse(BaseModel):
 
 
 class DigestBriefResponse(BaseModel):
-    """日报摘要响应。"""
+    """日报摘要响应。
+
+    安全说明：from_attributes=True 仅映射 Schema 中显式声明的字段，
+    ORM 模型上的 preview_token 等敏感字段不会被序列化到响应中。
+    """
 
     id: int
     digest_date: date
