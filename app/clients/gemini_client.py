@@ -29,8 +29,13 @@ class GeminiAPIError(Exception):
 class GeminiClient:
     """Gemini Imagen API 异步客户端。"""
 
-    def __init__(self, api_key: str) -> None:
-        self._client = genai.Client(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        *,
+        _genai_client: genai.Client | None = None,
+    ) -> None:
+        self._client = _genai_client or genai.Client(api_key=api_key)
 
     async def generate_image(
         self,
