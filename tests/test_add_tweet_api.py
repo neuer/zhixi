@@ -1,10 +1,12 @@
 """US-016: 手动补录推文 — API 集成测试。"""
 
 from datetime import UTC, date, datetime
+from typing import NamedTuple
 from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +35,7 @@ TWEET_ID = "999888777"
 
 
 # ──────────────────────────────────────────────────
-# Fixtures
+# Mock 数据构造
 # ──────────────────────────────────────────────────
 
 
@@ -134,7 +136,7 @@ async def _seed_environment(db: AsyncSession) -> tuple[TwitterAccount, DailyDige
 
 
 # ──────────────────────────────────────────────────
-# 辅助：构造带认证的客户端
+# 辅助：构造 mock 对象
 # ──────────────────────────────────────────────────
 
 
@@ -162,6 +164,55 @@ def _make_mock_claude(success: bool = True):
 
         mock.complete = AsyncMock(side_effect=ClaudeAPIError("Claude API 错误"))
     return mock
+
+
+# ──────────────────────────────────────────────────
+# 公共 Fixtures — 消除 patch 重复
+# ──────────────────────────────────────────────────
+
+
+class MockServices(NamedTuple):
+    """打包所有 mock 服务对象，便于测试中按需定制。"""
+
+    claude: AsyncMock
+    fetcher: AsyncMock
+
+
+@pytest_asyncio.fixture
+async def api_mocks(db: AsyncSession):
+    """提供带认证的 AsyncClient + 全部 patch 就绪的 MockServices。
+
+    自动完成：
+    - DB 依赖注入覆盖
+    - Claude client / XApiFetcher / get_today_digest_date 三处 patch
+    - JWT 认证 header 注入
+
+    Yields (client, mocks):
+        client: 带认证 header 的 AsyncClient
+        mocks: MockServices(claude, fetcher)，测试可在 yield 前修改 mock 行为
+    """
+    mock_claude = _make_mock_claude()
+    mock_fetcher = _make_mock_fetcher()
+
+    async def override_get_db():
+        yield db
+
+    app.dependency_overrides[get_db] = override_get_db
+    token, _ = create_jwt("admin")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    with (
+        patch("app.clients.claude_client.get_claude_client", AsyncMock(return_value=mock_claude)),
+        patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
+        patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
+        patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
+        patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
+    ):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as c:
+            yield c, MockServices(claude=mock_claude, fetcher=mock_fetcher)
+
+    app.dependency_overrides.clear()
 
 
 # ──────────────────────────────────────────────────
@@ -204,36 +255,14 @@ class TestParseTweetUrl:
 class TestAddTweetApi:
     """POST /api/digest/add-tweet 集成测试。"""
 
-    async def test_success_full_flow(self, db: AsyncSession):
+    async def test_success_full_flow(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T1: 正常补录完整链路。"""
         account, digest, existing_tweets = await _seed_environment(db)
+        client, _mocks = api_mocks
 
-        mock_fetcher = _make_mock_fetcher()
-        mock_claude = _make_mock_claude()
-
-        async def override_get_db():
-            yield db
-
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client", AsyncMock(return_value=mock_claude)
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
         assert resp.status_code == 200
         data = resp.json()
@@ -255,194 +284,84 @@ class TestAddTweetApi:
         updated_digest = digest_result.scalar_one()
         assert updated_digest.item_count == 4
 
-    async def test_invalid_url(self, db: AsyncSession):
+    async def test_invalid_url(self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]):
         """T2: URL 格式无效 → 400。"""
         await _seed_environment(db)
+        client, _mocks = api_mocks
 
-        async def override_get_db():
-            yield db
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": "not-a-valid-url"})
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": "not-a-valid-url"})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 400
         assert "无效的推文URL" in resp.json()["detail"]
 
-    async def test_tweet_already_exists(self, db: AsyncSession):
+    async def test_tweet_already_exists(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T3: tweet_id 已存在 → 409。"""
         account, digest, existing_tweets = await _seed_environment(db)
-
-        async def override_get_db():
-            yield db
-
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
+        client, _mocks = api_mocks
 
         # URL 对应的 tweet_id 已在数据库中（100001）
         existing_url = f"https://x.com/testuser/status/{existing_tweets[0].tweet_id}"  # "100001"
 
-        mock_fetcher = _make_mock_fetcher()
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": existing_url})
 
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": existing_url})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 409
         assert "该推文已存在" in resp.json()["detail"]
 
-    async def test_no_draft(self, db: AsyncSession):
+    async def test_no_draft(self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]):
         """T4: 当日无草稿 → 409。"""
         # 只创建 config，不创建 digest
         await seed_config_keys(db, top_n="10", min_articles="1")
+        client, _mocks = api_mocks
 
-        async def override_get_db():
-            yield db
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 409
         assert "今日草稿尚未生成" in resp.json()["detail"]
 
-    async def test_draft_published(self, db: AsyncSession):
+    async def test_draft_published(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T5: 草稿已发布 → 409。"""
         await seed_config_keys(db, top_n="10")
         await create_digest(db, digest_date=DIGEST_DATE, status="published", item_count=0)
+        client, _mocks = api_mocks
 
-        async def override_get_db():
-            yield db
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 409
         assert "当前版本不可编辑" in resp.json()["detail"]
 
-    async def test_x_api_failure(self, db: AsyncSession):
+    async def test_x_api_failure(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T6: X API 抓取失败 → 502。"""
         await _seed_environment(db)
+        client, mocks = api_mocks
 
-        mock_fetcher = _make_mock_fetcher(error=httpx.HTTPError("X API down"))
+        # 覆盖 fetcher 行为为抛异常
+        mocks.fetcher.fetch_single_tweet = AsyncMock(side_effect=httpx.HTTPError("X API down"))
 
-        async def override_get_db():
-            yield db
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client",
-                AsyncMock(return_value=_make_mock_claude()),
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 502
         assert "推文抓取失败" in resp.json()["detail"]
 
-    async def test_ai_processing_failure(self, db: AsyncSession):
+    async def test_ai_processing_failure(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T7: AI 加工失败 → 502, 推文保留但无 DigestItem。"""
         await _seed_environment(db)
+        client, mocks = api_mocks
 
-        mock_fetcher = _make_mock_fetcher()
-        mock_claude = _make_mock_claude(success=False)
+        # 覆盖 claude 行为为失败
+        from app.clients.claude_client import ClaudeAPIError
 
-        async def override_get_db():
-            yield db
+        mocks.claude.complete = AsyncMock(side_effect=ClaudeAPIError("Claude API 错误"))
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
+        resp = await client.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
 
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client", AsyncMock(return_value=mock_claude)
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post("/api/digest/add-tweet", json={"tweet_url": TWEET_URL})
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 502
         assert "推文已入库但AI加工失败" in resp.json()["detail"]
 
@@ -471,7 +390,9 @@ class TestAddTweetApi:
         app.dependency_overrides.clear()
         assert resp.status_code == 401
 
-    async def test_unknown_author_creates_temp_account(self, db: AsyncSession):
+    async def test_unknown_author_creates_temp_account(
+        self, db: AsyncSession, api_mocks: tuple[AsyncClient, MockServices]
+    ):
         """T11: 推文作者不在大V列表 → 创建临时账号。"""
         # 只创建环境，不创建 testuser 账号——让系统自动创建
         await seed_config_keys(
@@ -479,7 +400,9 @@ class TestAddTweetApi:
         )
         await create_digest(db, digest_date=DIGEST_DATE, item_count=0, content_markdown="")
 
-        # 用一个不存在的 author
+        client, mocks = api_mocks
+
+        # 覆盖 fetcher 返回未知作者的推文
         raw = RawTweet(
             tweet_id="777777",
             author_id="uid_unknown",
@@ -490,35 +413,13 @@ class TestAddTweetApi:
             media_urls=[],
             tweet_url="https://x.com/uid_unknown/status/777777",
         )
-        mock_fetcher = _make_mock_fetcher(raw_tweet=raw)
-        mock_claude = _make_mock_claude()
+        mocks.fetcher.fetch_single_tweet = AsyncMock(return_value=raw)
 
-        async def override_get_db():
-            yield db
+        resp = await client.post(
+            "/api/digest/add-tweet",
+            json={"tweet_url": "https://x.com/unknownuser/status/777777"},
+        )
 
-        app.dependency_overrides[get_db] = override_get_db
-        token, _ = create_jwt("admin")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        with (
-            patch(
-                "app.clients.claude_client.get_claude_client", AsyncMock(return_value=mock_claude)
-            ),
-            patch("app.services.fetch_service.get_fetcher", return_value=mock_fetcher),
-            patch("app.api.digest.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.fetch_service.get_today_digest_date", return_value=DIGEST_DATE),
-            patch("app.services.digest_service.get_today_digest_date", return_value=DIGEST_DATE),
-        ):
-            transport = ASGITransport(app=app)
-            async with AsyncClient(
-                transport=transport, base_url="http://test", headers=headers
-            ) as c:
-                resp = await c.post(
-                    "/api/digest/add-tweet",
-                    json={"tweet_url": "https://x.com/unknownuser/status/777777"},
-                )
-
-        app.dependency_overrides.clear()
         assert resp.status_code == 200
 
         # 验证创建了临时账号
