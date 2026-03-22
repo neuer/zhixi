@@ -184,7 +184,13 @@ async def test_api_status_unconfigured(
 async def test_api_status_mock_ping(
     authed_client: AsyncClient,
 ) -> None:
-    """mock httpx/anthropic → ok + latency。"""
+    """mock httpx/anthropic → ok + latency。
+
+    I-42 局限性说明：此测试 mock 了 httpx.AsyncClient 和 anthropic.AsyncAnthropic
+    的内部行为（__aenter__/__aexit__/get/models.list），与路由实现细节耦合较深。
+    若路由层重构 API 检测逻辑（如改用独立的 health checker），测试需同步调整。
+    更好的做法是将 API 状态检测抽为可注入的 checker 依赖。
+    """
 
     async def _mock_secret(db: object, key: str) -> str:
         return {"x_api_bearer_token": "test-token", "anthropic_api_key": "test-key"}.get(key, "")

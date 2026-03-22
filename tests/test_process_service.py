@@ -166,7 +166,13 @@ def _make_process_service(
     topic_response: str = TOPIC_FIXTURE,
     thread_response: str = THREAD_FIXTURE,
 ) -> ProcessService:
-    """构造 ProcessService，mock ClaudeClient 按顺序返回响应。"""
+    """构造 ProcessService，mock ClaudeClient 按顺序返回响应。
+
+    I-21 局限性说明：side_effect 列表依赖 ProcessService 内部的调用顺序
+    （全局分析 → single → topic → thread），若内部实现调整调用顺序，
+    测试会因为响应错位而失败。更健壮的做法是根据 prompt 内容分发不同响应，
+    但改造影响面较大，暂用注释标记。
+    """
     client = AsyncMock(spec=ClaudeClient)
 
     responses = [

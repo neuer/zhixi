@@ -43,7 +43,8 @@ async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
-    app.dependency_overrides.clear()
+    # I-37: 精确清理自己设置的覆盖，避免影响其他 fixture 或中间件设置的覆盖
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest.fixture
@@ -66,7 +67,8 @@ async def authed_client(
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test", headers=auth_headers) as c:
         yield c
-    app.dependency_overrides.clear()
+    # I-37: 精确清理自己设置的覆盖，避免影响其他 fixture 或中间件设置的覆盖
+    app.dependency_overrides.pop(get_db, None)
 
 
 @pytest_asyncio.fixture

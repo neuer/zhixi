@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -20,7 +21,8 @@ from app.schemas.client_types import ClaudeResponse
 # 测试辅助
 # ──────────────────────────────────────────────────
 
-FIXTURE_PATH = "tests/fixtures/analyzer/global_analysis_response.json"
+# I-28: 使用绝对路径，避免对 cwd 的隐式依赖
+FIXTURE_PATH = Path(__file__).parent / "fixtures" / "analyzer" / "global_analysis_response.json"
 
 
 def _load_fixture() -> str:
