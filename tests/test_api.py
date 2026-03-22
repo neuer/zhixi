@@ -10,12 +10,16 @@ from freezegun import freeze_time
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.account import TwitterAccount
-from app.models.config import SystemConfig
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.models.job_run import JobRun
-from app.models.tweet import Tweet
+from tests.factories import (
+    create_account,
+    create_digest,
+    create_digest_item,
+    create_tweet,
+    seed_config_keys,
+)
 
 DIGEST_DATE = date(2026, 3, 20)
 
@@ -46,48 +50,34 @@ PROTECTED_ENDPOINTS: list[tuple[str, str, dict[str, object] | None]] = [
 # ── 辅助函数 ──
 
 
-async def _seed_config(db: AsyncSession) -> None:
-    """预置必要的 system_config。"""
-    configs = [
-        SystemConfig(key="top_n", value="10"),
-        SystemConfig(key="min_articles", value="1"),
-    ]
-    db.add_all(configs)
-    await db.flush()
-
-
 async def _seed_draft_with_items(
     db: AsyncSession,
     *,
     status: str = "draft",
     item_count: int = 2,
 ) -> tuple[DailyDigest, list[DigestItem]]:
-    """创建 digest + tweet items 用于综合测试。"""
-    await _seed_config(db)
+    """创建 config + digest + tweet items 用于综合测试。"""
+    await seed_config_keys(db, top_n="10", min_articles="1")
 
-    acct = TwitterAccount(twitter_handle="testuser", display_name="Test User")
-    db.add(acct)
-    await db.flush()
+    acct = await create_account(db, twitter_handle="testuser", display_name="Test User")
 
-    digest = DailyDigest(
+    digest = await create_digest(
+        db,
         digest_date=DIGEST_DATE,
-        version=1,
-        is_current=True,
         status=status,
-        summary="今日导读",
         item_count=item_count,
+        summary="今日导读",
         content_markdown="# 测试 Markdown\n\n> 今日导读",
     )
-    db.add(digest)
-    await db.flush()
 
     items: list[DigestItem] = []
     for i in range(1, item_count + 1):
-        tweet = Tweet(
+        tweet = await create_tweet(
+            db,
+            acct,
             tweet_id=f"api_test_{i}",
-            account_id=acct.id,
+            text=f"Text {i}",
             digest_date=DIGEST_DATE,
-            original_text=f"Text {i}",
             tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
             title=f"标题{i}",
             translated_text=f"翻译{i}",
@@ -95,12 +85,9 @@ async def _seed_draft_with_items(
             is_ai_relevant=True,
             is_processed=True,
         )
-        db.add(tweet)
-        await db.flush()
-
-        item = DigestItem(
-            digest_id=digest.id,
-            item_type="tweet",
+        item = await create_digest_item(
+            db,
+            digest,
             item_ref_id=tweet.id,
             display_order=i,
             snapshot_title=f"标题{i}",
@@ -112,10 +99,8 @@ async def _seed_draft_with_items(
             snapshot_tweet_url=f"https://x.com/testuser/status/{i}",
             snapshot_tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
         )
-        db.add(item)
         items.append(item)
 
-    await db.flush()
     return digest, items
 
 

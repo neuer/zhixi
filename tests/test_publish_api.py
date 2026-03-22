@@ -8,28 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.digest import DailyDigest
+from tests.factories import create_digest
 
 DIGEST_DATE = date(2026, 3, 20)
-
-
-async def _seed_draft(
-    db: AsyncSession,
-    status: str = "draft",
-    content_markdown: str = "# 智曦AI日报\n\n今日AI热点",
-) -> DailyDigest:
-    """创建测试 digest。"""
-    digest = DailyDigest(
-        digest_date=DIGEST_DATE,
-        version=1,
-        is_current=True,
-        status=status,
-        summary="摘要",
-        item_count=2,
-        content_markdown=content_markdown,
-    )
-    db.add(digest)
-    await db.flush()
-    return digest
 
 
 # ── GET /api/digest/markdown ──
@@ -45,7 +26,13 @@ class TestGetMarkdown:
         db: AsyncSession,
     ) -> None:
         """正常返回 content_markdown。"""
-        await _seed_draft(db, content_markdown="# 测试标题\n\n正文内容")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            summary="摘要",
+            item_count=2,
+            content_markdown="# 测试标题\n\n正文内容",
+        )
         await db.commit()
 
         resp = await authed_client.get("/api/digest/markdown")
@@ -84,7 +71,14 @@ class TestMarkPublished:
         db: AsyncSession,
     ) -> None:
         """draft → published, published_at 有值。"""
-        await _seed_draft(db, status="draft")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            status="draft",
+            summary="摘要",
+            item_count=2,
+            content_markdown="# 智曦AI日报\n\n今日AI热点",
+        )
         await db.commit()
 
         resp = await authed_client.post("/api/digest/mark-published")
@@ -108,7 +102,14 @@ class TestMarkPublished:
         db: AsyncSession,
     ) -> None:
         """已发布 → 409。"""
-        await _seed_draft(db, status="published")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            status="published",
+            summary="摘要",
+            item_count=2,
+            content_markdown="# 智曦AI日报\n\n今日AI热点",
+        )
         await db.commit()
 
         resp = await authed_client.post("/api/digest/mark-published")
@@ -130,7 +131,14 @@ class TestMarkPublished:
         db: AsyncSession,
     ) -> None:
         """failed → published（US-051 铺垫）。"""
-        await _seed_draft(db, status="failed")
+        await create_digest(
+            db,
+            digest_date=DIGEST_DATE,
+            status="failed",
+            summary="摘要",
+            item_count=2,
+            content_markdown="# 智曦AI日报\n\n今日AI热点",
+        )
         await db.commit()
 
         resp = await authed_client.post("/api/digest/mark-published")

@@ -10,15 +10,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
 from app.digest.summary_prompts import EMPTY_DAY_SUMMARY
-from app.models.account import TwitterAccount
 from app.models.api_cost_log import ApiCostLog
 from app.models.digest_item import DigestItem
-from app.models.topic import Topic
-from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
 from app.services.digest_service import DigestService
+from tests.factories import create_account, create_topic, create_tweet
 
 DIGEST_DATE = date(2026, 3, 20)
+
+TWEET_TIME = datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC)
+
+# create_tweet 的公共默认参数，匹配原 _seed_tweet 行为
+_TW = dict(
+    digest_date=DIGEST_DATE,
+    tweet_time=TWEET_TIME,
+    is_processed=True,
+    ai_importance_score=70.0,
+    base_heat_score=60.0,
+)
 
 
 # ──────────────────────────────────────────────────
@@ -45,94 +54,6 @@ def _make_service(db: AsyncSession, summary_text: str = "今日AI摘要") -> Dig
     return DigestService(db, claude_client=client)
 
 
-async def _seed_account(
-    db: AsyncSession,
-    handle: str = "testuser",
-    display_name: str = "Test User",
-    **overrides: object,
-) -> TwitterAccount:
-    """创建测试账号。"""
-    defaults: dict[str, object] = {
-        "twitter_handle": handle,
-        "display_name": display_name,
-        "bio": "AI researcher",
-        "weight": 1.0,
-        "is_active": True,
-    }
-    defaults.update(overrides)
-    account = TwitterAccount(**defaults)
-    db.add(account)
-    await db.flush()
-    return account
-
-
-async def _seed_tweet(
-    db: AsyncSession,
-    account: TwitterAccount,
-    tweet_id: str = "t1",
-    *,
-    heat_score: float = 50.0,
-    title: str = "推文标题",
-    translated_text: str = "推文翻译",
-    ai_comment: str = "推文点评",
-    topic_id: int | None = None,
-    is_ai_relevant: bool = True,
-    is_processed: bool = True,
-) -> Tweet:
-    """创建测试推文。"""
-    tweet = Tweet(
-        tweet_id=tweet_id,
-        account_id=account.id,
-        digest_date=DIGEST_DATE,
-        original_text=f"Original text for {tweet_id}",
-        tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
-        likes=100,
-        retweets=20,
-        replies=10,
-        tweet_url=f"https://x.com/{account.twitter_handle}/status/{tweet_id}",
-        source="auto",
-        title=title,
-        translated_text=translated_text,
-        ai_comment=ai_comment,
-        heat_score=heat_score,
-        ai_importance_score=70.0,
-        base_heat_score=60.0,
-        is_ai_relevant=is_ai_relevant,
-        is_processed=is_processed,
-        topic_id=topic_id,
-    )
-    db.add(tweet)
-    await db.flush()
-    return tweet
-
-
-async def _seed_topic(
-    db: AsyncSession,
-    topic_type: str = "aggregated",
-    *,
-    title: str = "话题标题",
-    summary: str = "话题摘要",
-    perspectives: str | None = None,
-    ai_comment: str = "话题点评",
-    heat_score: float = 60.0,
-) -> Topic:
-    """创建测试话题。"""
-    topic = Topic(
-        digest_date=DIGEST_DATE,
-        type=topic_type,
-        title=title,
-        summary=summary,
-        perspectives=perspectives,
-        ai_comment=ai_comment,
-        heat_score=heat_score,
-        ai_importance_score=80.0,
-        tweet_count=2,
-    )
-    db.add(topic)
-    await db.flush()
-    return topic
-
-
 # ──────────────────────────────────────────────────
 # 测试
 # ──────────────────────────────────────────────────
@@ -144,14 +65,14 @@ async def test_generate_daily_digest_mixed(db: AsyncSession) -> None:
     svc = _make_service(db)
 
     # 种子数据
-    acct1 = await _seed_account(db, handle="alice", display_name="Alice")
-    acct2 = await _seed_account(db, handle="bob", display_name="Bob")
-    acct3 = await _seed_account(db, handle="carol", display_name="Carol")
+    acct1 = await create_account(db, twitter_handle="alice", display_name="Alice")
+    acct2 = await create_account(db, twitter_handle="bob", display_name="Bob")
+    acct3 = await create_account(db, twitter_handle="carol", display_name="Carol")
 
     # 3 条独立推文（topic_id=null）
-    await _seed_tweet(db, acct1, "tw1", heat_score=90.0, title="GPT-5 发布")
-    await _seed_tweet(db, acct2, "tw2", heat_score=70.0, title="Gemini 2 更新")
-    await _seed_tweet(db, acct3, "tw3", heat_score=50.0, title="LLM 小技巧")
+    await create_tweet(db, acct1, **_TW, tweet_id="tw1", heat_score=90.0, title="GPT-5 发布")
+    await create_tweet(db, acct2, **_TW, tweet_id="tw2", heat_score=70.0, title="Gemini 2 更新")
+    await create_tweet(db, acct3, **_TW, tweet_id="tw3", heat_score=50.0, title="LLM 小技巧")
 
     # 1 个 aggregated 话题（2 条成员推文）
     perspectives_json = json.dumps(
@@ -161,34 +82,48 @@ async def test_generate_daily_digest_mixed(db: AsyncSession) -> None:
         ],
         ensure_ascii=False,
     )
-    topic_agg = await _seed_topic(
+    topic_agg = await create_topic(
         db,
-        "aggregated",
+        topic_type="aggregated",
+        digest_date=DIGEST_DATE,
         title="AI安全热议",
         summary="各方激烈讨论",
         perspectives=perspectives_json,
         heat_score=85.0,
     )
-    tw_agg1 = await _seed_tweet(
-        db, acct1, "tw_a1", heat_score=80.0, title="AI安全1", topic_id=topic_agg.id
+    tw_agg1 = await create_tweet(
+        db, acct1, **_TW, tweet_id="tw_a1", heat_score=80.0, title="AI安全1", topic_id=topic_agg.id
     )
-    tw_agg2 = await _seed_tweet(
-        db, acct2, "tw_a2", heat_score=75.0, title="AI安全2", topic_id=topic_agg.id
+    tw_agg2 = await create_tweet(
+        db, acct2, **_TW, tweet_id="tw_a2", heat_score=75.0, title="AI安全2", topic_id=topic_agg.id
     )
 
     # 1 个 thread 话题（2 条成员推文）
-    topic_thread = await _seed_topic(
+    topic_thread = await create_topic(
         db,
-        "thread",
+        topic_type="thread",
+        digest_date=DIGEST_DATE,
         title="Transformer 深度分析",
         summary="Thread 中文翻译全文",
         heat_score=80.0,
     )
-    tw_th1 = await _seed_tweet(
-        db, acct3, "tw_t1", heat_score=78.0, title="Thread 1", topic_id=topic_thread.id
+    tw_th1 = await create_tweet(
+        db,
+        acct3,
+        **_TW,
+        tweet_id="tw_t1",
+        heat_score=78.0,
+        title="Thread 1",
+        topic_id=topic_thread.id,
     )
-    tw_th2 = await _seed_tweet(
-        db, acct3, "tw_t2", heat_score=76.0, title="Thread 2", topic_id=topic_thread.id
+    tw_th2 = await create_tweet(
+        db,
+        acct3,
+        **_TW,
+        tweet_id="tw_t2",
+        heat_score=76.0,
+        title="Thread 2",
+        topic_id=topic_thread.id,
     )
 
     await db.commit()
@@ -242,11 +177,12 @@ async def test_tweet_snapshot_mapping(db: AsyncSession) -> None:
     """验证 tweet 类型的 snapshot 字段映射。"""
     svc = _make_service(db)
 
-    acct = await _seed_account(db, handle="alice", display_name="Alice Wang")
-    tweet = await _seed_tweet(
+    acct = await create_account(db, twitter_handle="alice", display_name="Alice Wang")
+    tweet = await create_tweet(
         db,
         acct,
-        "tw_snap",
+        **_TW,
+        tweet_id="tw_snap",
         heat_score=80.0,
         title="测试标题",
         translated_text="测试翻译",
@@ -282,24 +218,25 @@ async def test_aggregated_topic_snapshot_mapping(db: AsyncSession) -> None:
     """验证 aggregated topic 的 snapshot 字段映射。"""
     svc = _make_service(db)
 
-    acct1 = await _seed_account(db, handle="alice", display_name="Alice")
-    acct2 = await _seed_account(db, handle="bob", display_name="Bob")
+    acct1 = await create_account(db, twitter_handle="alice", display_name="Alice")
+    acct2 = await create_account(db, twitter_handle="bob", display_name="Bob")
 
     perspectives_json = json.dumps(
         [{"author": "Alice", "handle": "alice", "viewpoint": "观点"}],
         ensure_ascii=False,
     )
-    topic = await _seed_topic(
+    topic = await create_topic(
         db,
-        "aggregated",
+        topic_type="aggregated",
+        digest_date=DIGEST_DATE,
         title="聚合标题",
         summary="聚合摘要",
         perspectives=perspectives_json,
         ai_comment="聚合点评",
         heat_score=75.0,
     )
-    await _seed_tweet(db, acct1, "agg1", heat_score=70.0, topic_id=topic.id)
-    await _seed_tweet(db, acct2, "agg2", heat_score=65.0, topic_id=topic.id)
+    await create_tweet(db, acct1, **_TW, tweet_id="agg1", heat_score=70.0, topic_id=topic.id)
+    await create_tweet(db, acct2, **_TW, tweet_id="agg2", heat_score=65.0, topic_id=topic.id)
     await db.commit()
 
     digest = await svc.generate_daily_digest(DIGEST_DATE)
@@ -334,18 +271,19 @@ async def test_thread_topic_snapshot_mapping(db: AsyncSession) -> None:
     """验证 thread topic 的 snapshot 字段映射。"""
     svc = _make_service(db)
 
-    acct = await _seed_account(db, handle="carol", display_name="Carol Lee")
-    topic = await _seed_topic(
+    acct = await create_account(db, twitter_handle="carol", display_name="Carol Lee")
+    topic = await create_topic(
         db,
-        "thread",
+        topic_type="thread",
+        digest_date=DIGEST_DATE,
         title="Thread 标题",
         summary="Thread 中文翻译全文",
         ai_comment="Thread 点评",
         heat_score=82.0,
     )
     # Thread 第一条推文（tweet_time 最早）
-    tw1 = await _seed_tweet(db, acct, "th1", heat_score=80.0, topic_id=topic.id)
-    await _seed_tweet(db, acct, "th2", heat_score=78.0, topic_id=topic.id)
+    tw1 = await create_tweet(db, acct, **_TW, tweet_id="th1", heat_score=80.0, topic_id=topic.id)
+    await create_tweet(db, acct, **_TW, tweet_id="th2", heat_score=78.0, topic_id=topic.id)
     await db.commit()
 
     digest = await svc.generate_daily_digest(DIGEST_DATE)
@@ -374,8 +312,8 @@ async def test_summary_generation_and_cost_log(db: AsyncSession) -> None:
     """验证导读摘要生成和 api_cost_log 记录。"""
     svc = _make_service(db, summary_text="今日 AI 焦点：GPT-5 正式发布")
 
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "tw1", heat_score=90.0, title="GPT-5")
+    acct = await create_account(db)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=90.0, title="GPT-5")
     await db.commit()
 
     digest = await svc.generate_daily_digest(DIGEST_DATE)
@@ -396,9 +334,13 @@ async def test_empty_digest_no_processed_tweets(db: AsyncSession) -> None:
     """边界条件：所有推文 is_ai_relevant=false → 空草稿。"""
     svc = _make_service(db)
 
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "tw1", heat_score=80.0, is_ai_relevant=False)
-    await _seed_tweet(db, acct, "tw2", heat_score=70.0, is_ai_relevant=False)
+    acct = await create_account(db)
+    await create_tweet(
+        db, acct, **{**_TW, "is_ai_relevant": False}, tweet_id="tw1", heat_score=80.0
+    )
+    await create_tweet(
+        db, acct, **{**_TW, "is_ai_relevant": False}, tweet_id="tw2", heat_score=70.0
+    )
     await db.commit()
 
     digest = await svc.generate_daily_digest(DIGEST_DATE)
@@ -414,10 +356,12 @@ async def test_all_tweets_aggregated(db: AsyncSession) -> None:
     """边界条件：所有推文都有 topic_id → 只创建 topic 类型 items。"""
     svc = _make_service(db)
 
-    acct = await _seed_account(db)
-    topic = await _seed_topic(db, "aggregated", heat_score=80.0)
-    await _seed_tweet(db, acct, "tw1", heat_score=75.0, topic_id=topic.id)
-    await _seed_tweet(db, acct, "tw2", heat_score=70.0, topic_id=topic.id)
+    acct = await create_account(db)
+    topic = await create_topic(
+        db, topic_type="aggregated", digest_date=DIGEST_DATE, heat_score=80.0
+    )
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=75.0, topic_id=topic.id)
+    await create_tweet(db, acct, **_TW, tweet_id="tw2", heat_score=70.0, topic_id=topic.id)
     await db.commit()
 
     digest = await svc.generate_daily_digest(DIGEST_DATE)
@@ -434,9 +378,13 @@ async def test_unprocessed_tweets_excluded(db: AsyncSession) -> None:
     """未处理完的推文不进入 digest_items。"""
     svc = _make_service(db)
 
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "processed", heat_score=80.0, is_processed=True)
-    await _seed_tweet(db, acct, "unprocessed", heat_score=90.0, is_processed=False)
+    acct = await create_account(db)
+    await create_tweet(
+        db, acct, **{**_TW, "is_processed": True}, tweet_id="processed", heat_score=80.0
+    )
+    await create_tweet(
+        db, acct, **{**_TW, "is_processed": False}, tweet_id="unprocessed", heat_score=90.0
+    )
     await db.commit()
 
     digest = await svc.generate_daily_digest(DIGEST_DATE)

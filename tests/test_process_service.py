@@ -10,12 +10,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
-from app.models.account import TwitterAccount
 from app.models.api_cost_log import ApiCostLog
 from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
 from app.services.process_service import ProcessService
+from tests.factories import create_account, create_tweet
 
 # ──────────────────────────────────────────────────
 # 测试辅助
@@ -44,54 +44,6 @@ ANALYSIS_FIXTURE = _load_fixture("tests/fixtures/analyzer/global_analysis_respon
 SINGLE_FIXTURE = _load_fixture("tests/fixtures/translator/single_tweet_response.json")
 TOPIC_FIXTURE = _load_fixture("tests/fixtures/translator/topic_response.json")
 THREAD_FIXTURE = _load_fixture("tests/fixtures/translator/thread_response.json")
-
-
-async def _seed_account(db: AsyncSession, **overrides: object) -> TwitterAccount:
-    """创建测试账号。"""
-    defaults: dict[str, object] = {
-        "twitter_handle": "testuser",
-        "display_name": "Test User",
-        "bio": "AI researcher",
-        "weight": 1.0,
-        "is_active": True,
-    }
-    defaults.update(overrides)
-    account = TwitterAccount(**defaults)
-    db.add(account)
-    await db.flush()
-    return account
-
-
-async def _seed_tweet(
-    db: AsyncSession,
-    account: TwitterAccount,
-    tweet_id: str = "t1",
-    text: str = "AI tweet",
-    tweet_time: datetime | None = None,
-    likes: int = 100,
-    retweets: int = 20,
-    replies: int = 10,
-    is_quote: bool = False,
-    is_self_reply: bool = False,
-) -> Tweet:
-    """创建测试推文。"""
-    tweet = Tweet(
-        tweet_id=tweet_id,
-        account_id=account.id,
-        digest_date=DIGEST_DATE,
-        original_text=text,
-        tweet_time=tweet_time or datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
-        likes=likes,
-        retweets=retweets,
-        replies=replies,
-        is_quote_tweet=is_quote,
-        is_self_thread_reply=is_self_reply,
-        tweet_url=f"https://x.com/{account.twitter_handle}/status/{tweet_id}",
-        source="auto",
-    )
-    db.add(tweet)
-    await db.flush()
-    return tweet
 
 
 def _make_process_service(
@@ -143,8 +95,8 @@ class TestProcessServiceFullFlow:
     @pytest_asyncio.fixture
     async def seeded_data(self, db: AsyncSession):
         """预置 6 条推文，匹配 fixture 中的 tweet_id。"""
-        account = await _seed_account(db)
-        account2 = await _seed_account(
+        account = await create_account(db)
+        account2 = await create_account(
             db,
             twitter_handle="user2",
             display_name="User Two",
@@ -152,68 +104,74 @@ class TestProcessServiceFullFlow:
         )
 
         # filtered 推文
-        filtered = await _seed_tweet(
+        filtered = await create_tweet(
             db,
             account,
             tweet_id="tweet_filtered_1",
             text="Just had a great lunch",
+            digest_date=DIGEST_DATE,
             likes=5,
             retweets=0,
             replies=1,
         )
 
         # single 推文
-        single = await _seed_tweet(
+        single = await create_tweet(
             db,
             account,
             tweet_id="tweet_single_1",
             text="New breakthrough in AI reasoning",
+            digest_date=DIGEST_DATE,
             likes=200,
             retweets=50,
             replies=30,
         )
 
         # aggregated 推文
-        agg1 = await _seed_tweet(
+        agg1 = await create_tweet(
             db,
             account,
             tweet_id="tweet_agg_1",
             text="GPT-5 is amazing",
+            digest_date=DIGEST_DATE,
             likes=500,
             retweets=100,
             replies=50,
         )
-        agg2 = await _seed_tweet(
+        agg2 = await create_tweet(
             db,
             account2,
             tweet_id="tweet_agg_2",
             text="GPT-5 analysis",
+            digest_date=DIGEST_DATE,
             likes=300,
             retweets=80,
             replies=40,
         )
 
         # thread 推文
-        thread1 = await _seed_tweet(
+        thread1 = await create_tweet(
             db,
             account,
             tweet_id="tweet_thread_1",
             text="Thread part 1",
+            digest_date=DIGEST_DATE,
             likes=150,
             retweets=30,
             replies=20,
-            is_self_reply=False,
+            is_self_thread_reply=False,
             tweet_time=datetime(2026, 3, 19, 8, 0, 0, tzinfo=UTC),
         )
-        thread2 = await _seed_tweet(
+        thread2 = await create_tweet(
             db,
             account,
             tweet_id="tweet_thread_2",
             text="Thread part 2",
+            digest_date=DIGEST_DATE,
             likes=80,
             retweets=15,
             replies=10,
-            is_self_reply=True,
+            is_self_thread_reply=True,
             tweet_time=datetime(2026, 3, 19, 8, 30, 0, tzinfo=UTC),
         )
 
@@ -383,8 +341,8 @@ class TestProcessServiceFailures:
     @pytest_asyncio.fixture
     async def one_tweet(self, db: AsyncSession):
         """预置 1 条推文。"""
-        account = await _seed_account(db)
-        tweet = await _seed_tweet(db, account, tweet_id="only_tweet")
+        account = await create_account(db)
+        tweet = await create_tweet(db, account, tweet_id="only_tweet", digest_date=DIGEST_DATE)
         await db.commit()
         return tweet
 
@@ -468,8 +426,8 @@ class TestProcessServiceEmptyTopics:
 
     async def test_empty_topics_all_as_single(self, db: AsyncSession):
         """空 topics 列表 → 所有推文作为 single 处理。"""
-        account = await _seed_account(db)
-        await _seed_tweet(db, account, tweet_id="solo_tweet")
+        account = await create_account(db)
+        await create_tweet(db, account, tweet_id="solo_tweet", digest_date=DIGEST_DATE)
         await db.commit()
 
         empty_analysis = json.dumps(
@@ -504,15 +462,19 @@ class TestBatchProcessing:
     @pytest_asyncio.fixture
     async def two_tweets(self, db: AsyncSession):
         """预置 2 条推文，不同账号。"""
-        account1 = await _seed_account(db, twitter_handle="heavy", weight=3.0)
-        account2 = await _seed_account(
+        account1 = await create_account(db, twitter_handle="heavy", weight=3.0)
+        account2 = await create_account(
             db,
             twitter_handle="light",
             display_name="Light User",
             weight=1.0,
         )
-        t1 = await _seed_tweet(db, account1, tweet_id="heavy_t1", text="Heavy tweet")
-        t2 = await _seed_tweet(db, account2, tweet_id="light_t1", text="Light tweet")
+        t1 = await create_tweet(
+            db, account1, tweet_id="heavy_t1", text="Heavy tweet", digest_date=DIGEST_DATE
+        )
+        t2 = await create_tweet(
+            db, account2, tweet_id="light_t1", text="Light tweet", digest_date=DIGEST_DATE
+        )
         await db.commit()
         return {"account1": account1, "account2": account2, "t1": t1, "t2": t2}
 

@@ -8,15 +8,27 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
-from app.models.account import TwitterAccount
-from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
-from app.models.topic import Topic
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
 from app.services.digest_service import DigestService
+from tests.factories import create_account, create_digest, create_topic, create_tweet
 
 DIGEST_DATE = date(2026, 3, 20)
+
+TWEET_TIME = datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC)
+
+# create_tweet 的公共默认参数，匹配原 _seed_tweet 行为
+_TW = dict(
+    digest_date=DIGEST_DATE,
+    tweet_time=TWEET_TIME,
+    is_processed=True,
+    ai_importance_score=70.0,
+    base_heat_score=60.0,
+    title="标题",
+    translated_text="翻译",
+    ai_comment="点评",
+)
 
 
 # ──────────────────────────────────────────────────
@@ -40,96 +52,6 @@ def _make_service(db: AsyncSession) -> DigestService:
     client = AsyncMock(spec=ClaudeClient)
     client.complete = AsyncMock(return_value=_mock_claude_response())
     return DigestService(db, claude_client=client)
-
-
-async def _seed_account(db: AsyncSession, handle: str = "testuser") -> TwitterAccount:
-    account = TwitterAccount(
-        twitter_handle=handle,
-        display_name="Test User",
-        bio="AI researcher",
-        weight=1.0,
-        is_active=True,
-    )
-    db.add(account)
-    await db.flush()
-    return account
-
-
-async def _seed_tweet(
-    db: AsyncSession,
-    account: TwitterAccount,
-    tweet_id: str = "t1",
-    *,
-    heat_score: float = 50.0,
-    topic_id: int | None = None,
-    is_ai_relevant: bool = True,
-    is_processed: bool = True,
-) -> Tweet:
-    tweet = Tweet(
-        tweet_id=tweet_id,
-        account_id=account.id,
-        digest_date=DIGEST_DATE,
-        original_text=f"Original {tweet_id}",
-        tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
-        likes=100,
-        retweets=20,
-        replies=10,
-        tweet_url=f"https://x.com/{account.twitter_handle}/status/{tweet_id}",
-        source="auto",
-        title="标题",
-        translated_text="翻译",
-        ai_comment="点评",
-        heat_score=heat_score,
-        ai_importance_score=70.0,
-        base_heat_score=60.0,
-        is_ai_relevant=is_ai_relevant,
-        is_processed=is_processed,
-        topic_id=topic_id,
-    )
-    db.add(tweet)
-    await db.flush()
-    return tweet
-
-
-async def _seed_topic(
-    db: AsyncSession,
-    topic_type: str = "aggregated",
-    heat_score: float = 60.0,
-) -> Topic:
-    topic = Topic(
-        digest_date=DIGEST_DATE,
-        type=topic_type,
-        title="话题标题",
-        summary="话题摘要",
-        ai_comment="话题点评",
-        heat_score=heat_score,
-        ai_importance_score=80.0,
-        tweet_count=2,
-    )
-    db.add(topic)
-    await db.flush()
-    return topic
-
-
-async def _seed_draft(
-    db: AsyncSession,
-    version: int = 1,
-    status: str = "draft",
-    item_count: int = 2,
-) -> DailyDigest:
-    """创建 v{version} 草稿 + items。"""
-    digest = DailyDigest(
-        digest_date=DIGEST_DATE,
-        version=version,
-        is_current=True,
-        status=status,
-        summary="旧版本摘要",
-        item_count=item_count,
-        content_markdown="# 旧版本",
-    )
-    db.add(digest)
-    await db.flush()
-    return digest
 
 
 def _make_mock_process_class(db: AsyncSession) -> type:
@@ -160,10 +82,18 @@ def _make_mock_process_class(db: AsyncSession) -> type:
 @pytest.mark.asyncio
 async def test_regenerate_creates_new_version(db: AsyncSession) -> None:
     """v1 draft → regenerate → v2 draft, is_current 切换正确。"""
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "tw1", heat_score=80.0)
-    await _seed_tweet(db, acct, "tw2", heat_score=70.0)
-    old_digest = await _seed_draft(db, version=1)
+    acct = await create_account(db)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=80.0)
+    await create_tweet(db, acct, **_TW, tweet_id="tw2", heat_score=70.0)
+    old_digest = await create_digest(
+        db,
+        digest_date=DIGEST_DATE,
+        version=1,
+        status="draft",
+        summary="旧版本摘要",
+        item_count=2,
+        content_markdown="# 旧版本",
+    )
     await db.commit()
 
     svc = _make_service(db)
@@ -185,8 +115,8 @@ async def test_regenerate_creates_new_version(db: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_regenerate_no_existing_digest(db: AsyncSession) -> None:
     """当日无草稿 → 等价于首次生成 v1。"""
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "tw1", heat_score=80.0)
+    acct = await create_account(db)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=80.0)
     await db.commit()
 
     svc = _make_service(db)
@@ -203,11 +133,13 @@ async def test_regenerate_no_existing_digest(db: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_regenerate_resets_tweets(db: AsyncSession) -> None:
     """重置推文 is_processed/is_ai_relevant/topic_id。"""
-    acct = await _seed_account(db)
-    topic = await _seed_topic(db)
-    tw1 = await _seed_tweet(db, acct, "tw1", is_processed=True, topic_id=topic.id)
-    tw2 = await _seed_tweet(db, acct, "tw2", is_processed=True, is_ai_relevant=False)
-    await _seed_draft(db)
+    acct = await create_account(db)
+    topic = await create_topic(db, digest_date=DIGEST_DATE)
+    tw1 = await create_tweet(db, acct, **_TW, tweet_id="tw1", topic_id=topic.id)
+    tw2 = await create_tweet(db, acct, **{**_TW, "is_ai_relevant": False}, tweet_id="tw2")
+    await create_digest(
+        db, digest_date=DIGEST_DATE, summary="旧版本摘要", item_count=2, content_markdown="# 旧版本"
+    )
     await db.commit()
 
     svc = _make_service(db)
@@ -248,9 +180,17 @@ async def test_regenerate_resets_tweets(db: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_regenerate_from_published(db: AsyncSession) -> None:
     """published v1 → regenerate → draft v2。"""
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "tw1", heat_score=80.0)
-    old_digest = await _seed_draft(db, version=1, status="published")
+    acct = await create_account(db)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=80.0)
+    old_digest = await create_digest(
+        db,
+        digest_date=DIGEST_DATE,
+        version=1,
+        status="published",
+        summary="旧版本摘要",
+        item_count=2,
+        content_markdown="# 旧版本",
+    )
     await db.commit()
 
     svc = _make_service(db)
@@ -269,9 +209,17 @@ async def test_regenerate_from_published(db: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_regenerate_from_failed(db: AsyncSession) -> None:
     """failed v1 → regenerate → draft v2。"""
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "tw1", heat_score=80.0)
-    old_digest = await _seed_draft(db, version=1, status="failed")
+    acct = await create_account(db)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=80.0)
+    old_digest = await create_digest(
+        db,
+        digest_date=DIGEST_DATE,
+        version=1,
+        status="failed",
+        summary="旧版本摘要",
+        item_count=2,
+        content_markdown="# 旧版本",
+    )
     await db.commit()
 
     svc = _make_service(db)
@@ -289,9 +237,11 @@ async def test_regenerate_from_failed(db: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_regenerate_rollback_on_failure(db: AsyncSession) -> None:
     """M3 失败时旧版本 is_current 恢复为 true。"""
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "tw1", heat_score=80.0)
-    old_digest = await _seed_draft(db, version=1)
+    acct = await create_account(db)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=80.0)
+    old_digest = await create_digest(
+        db, digest_date=DIGEST_DATE, summary="旧版本摘要", item_count=2, content_markdown="# 旧版本"
+    )
     await db.commit()
 
     svc = _make_service(db)
@@ -318,9 +268,11 @@ async def test_regenerate_rollback_on_failure(db: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_regenerate_old_items_preserved(db: AsyncSession) -> None:
     """旧版本 digest_items 快照在 regenerate 后不受影响。"""
-    acct = await _seed_account(db)
-    await _seed_tweet(db, acct, "tw1", heat_score=80.0)
-    old_digest = await _seed_draft(db, version=1)
+    acct = await create_account(db)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=80.0)
+    old_digest = await create_digest(
+        db, digest_date=DIGEST_DATE, summary="旧版本摘要", item_count=2, content_markdown="# 旧版本"
+    )
 
     # 创建旧版本的 item
     old_item = DigestItem(
@@ -349,12 +301,14 @@ async def test_regenerate_old_items_preserved(db: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_regenerate_skips_stale_topics(db: AsyncSession) -> None:
     """旧 topics 无成员推文时不产生空 digest_item。"""
-    acct = await _seed_account(db)
+    acct = await create_account(db)
     # 创建旧 topic（regenerate 后其成员推文 topic_id 已指向新 topic）
-    old_topic = await _seed_topic(db, heat_score=90.0)
+    old_topic = await create_topic(db, digest_date=DIGEST_DATE, heat_score=90.0)
     # 独立推文（无 topic_id）
-    await _seed_tweet(db, acct, "tw1", heat_score=80.0)
-    await _seed_draft(db, version=1)
+    await create_tweet(db, acct, **_TW, tweet_id="tw1", heat_score=80.0)
+    await create_digest(
+        db, digest_date=DIGEST_DATE, summary="旧版本摘要", item_count=2, content_markdown="# 旧版本"
+    )
     await db.commit()
 
     svc = _make_service(db)

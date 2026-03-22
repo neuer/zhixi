@@ -15,6 +15,7 @@ from app.models.fetch_log import FetchLog
 from app.models.tweet import Tweet
 from app.schemas.fetcher_types import FetchResult
 from app.services.fetch_service import FetchService
+from tests.factories import create_account
 
 # ──────────────────────────────────────────────────
 # 辅助函数
@@ -35,19 +36,16 @@ async def _seed_accounts(
     *,
     with_user_id: bool = True,
 ) -> list[TwitterAccount]:
-    """预置活跃账号。"""
+    """预置活跃账号（委托工厂函数）。"""
     accounts: list[TwitterAccount] = []
     for i in range(1, count + 1):
-        acct = TwitterAccount(
+        acct = await create_account(
+            db,
             twitter_handle=f"user{i}",
             twitter_user_id=f"uid_{i}" if with_user_id else None,
             display_name=f"User {i}",
-            weight=1.0,
-            is_active=True,
         )
-        db.add(acct)
         accounts.append(acct)
-    await db.flush()
     return accounts
 
 

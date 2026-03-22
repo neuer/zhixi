@@ -7,26 +7,20 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.account import TwitterAccount
 from app.models.config import SystemConfig
 from app.models.digest import DailyDigest
-from app.models.digest_item import DigestItem
-from app.models.tweet import Tweet
+from tests.factories import (
+    create_account,
+    create_digest,
+    create_digest_item,
+    create_tweet,
+    seed_config_keys,
+)
 
 DIGEST_DATE = date(2026, 3, 20)
 
 
 # ── 辅助函数 ──
-
-
-async def _seed_config(db: AsyncSession) -> None:
-    """预置必要的 system_config。"""
-    configs = [
-        SystemConfig(key="top_n", value="10"),
-        SystemConfig(key="min_articles", value="3"),
-    ]
-    db.add_all(configs)
-    await db.flush()
 
 
 async def _seed_digest_with_items(
@@ -35,42 +29,30 @@ async def _seed_digest_with_items(
     digest_date: date = DIGEST_DATE,
 ) -> DailyDigest:
     """创建 DailyDigest + N 条 DigestItem。"""
-    digest = DailyDigest(
+    digest = await create_digest(
+        db,
         digest_date=digest_date,
-        version=1,
-        is_current=True,
-        status="draft",
         summary="今日摘要",
         item_count=item_count,
         content_markdown="# 测试 Markdown",
     )
-    db.add(digest)
-    await db.flush()
 
-    # 创建账号和推文用于 ref
-    acct = TwitterAccount(
-        twitter_handle="testuser",
-        display_name="Test User",
-    )
-    db.add(acct)
-    await db.flush()
+    acct = await create_account(db, twitter_handle="testuser", display_name="Test User")
 
     for i in range(1, item_count + 1):
-        tweet = Tweet(
+        tweet = await create_tweet(
+            db,
+            acct,
             tweet_id=f"tweet_{i}",
-            account_id=acct.id,
             digest_date=digest_date,
-            original_text=f"Test tweet {i}",
+            text=f"Test tweet {i}",
             tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
             is_ai_relevant=True,
             is_processed=True,
         )
-        db.add(tweet)
-        await db.flush()
-
-        item = DigestItem(
-            digest_id=digest.id,
-            item_type="tweet",
+        await create_digest_item(
+            db,
+            digest,
             item_ref_id=tweet.id,
             display_order=i,
             snapshot_title=f"标题{i}",
@@ -82,9 +64,7 @@ async def _seed_digest_with_items(
             snapshot_tweet_url=f"https://x.com/testuser/status/{i}",
             snapshot_tweet_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
         )
-        db.add(item)
 
-    await db.flush()
     return digest
 
 
@@ -99,7 +79,7 @@ async def test_today_with_data(
     db: AsyncSession,
 ) -> None:
     """有草稿时返回 digest + items。"""
-    await _seed_config(db)
+    await seed_config_keys(db, top_n="10", min_articles="3")
     await _seed_digest_with_items(db, item_count=3)
     await db.commit()
 
@@ -122,7 +102,7 @@ async def test_today_no_data(
     db: AsyncSession,
 ) -> None:
     """无草稿时返回 null digest。"""
-    await _seed_config(db)
+    await seed_config_keys(db, top_n="10", min_articles="3")
     await db.commit()
 
     resp = await authed_client.get("/api/digest/today")
@@ -142,7 +122,7 @@ async def test_today_items_sorted_by_display_order(
     db: AsyncSession,
 ) -> None:
     """items 按 display_order 排序。"""
-    await _seed_config(db)
+    await seed_config_keys(db, top_n="10", min_articles="3")
     await _seed_digest_with_items(db, item_count=3)
     await db.commit()
 
@@ -160,7 +140,7 @@ async def test_today_low_content_warning(
     db: AsyncSession,
 ) -> None:
     """item_count < min_articles 时 warning=true。"""
-    await _seed_config(db)  # min_articles=3
+    await seed_config_keys(db, top_n="10", min_articles="3")  # min_articles=3
     await _seed_digest_with_items(db, item_count=2)  # 只有 2 条
     await db.commit()
 
@@ -186,7 +166,7 @@ async def test_today_shows_summary_degraded(
     """导读摘要降级时 summary_degraded=True。"""
     from app.digest.summary_prompts import DEFAULT_SUMMARY
 
-    await _seed_config(db)
+    await seed_config_keys(db, top_n="10", min_articles="3")
     digest = await _seed_digest_with_items(db, item_count=2)
     digest.summary = DEFAULT_SUMMARY
     await db.commit()
@@ -204,7 +184,7 @@ async def test_today_cover_failed(
     db: AsyncSession,
 ) -> None:
     """封面图开启但未生成时 cover_failed=True。"""
-    await _seed_config(db)
+    await seed_config_keys(db, top_n="10", min_articles="3")
     db.add(SystemConfig(key="enable_cover_generation", value="true"))
     await _seed_digest_with_items(db, item_count=2)
     await db.commit()

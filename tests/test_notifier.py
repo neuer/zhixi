@@ -9,15 +9,9 @@ from httpx import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.notifier import _validate_webhook_url, send_alert
-from app.models.config import SystemConfig
+from tests.factories import seed_config_keys
 
 WEBHOOK_URL = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key"
-
-
-async def _seed_webhook_url(db: AsyncSession, url: str = WEBHOOK_URL) -> None:
-    """预置 webhook URL 到 system_config。"""
-    db.add(SystemConfig(key="notification_webhook_url", value=url, description="webhook"))
-    await db.flush()
 
 
 # ── 正常发送 ────────────────────────────────────────────────
@@ -26,7 +20,7 @@ async def _seed_webhook_url(db: AsyncSession, url: str = WEBHOOK_URL) -> None:
 @respx.mock
 async def test_send_alert_posts_to_webhook(db: AsyncSession) -> None:
     """URL 已配置 → 发送 POST 请求到 webhook。"""
-    await _seed_webhook_url(db)
+    await seed_config_keys(db, notification_webhook_url=WEBHOOK_URL)
 
     route = respx.post(WEBHOOK_URL).mock(return_value=Response(200, json={"errcode": 0}))
 
@@ -38,7 +32,7 @@ async def test_send_alert_posts_to_webhook(db: AsyncSession) -> None:
 @respx.mock
 async def test_send_alert_payload_format(db: AsyncSession) -> None:
     """payload 符合企业微信格式：msgtype=text + 【智曦告警】前缀。"""
-    await _seed_webhook_url(db)
+    await seed_config_keys(db, notification_webhook_url=WEBHOOK_URL)
 
     route = respx.post(WEBHOOK_URL).mock(return_value=Response(200, json={"errcode": 0}))
 
@@ -54,7 +48,7 @@ async def test_send_alert_payload_format(db: AsyncSession) -> None:
 @respx.mock
 async def test_send_alert_includes_timestamp(db: AsyncSession) -> None:
     """content 包含时间信息。"""
-    await _seed_webhook_url(db)
+    await seed_config_keys(db, notification_webhook_url=WEBHOOK_URL)
 
     route = respx.post(WEBHOOK_URL).mock(return_value=Response(200, json={"errcode": 0}))
 
@@ -73,7 +67,7 @@ async def test_send_alert_includes_timestamp(db: AsyncSession) -> None:
 @respx.mock
 async def test_send_alert_skips_empty_url(db: AsyncSession) -> None:
     """URL 为空字符串 → 不发送 HTTP 请求。"""
-    await _seed_webhook_url(db, url="")
+    await seed_config_keys(db, notification_webhook_url="")
 
     route = respx.post(WEBHOOK_URL).mock(return_value=Response(200))
 
@@ -99,7 +93,7 @@ async def test_send_alert_skips_no_config(db: AsyncSession) -> None:
 @respx.mock
 async def test_send_alert_logs_on_http_error(db: AsyncSession) -> None:
     """webhook 返回 500 → 不抛异常，仅记录日志。"""
-    await _seed_webhook_url(db)
+    await seed_config_keys(db, notification_webhook_url=WEBHOOK_URL)
 
     respx.post(WEBHOOK_URL).mock(return_value=Response(500, text="Internal Server Error"))
 
@@ -110,7 +104,7 @@ async def test_send_alert_logs_on_http_error(db: AsyncSession) -> None:
 @respx.mock
 async def test_send_alert_logs_on_timeout(db: AsyncSession) -> None:
     """网络超时 → 不抛异常，仅记录日志。"""
-    await _seed_webhook_url(db)
+    await seed_config_keys(db, notification_webhook_url=WEBHOOK_URL)
 
     respx.post(WEBHOOK_URL).mock(side_effect=httpx.ConnectTimeout("timeout"))
 

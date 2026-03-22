@@ -13,13 +13,19 @@ from app.auth import create_jwt
 from app.database import get_db
 from app.main import app
 from app.models.account import TwitterAccount
-from app.models.config import SystemConfig
 from app.models.digest import DailyDigest
 from app.models.digest_item import DigestItem
 from app.models.tweet import Tweet
 from app.schemas.client_types import ClaudeResponse
 from app.schemas.fetcher_types import PublicMetrics, RawTweet
 from app.services.fetch_service import _parse_tweet_url
+from tests.factories import (
+    create_account,
+    create_digest,
+    create_digest_item,
+    create_tweet,
+    seed_config_keys,
+)
 
 DIGEST_DATE = date(2026, 3, 21)
 TWEET_URL = "https://x.com/testuser/status/999888777"
@@ -59,88 +65,70 @@ def _mock_claude_response() -> ClaudeResponse:
 
 async def _seed_environment(db: AsyncSession) -> tuple[TwitterAccount, DailyDigest, list[Tweet]]:
     """预置完整测试环境：config + account + tweets(已处理) + digest + items。"""
-    # system_config
-    configs = [
-        SystemConfig(key="top_n", value="10"),
-        SystemConfig(key="min_articles", value="1"),
-        SystemConfig(key="push_time", value="08:00"),
-        SystemConfig(key="push_days", value="1,2,3,4,5,6,7"),
-        SystemConfig(key="display_mode", value="simple"),
-        SystemConfig(key="publish_mode", value="manual"),
-    ]
-    db.add_all(configs)
+    await seed_config_keys(
+        db,
+        top_n="10",
+        min_articles="1",
+        push_time="08:00",
+        push_days="1,2,3,4,5,6,7",
+        display_mode="simple",
+        publish_mode="manual",
+    )
 
-    # 账号
-    account = TwitterAccount(
+    account = await create_account(
+        db,
         twitter_handle="testuser",
         twitter_user_id="uid_test",
         display_name="Test User",
         weight=2.0,
-        is_active=True,
     )
-    db.add(account)
-    await db.flush()
 
-    # 已有推文（3 条，不同 base_heat_score）
-    tweets = []
-    for i, (base_score, heat_score) in enumerate(
-        [(10.0, 40.0), (50.0, 60.0), (100.0, 85.0)], start=1
-    ):
-        t = Tweet(
+    tweet_time = datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC)
+    tweets: list[Tweet] = []
+    for i, (base_score, hs) in enumerate([(10.0, 40.0), (50.0, 60.0), (100.0, 85.0)], start=1):
+        t = await create_tweet(
+            db,
+            account,
             tweet_id=f"{100000 + i}",
-            account_id=account.id,
+            text=f"Existing tweet {i}",
             digest_date=DIGEST_DATE,
-            original_text=f"Existing tweet {i}",
-            tweet_url=f"https://x.com/testuser/status/{100000 + i}",
-            tweet_time=datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC),
+            tweet_time=tweet_time,
             likes=50,
             retweets=10,
             replies=5,
-            is_ai_relevant=True,
             is_processed=True,
             title=f"标题{i}",
             translated_text=f"翻译{i}",
             ai_comment=f"点评{i}",
             base_heat_score=base_score,
             ai_importance_score=70.0,
-            heat_score=heat_score,
-            source="auto",
+            heat_score=hs,
         )
         tweets.append(t)
-    db.add_all(tweets)
-    await db.flush()
 
-    # DailyDigest
-    digest = DailyDigest(
+    digest = await create_digest(
+        db,
         digest_date=DIGEST_DATE,
-        version=1,
-        status="draft",
-        is_current=True,
         item_count=3,
         summary="今日AI摘要",
         content_markdown="# 测试",
     )
-    db.add(digest)
-    await db.flush()
 
-    # DigestItems
     for i, t in enumerate(tweets, start=1):
-        item = DigestItem(
-            digest_id=digest.id,
-            item_type="tweet",
+        await create_digest_item(
+            db,
+            digest,
             item_ref_id=t.id,
             display_order=i,
             snapshot_title=t.title,
             snapshot_translation=t.translated_text,
             snapshot_comment=t.ai_comment,
-            snapshot_heat_score=t.heat_score,
+            snapshot_heat_score=t.heat_score or 0,
             snapshot_author_name=account.display_name,
             snapshot_author_handle=account.twitter_handle,
             snapshot_tweet_url=t.tweet_url,
             snapshot_tweet_time=t.tweet_time,
         )
-        db.add(item)
-    await db.flush()
 
     return account, digest, tweets
 
@@ -335,12 +323,7 @@ class TestAddTweetApi:
     async def test_no_draft(self, db: AsyncSession):
         """T4: 当日无草稿 → 409。"""
         # 只创建 config，不创建 digest
-        configs = [
-            SystemConfig(key="top_n", value="10"),
-            SystemConfig(key="min_articles", value="1"),
-        ]
-        db.add_all(configs)
-        await db.flush()
+        await seed_config_keys(db, top_n="10", min_articles="1")
 
         async def override_get_db():
             yield db
@@ -369,17 +352,8 @@ class TestAddTweetApi:
 
     async def test_draft_published(self, db: AsyncSession):
         """T5: 草稿已发布 → 409。"""
-        configs = [SystemConfig(key="top_n", value="10")]
-        db.add_all(configs)
-        digest = DailyDigest(
-            digest_date=DIGEST_DATE,
-            version=1,
-            status="published",
-            is_current=True,
-            item_count=0,
-        )
-        db.add(digest)
-        await db.flush()
+        await seed_config_keys(db, top_n="10")
+        await create_digest(db, digest_date=DIGEST_DATE, status="published", item_count=0)
 
         async def override_get_db():
             yield db
@@ -500,24 +474,10 @@ class TestAddTweetApi:
     async def test_unknown_author_creates_temp_account(self, db: AsyncSession):
         """T11: 推文作者不在大V列表 → 创建临时账号。"""
         # 只创建环境，不创建 testuser 账号——让系统自动创建
-        configs = [
-            SystemConfig(key="top_n", value="10"),
-            SystemConfig(key="min_articles", value="1"),
-            SystemConfig(key="display_mode", value="simple"),
-            SystemConfig(key="publish_mode", value="manual"),
-        ]
-        db.add_all(configs)
-
-        digest = DailyDigest(
-            digest_date=DIGEST_DATE,
-            version=1,
-            status="draft",
-            is_current=True,
-            item_count=0,
-            content_markdown="",
+        await seed_config_keys(
+            db, top_n="10", min_articles="1", display_mode="simple", publish_mode="manual"
         )
-        db.add(digest)
-        await db.flush()
+        await create_digest(db, digest_date=DIGEST_DATE, item_count=0, content_markdown="")
 
         # 用一个不存在的 author
         raw = RawTweet(
@@ -583,36 +543,29 @@ class TestManualHeatCalculation:
         """T8: 已有推文不足 2 条 → normalized=50。"""
         from app.services.digest_service import DigestService
 
-        configs = [SystemConfig(key="top_n", value="10")]
-        db.add_all(configs)
+        await seed_config_keys(db, top_n="10")
 
-        account = TwitterAccount(
+        account = await create_account(
+            db,
             twitter_handle="user1",
             display_name="User 1",
-            weight=1.0,
-            is_active=True,
         )
-        db.add(account)
-        await db.flush()
 
         # 只有 1 条已处理推文
-        t = Tweet(
+        await create_tweet(
+            db,
+            account,
             tweet_id="only_one",
-            account_id=account.id,
+            text="Only one",
             digest_date=DIGEST_DATE,
-            original_text="Only one",
             tweet_time=datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC),
             likes=50,
             retweets=10,
             replies=5,
-            is_ai_relevant=True,
             is_processed=True,
             base_heat_score=50.0,
             heat_score=50.0,
-            source="auto",
         )
-        db.add(t)
-        await db.flush()
 
         # 构造新推文（不入库，只测计算）
         new_tweet = Tweet(
@@ -641,34 +594,28 @@ class TestManualHeatCalculation:
         """T9: base_score > max → normalized 截断为 100。"""
         from app.services.digest_service import DigestService
 
-        account = TwitterAccount(
+        account = await create_account(
+            db,
             twitter_handle="user2",
             display_name="User 2",
-            weight=1.0,
-            is_active=True,
         )
-        db.add(account)
-        await db.flush()
 
         # 2 条已有推文，base_heat_score 范围 [10, 50]
         for i, bs in enumerate([10.0, 50.0], start=1):
-            t = Tweet(
+            await create_tweet(
+                db,
+                account,
                 tweet_id=f"clamp_h_{i}",
-                account_id=account.id,
+                text=f"Tweet {i}",
                 digest_date=DIGEST_DATE,
-                original_text=f"Tweet {i}",
                 tweet_time=datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC),
                 likes=10,
                 retweets=2,
                 replies=1,
-                is_ai_relevant=True,
                 is_processed=True,
                 base_heat_score=bs,
                 heat_score=50.0,
-                source="auto",
             )
-            db.add(t)
-        await db.flush()
 
         # 新推文 base_score 远超 max=50（用超高互动量）
         new_tweet = Tweet(
@@ -696,34 +643,28 @@ class TestManualHeatCalculation:
         """T10: base_score < min → normalized 截断为 0。"""
         from app.services.digest_service import DigestService
 
-        account = TwitterAccount(
+        account = await create_account(
+            db,
             twitter_handle="user3",
             display_name="User 3",
-            weight=1.0,
-            is_active=True,
         )
-        db.add(account)
-        await db.flush()
 
         # 2 条已有推文，base_heat_score 范围 [100, 500]
         for i, bs in enumerate([100.0, 500.0], start=1):
-            t = Tweet(
+            await create_tweet(
+                db,
+                account,
                 tweet_id=f"clamp_l_{i}",
-                account_id=account.id,
+                text=f"Tweet {i}",
                 digest_date=DIGEST_DATE,
-                original_text=f"Tweet {i}",
                 tweet_time=datetime(2026, 3, 20, 10, 0, 0, tzinfo=UTC),
                 likes=10,
                 retweets=2,
                 replies=1,
-                is_ai_relevant=True,
                 is_processed=True,
                 base_heat_score=bs,
                 heat_score=50.0,
-                source="auto",
             )
-            db.add(t)
-        await db.flush()
 
         # 新推文 base_score 低于 min=100（几乎没有互动 + 时间衰减大）
         new_tweet = Tweet(
