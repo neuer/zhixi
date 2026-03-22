@@ -7,27 +7,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.config import SystemConfig
 from app.models.job_run import JobRun
-
-
-async def _seed_all_config(db: AsyncSession) -> None:
-    """预置全部 system_config。"""
-    defaults = [
-        SystemConfig(key="push_time", value="08:00"),
-        SystemConfig(key="push_days", value="1,2,3,4,5,6,7"),
-        SystemConfig(key="top_n", value="10"),
-        SystemConfig(key="min_articles", value="1"),
-        SystemConfig(key="display_mode", value="simple"),
-        SystemConfig(key="publish_mode", value="manual"),
-        SystemConfig(key="enable_cover_generation", value="false"),
-        SystemConfig(key="cover_generation_timeout", value="30"),
-        SystemConfig(key="notification_webhook_url", value=""),
-        SystemConfig(key="admin_password_hash", value="$2b$12$test"),
-    ]
-    db.add_all(defaults)
-    await db.flush()
-
+from tests.factories import create_system_config
 
 # ── 认证 ──
 
@@ -51,7 +32,7 @@ async def test_get_settings(
     db: AsyncSession,
 ) -> None:
     """返回全部配置（push_days 为整数数组）。"""
-    await _seed_all_config(db)
+    await create_system_config(db, admin_password_hash="$2b$12$test")
     await db.commit()
 
     with patch("app.api.settings._get_db_size_mb", return_value=1.5):
@@ -79,7 +60,7 @@ async def test_get_settings_db_info(
     db: AsyncSession,
 ) -> None:
     """返回 DB 大小和最近备份时间。"""
-    await _seed_all_config(db)
+    await create_system_config(db, admin_password_hash="$2b$12$test")
 
     # 创建 backup job_run
     backup_job = JobRun(
@@ -110,7 +91,7 @@ async def test_update_settings_partial(
     db: AsyncSession,
 ) -> None:
     """部分更新成功。"""
-    await _seed_all_config(db)
+    await create_system_config(db, admin_password_hash="$2b$12$test")
     await db.commit()
 
     resp = await authed_client.put("/api/settings", json={"top_n": 15, "push_time": "09:00"})
@@ -132,7 +113,7 @@ async def test_update_push_days_empty(
     db: AsyncSession,
 ) -> None:
     """空数组 → 422。"""
-    await _seed_all_config(db)
+    await create_system_config(db, admin_password_hash="$2b$12$test")
     await db.commit()
 
     resp = await authed_client.put("/api/settings", json={"push_days": []})
@@ -145,7 +126,7 @@ async def test_update_push_days_valid(
     db: AsyncSession,
 ) -> None:
     """合法数组写入 DB 为逗号字符串。"""
-    await _seed_all_config(db)
+    await create_system_config(db, admin_password_hash="$2b$12$test")
     await db.commit()
 
     resp = await authed_client.put("/api/settings", json={"push_days": [1, 3, 5]})
@@ -162,7 +143,7 @@ async def test_update_bool_and_int(
     db: AsyncSession,
 ) -> None:
     """布尔和整数类型正确转换。"""
-    await _seed_all_config(db)
+    await create_system_config(db, admin_password_hash="$2b$12$test")
     await db.commit()
 
     resp = await authed_client.put(

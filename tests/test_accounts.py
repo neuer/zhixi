@@ -4,7 +4,7 @@ import respx
 from httpx import AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.account import TwitterAccount
+from tests.factories import create_account
 
 # X API mock 响应数据
 X_API_USER_RESPONSE = {
@@ -23,21 +23,6 @@ X_API_USER_RESPONSE = {
 }
 
 
-async def _seed_account(db: AsyncSession, **overrides: object) -> TwitterAccount:
-    """在测试 DB 中创建一条账号记录。"""
-    defaults = {
-        "twitter_handle": "testuser",
-        "display_name": "Test User",
-        "weight": 1.0,
-        "is_active": True,
-    }
-    defaults.update(overrides)
-    account = TwitterAccount(**defaults)  # type: ignore[arg-type]
-    db.add(account)
-    await db.flush()
-    return account
-
-
 # ──────────────────── GET /api/accounts ────────────────────
 
 
@@ -53,9 +38,9 @@ async def test_list_accounts_empty(authed_client: AsyncClient) -> None:
 
 async def test_list_accounts_with_data(authed_client: AsyncClient, db: AsyncSession) -> None:
     """有数据时正确返回分页列表。"""
-    await _seed_account(db, twitter_handle="user1", display_name="User 1")
-    await _seed_account(db, twitter_handle="user2", display_name="User 2")
-    await _seed_account(db, twitter_handle="user3", display_name="User 3")
+    await create_account(db, twitter_handle="user1", display_name="User 1")
+    await create_account(db, twitter_handle="user2", display_name="User 2")
+    await create_account(db, twitter_handle="user3", display_name="User 3")
     await db.commit()
 
     # 第一页，page_size=2
@@ -77,8 +62,8 @@ async def test_list_accounts_excludes_inactive(
     authed_client: AsyncClient, db: AsyncSession
 ) -> None:
     """默认不返回 inactive 账号。"""
-    await _seed_account(db, twitter_handle="active", display_name="Active", is_active=True)
-    await _seed_account(db, twitter_handle="inactive", display_name="Inactive", is_active=False)
+    await create_account(db, twitter_handle="active", display_name="Active", is_active=True)
+    await create_account(db, twitter_handle="inactive", display_name="Inactive", is_active=False)
     await db.commit()
 
     resp = await authed_client.get("/api/accounts")
@@ -150,7 +135,7 @@ async def test_create_account_x_api_failure(authed_client: AsyncClient) -> None:
 
 async def test_create_account_duplicate(authed_client: AsyncClient, db: AsyncSession) -> None:
     """重复 handle → 409。"""
-    await _seed_account(db, twitter_handle="duplicate", display_name="Dup")
+    await create_account(db, twitter_handle="duplicate", display_name="Dup")
     await db.commit()
 
     resp = await authed_client.post(
@@ -176,7 +161,7 @@ async def test_create_account_strip_at(authed_client: AsyncClient) -> None:
 
 async def test_update_account_weight(authed_client: AsyncClient, db: AsyncSession) -> None:
     """更新权重成功。"""
-    account = await _seed_account(db, twitter_handle="upd", display_name="Upd")
+    account = await create_account(db, twitter_handle="upd", display_name="Upd")
     await db.commit()
 
     resp = await authed_client.put(
@@ -199,7 +184,7 @@ async def test_update_account_not_found(authed_client: AsyncClient) -> None:
 
 async def test_delete_account_soft(authed_client: AsyncClient, db: AsyncSession) -> None:
     """软删除：is_active 变为 false。"""
-    account = await _seed_account(db, twitter_handle="del", display_name="Del")
+    account = await create_account(db, twitter_handle="del", display_name="Del")
     await db.commit()
 
     resp = await authed_client.delete(f"/api/accounts/{account.id}")
