@@ -7,7 +7,7 @@ from app.database import Base
 
 
 class SystemConfig(Base):
-    """系统业务配置（非密钥）。"""
+    """系统配置键值表 — 存储业务参数与加密密钥。"""
 
     __tablename__ = "system_config"
 

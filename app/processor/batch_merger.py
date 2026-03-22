@@ -1,7 +1,11 @@
 """多批分析结果合并与 AI 去重（US-020）。
 
-将多批全局分析的 AnalysisResult 合并为 R.1.2b 输入格式，
+将多批全局分析的 AnalysisResult 合并为去重输入格式，
 调用 Claude API 执行轻量去重。
+
+编号说明：
+- R.1.5b 是去重专用 prompt 编号，与 R.1.5（Thread 翻译 prompt）无关。
+  "b" 后缀表示 batch-dedup。
 """
 
 import json

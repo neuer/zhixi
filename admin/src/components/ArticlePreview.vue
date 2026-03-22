@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { filterVisibleItems } from "@/utils/digest";
+import type { PerspectiveItem } from "@/utils/digest";
+import { filterVisibleItems, parsePerspectives } from "@/utils/digest";
 import { formatDate, safeHref } from "@/utils/format";
 import type {
   DigestBriefResponse,
@@ -13,44 +14,6 @@ const props = defineProps<{
 }>();
 
 const visibleItems = computed(() => filterVisibleItems(props.items));
-
-/** 观点对象（后端格式：{author, handle, viewpoint}）。 */
-interface PerspectiveItem {
-  author: string;
-  handle: string;
-  viewpoint: string;
-}
-
-/** 解析 perspectives JSON，支持对象数组和字符串数组两种格式。 */
-function parsePerspectives(raw: string | null): PerspectiveItem[] {
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const results: PerspectiveItem[] = [];
-    for (const item of parsed) {
-      if (typeof item === "string") {
-        // 兼容旧的纯字符串格式
-        results.push({ author: "", handle: "", viewpoint: item });
-      } else if (
-        typeof item === "object" &&
-        item !== null &&
-        typeof (item as Record<string, unknown>).viewpoint === "string"
-      ) {
-        const obj = item as Record<string, unknown>;
-        results.push({
-          author: typeof obj.author === "string" ? obj.author : "",
-          handle: typeof obj.handle === "string" ? obj.handle : "",
-          viewpoint: obj.viewpoint as string,
-        });
-      }
-    }
-    return results;
-  } catch (e: unknown) {
-    console.warn("[ArticlePreview] JSON 解析失败:", raw, e);
-  }
-  return [];
-}
 
 /** 解析 source_tweets JSON（带元素类型守卫）。字段名与后端 _build_source_tweets_json 一致：handle, tweet_url。 */
 function parseSourceTweets(

@@ -113,8 +113,15 @@ async def run_pipeline(
         )
 
     except (sqlalchemy.exc.SQLAlchemyError, OSError) as exc:
-        # 基础设施异常不可恢复，向上传播
+        # 基础设施异常不可恢复，尝试标记 job_run 后向上传播
         logger.critical("Pipeline 基础设施异常: %s", exc, exc_info=True)
+        try:
+            job_run.status = JobStatus.FAILED
+            job_run.error_message = str(exc)[:500]
+            job_run.finished_at = datetime.now(UTC)
+            await db.flush()
+        except Exception:
+            logger.error("标记 job_run FAILED 时二次失败", exc_info=True)
         raise
     except Exception as exc:
         failed_step = _determine_failed_step(fetch_result, process_result)

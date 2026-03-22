@@ -39,8 +39,8 @@ from app.processor.translator import (
     process_thread,
 )
 from app.schemas.client_types import ClaudeResponse
-from app.schemas.enums import TopicType
-from app.schemas.processor_types import AnalysisResult, ProcessResult
+from app.schemas.enums import CallType, TopicType
+from app.schemas.processor_types import AnalysisResult, ProcessResult, TopicResult
 
 _T = TypeVar("_T")
 
@@ -121,6 +121,16 @@ class ProcessService:
                 digest_date,
             )
 
+        # 全部失败时抛出异常，让 pipeline 标记为 FAILED
+        if total > 0 and failed_count == total:
+            await send_alert(
+                "AI 加工全部失败",
+                f"日期={digest_date}, 失败={failed_count}/{total}, 过滤={filtered_count}",
+                self._db,
+            )
+            msg = f"AI 加工全部失败: {failed_count}/{total} 条均失败, digest_date={digest_date}"
+            raise RuntimeError(msg)
+
         # C-2: 有失败时发送告警通知
         if failed_count > 0:
             await send_alert(
@@ -156,7 +166,7 @@ class ProcessService:
         tweet.ai_comment = str(result["comment"])
         tweet.is_processed = True
 
-        self._record_cost(response, "single_process", tweet.digest_date)
+        self._record_cost(response, CallType.SINGLE_PROCESS, tweet.digest_date)
         await self._db.flush()
 
     # ──────────────────────────────────────────────────
@@ -265,7 +275,7 @@ class ProcessService:
 
         async def _call() -> AnalysisResult:
             analysis, response = await run_global_analysis(self._claude, tweets_json)
-            self._record_cost(response, "global_analysis", digest_date)
+            self._record_cost(response, CallType.GLOBAL_ANALYSIS, digest_date)
             logger.info(
                 "全局分析完成: filtered=%d, topics=%d",
                 len(analysis.filtered_ids),
@@ -284,7 +294,7 @@ class ProcessService:
 
         async def _call() -> AnalysisResult:
             deduped, response = await run_dedup_analysis(self._claude, merged_data)
-            self._record_cost(response, "dedup_analysis", digest_date)
+            self._record_cost(response, CallType.DEDUP_ANALYSIS, digest_date)
             return deduped
 
         return await self._retry_ai_call(_call, _ANALYSIS_MAX_RETRIES, "去重分析")
@@ -315,6 +325,8 @@ class ProcessService:
         topics: list[Topic] = []
         merged_texts: dict[int, str] = {}
 
+        # 收集非 single 的 topic_result 与对应 ORM 对象
+        topic_pairs: list[tuple[Topic, TopicResult]] = []
         for topic_result in analysis.topics:
             if topic_result.type == "single":
                 continue
@@ -327,15 +339,19 @@ class ProcessService:
                 tweet_count=len(topic_result.tweet_ids),
             )
             self._db.add(topic)
-            await self._db.flush()  # 获取 topic.id
+            topic_pairs.append((topic, topic_result))
 
-            # 关联推文
+        # 批量 flush 一次，SQLAlchemy 自动填充所有 topic.id
+        if topic_pairs:
+            await self._db.flush()
+
+        # 遍历关联推文和缓存 merged_text
+        for topic, topic_result in topic_pairs:
             for tid in topic_result.tweet_ids:
                 tweet = tweet_map.get(tid)
                 if tweet:
                     tweet.topic_id = topic.id
 
-            # Thread: 缓存 merged_text
             if topic_result.type == TopicType.THREAD and topic_result.merged_text:
                 merged_texts[topic.id] = topic_result.merged_text
 
@@ -396,13 +412,19 @@ class ProcessService:
             else:
                 failed += 1
 
+        # 按 topic_id 建立倒排索引，避免对每个 topic 遍历全部 tweet_map（O(N*M) → O(N+M)）
+        tweets_by_topic: dict[int, list[Tweet]] = {}
+        for t in tweet_map.values():
+            if t.topic_id is not None:
+                tweets_by_topic.setdefault(t.topic_id, []).append(t)
+
         # 加工 topics（aggregated + thread）
         for topic in topics:
             if item_index > 0:
                 await asyncio.sleep(1.0)
             item_index += 1
 
-            member_tweets = [t for t in tweet_map.values() if t.topic_id == topic.id]
+            member_tweets = tweets_by_topic.get(topic.id, [])
 
             if topic.type == TopicType.AGGREGATED:
                 success = await self._process_aggregated_with_retry(
@@ -474,13 +496,13 @@ class ProcessService:
             tweet.translated_text = str(result["translation"])
             tweet.ai_comment = str(result["comment"])
             tweet.is_processed = True
-            self._record_cost(response, "single_process", digest_date)
+            self._record_cost(response, CallType.SINGLE_PROCESS, digest_date)
             return True
 
         try:
             return await self._retry_ai_call(_call, _ITEM_MAX_RETRIES, f"单条加工 {tweet.tweet_id}")
         except (ClaudeAPIError, JsonValidationError):
-            self._record_cost_failure("single_process", digest_date)
+            self._record_cost_failure(CallType.SINGLE_PROCESS, digest_date)
             return False
 
     async def _process_aggregated_with_retry(
@@ -506,13 +528,13 @@ class ProcessService:
                 ensure_ascii=False,
             )
             topic.ai_comment = str(result["comment"])
-            self._record_cost(response, "topic_process", digest_date)
+            self._record_cost(response, CallType.TOPIC_PROCESS, digest_date)
             return True
 
         try:
             return await self._retry_ai_call(_call, _ITEM_MAX_RETRIES, f"聚合加工 topic {topic.id}")
         except (ClaudeAPIError, JsonValidationError):
-            self._record_cost_failure("topic_process", digest_date)
+            self._record_cost_failure(CallType.TOPIC_PROCESS, digest_date)
             return False
 
     async def _process_thread_with_retry(
@@ -533,7 +555,7 @@ class ProcessService:
                 result["translation"]
             )  # Thread prompt 返回 "translation" 字段，映射到 topic.summary（与单推文一致）
             topic.ai_comment = str(result["comment"])
-            self._record_cost(response, "thread_process", digest_date)
+            self._record_cost(response, CallType.THREAD_PROCESS, digest_date)
             return True
 
         try:
@@ -541,7 +563,7 @@ class ProcessService:
                 _call, _ITEM_MAX_RETRIES, f"Thread 加工 topic {topic.id}"
             )
         except (ClaudeAPIError, JsonValidationError):
-            self._record_cost_failure("thread_process", digest_date)
+            self._record_cost_failure(CallType.THREAD_PROCESS, digest_date)
             return False
 
     def _calculate_all_heat_scores(
@@ -603,13 +625,13 @@ class ProcessService:
     def _record_cost(
         self,
         response: ClaudeResponse,
-        call_type: str,
+        call_type: CallType,
         digest_date: date | None,
     ) -> None:
         """记录 API 调用成本。"""
         record_api_cost(self._db, response, call_type, digest_date)
 
-    def _record_cost_failure(self, call_type: str, digest_date: date | None) -> None:
+    def _record_cost_failure(self, call_type: CallType, digest_date: date | None) -> None:
         """记录失败的 API 调用。"""
         record_api_cost_failure(self._db, call_type, digest_date)
 
@@ -619,15 +641,23 @@ class ProcessService:
 # ──────────────────────────────────────────────────
 
 
+def _account_fields(account: TwitterAccount | None) -> tuple[str, str, str]:
+    """提取账号的 (display_name, twitter_handle, bio)，account 为 None 时返回空字符串。"""
+    if account is None:
+        return ("", "", "")
+    return (account.display_name, account.twitter_handle, account.bio or "")
+
+
 def _build_single_tweet_data(
     tweet: Tweet,
     account: TwitterAccount | None,
 ) -> dict[str, object]:
     """构建单条推文加工输入。"""
+    name, handle, bio = _account_fields(account)
     return {
-        "author_name": account.display_name if account else "",
-        "author_handle": account.twitter_handle if account else "",
-        "author_bio": (account.bio or "") if account else "",
+        "author_name": name,
+        "author_handle": handle,
+        "author_bio": bio,
         "tweet_time": tweet.tweet_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "likes": tweet.likes,
         "retweets": tweet.retweets,
@@ -644,11 +674,12 @@ def _build_aggregated_tweets_data(
     result: list[dict[str, object]] = []
     for tweet in tweets:
         account = accounts_map.get(tweet.account_id)
+        name, handle, bio = _account_fields(account)
         result.append(
             {
-                "author": account.display_name if account else "",
-                "handle": account.twitter_handle if account else "",
-                "bio": (account.bio or "") if account else "",
+                "author": name,
+                "handle": handle,
+                "bio": bio,
                 "text": tweet.original_text,
                 "likes": tweet.likes,
                 "retweets": tweet.retweets,
@@ -673,11 +704,12 @@ def _build_thread_data(
     first_tweet = sorted_tweets[0]
     last_tweet = sorted_tweets[-1]
     account = accounts_map.get(first_tweet.account_id)
+    name, handle, bio = _account_fields(account)
 
     return {
-        "author_name": account.display_name if account else "",
-        "author_handle": account.twitter_handle if account else "",
-        "author_bio": (account.bio or "") if account else "",
+        "author_name": name,
+        "author_handle": handle,
+        "author_bio": bio,
         "thread_start_time": first_tweet.tweet_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "thread_end_time": last_tweet.tweet_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "tweet_count": len(member_tweets),

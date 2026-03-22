@@ -55,6 +55,14 @@ export type AddTweetRequest = {
 };
 
 /**
+ * 手动补录推文响应。
+ */
+export type AddTweetResponse = {
+    message: string;
+    item: DigestItemResponse;
+};
+
+/**
  * 告警条目。
  */
 export type AlertItem = {
@@ -543,6 +551,22 @@ export type ReorderInput = {
 export type ReorderRequest = {
     items: Array<ReorderInput>;
 };
+
+/**
+ * 密钥配置键名。
+ */
+export type SecretKey = 'x_api_bearer_token' | 'anthropic_api_key' | 'gemini_api_key' | 'wechat_app_id' | 'wechat_app_secret';
+
+/**
+ * 密钥配置键名。
+ */
+export const SecretKey = {
+    X_API_BEARER_TOKEN: 'x_api_bearer_token',
+    ANTHROPIC_API_KEY: 'anthropic_api_key',
+    GEMINI_API_KEY: 'gemini_api_key',
+    WECHAT_APP_ID: 'wechat_app_id',
+    WECHAT_APP_SECRET: 'wechat_app_secret'
+} as const;
 
 /**
  * 密钥状态响应。

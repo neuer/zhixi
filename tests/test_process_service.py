@@ -431,7 +431,7 @@ class TestProcessServiceFailures:
             await svc.run_daily_process(DIGEST_DATE)
 
     async def test_single_process_failure_skips(self, db: AsyncSession, one_tweet: Tweet):
-        """单条加工失败跳过，is_processed 保持 false。"""
+        """单条加工全部失败时抛出 RuntimeError，is_processed 保持 false。"""
         from app.clients.claude_client import ClaudeAPIError
 
         simple_analysis = json.dumps(
@@ -455,9 +455,8 @@ class TestProcessServiceFailures:
         )
 
         svc = ProcessService(db, claude_client=client)
-        result = await svc.run_daily_process(DIGEST_DATE)
-
-        assert result.failed_count == 1
+        with pytest.raises(RuntimeError, match="AI 加工全部失败"):
+            await svc.run_daily_process(DIGEST_DATE)
 
         stmt = select(Tweet).where(Tweet.tweet_id == "only_tweet")
         tweet = (await db.execute(stmt)).scalar_one()

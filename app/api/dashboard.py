@@ -5,6 +5,7 @@ import json
 from collections import defaultdict, deque
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import ColumnElement, and_, desc, func, select
@@ -127,7 +128,7 @@ async def get_api_costs_daily(
 
 @router.get("/logs", response_model=LogsResponse)
 async def get_logs(
-    level: str = Query(default="INFO"),
+    level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Query(default="INFO"),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     _admin: str = Depends(get_current_admin),
@@ -138,12 +139,26 @@ async def get_logs(
     if not LOG_FILE_PATH.exists():
         return LogsResponse(logs=[], total=0)
 
-    all_entries: list[LogEntry] = []
-    text = await asyncio.to_thread(LOG_FILE_PATH.read_text, encoding="utf-8")
-    # 只保留最后 5000 行，避免大文件全量加载到内存
+    # 文件读取 + 解析 + 过滤全部在线程池中执行，避免阻塞事件循环
+    all_entries = await asyncio.to_thread(
+        _parse_log_file, LOG_FILE_PATH, min_severity, offset + limit
+    )
+
+    total = len(all_entries)
+    page_entries = all_entries[offset : offset + limit]
+
+    return LogsResponse(logs=page_entries, total=total)
+
+
+def _parse_log_file(log_path: Path, min_severity: int, max_entries: int) -> list[LogEntry]:
+    """同步读取并解析日志文件（在线程池中调用）。
+
+    读取文件 → 取最后 5000 行 → 倒序解析 JSON → 按级别过滤。
+    """
+    text = log_path.read_text(encoding="utf-8")
     lines = deque(text.splitlines(), maxlen=5000)
 
-    # 倒序遍历获取最新日志
+    entries: list[LogEntry] = []
     for line in reversed(lines):
         line = line.strip()
         if not line:
@@ -158,7 +173,7 @@ async def get_logs(
         if entry_severity < min_severity:
             continue
 
-        all_entries.append(
+        entries.append(
             LogEntry(
                 timestamp=obj.get("timestamp", ""),
                 level=entry_level,
@@ -169,14 +184,11 @@ async def get_logs(
             )
         )
 
-        # 提前终止：已收集够 offset + limit 条
-        if len(all_entries) >= offset + limit:
+        # 提前终止：已收集够所需条数
+        if len(entries) >= max_entries:
             break
 
-    total = len(all_entries)
-    page_entries = all_entries[offset : offset + limit]
-
-    return LogsResponse(logs=page_entries, total=total)
+    return entries
 
 
 # ── 内部辅助函数 ──
@@ -262,6 +274,11 @@ async def _aggregate_cost(db: AsyncSession, where_clause: ColumnElement[bool]) -
     return CostSummary(total_cost=total_cost, by_service=by_service)
 
 
+def _digest_priority(d: DailyDigest) -> tuple[bool, bool, int]:
+    """返回 digest 优先级键：published > is_current > version，值越大优先级越高。"""
+    return (d.status == DigestStatus.PUBLISHED, d.is_current, d.version)
+
+
 async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRecord]:
     """获取近 7 天推送记录（每天选一条代表版本）。
 
@@ -276,24 +293,12 @@ async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRec
     )
     all_digests = result.scalars().all()
 
-    # 按日期分组，每天选最优
-    by_date: dict[date, DailyDigest] = {}
+    # 按日期分组，每天选优先级最高的
+    by_date: dict[date, list[DailyDigest]] = defaultdict(list)
     for d in all_digests:
-        existing = by_date.get(d.digest_date)
-        if existing is None:
-            by_date[d.digest_date] = d
-        else:
-            # published 优先
-            if d.status == DigestStatus.PUBLISHED and existing.status != DigestStatus.PUBLISHED:
-                by_date[d.digest_date] = d
-            elif d.status != DigestStatus.PUBLISHED and existing.status == DigestStatus.PUBLISHED:
-                pass  # 保留 existing
-            elif d.is_current and not existing.is_current:
-                by_date[d.digest_date] = d
-            elif not d.is_current and existing.is_current:
-                pass  # 保留 existing
-            elif d.version > existing.version:
-                by_date[d.digest_date] = d
+        by_date[d.digest_date].append(d)
+
+    best_by_date = {dt: max(group, key=_digest_priority) for dt, group in by_date.items()}
 
     records = [
         DigestDayRecord(
@@ -302,7 +307,7 @@ async def _get_recent_7_days(db: AsyncSession, today: date) -> list[DigestDayRec
             item_count=d.item_count,
             version=d.version,
         )
-        for d in by_date.values()
+        for d in best_by_date.values()
     ]
     records.sort(key=lambda r: r.date, reverse=True)
     return records

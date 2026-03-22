@@ -69,8 +69,32 @@ class ServiceType(StrEnum):
     WECHAT = "wechat"
 
 
+class CallType(StrEnum):
+    """API 调用类型 — 标识各环节的成本归属。"""
+
+    FETCH_TWEETS = "fetch_tweets"
+    FETCH_SINGLE_TWEET = "fetch_single_tweet"
+    SINGLE_PROCESS = "single_process"
+    GLOBAL_ANALYSIS = "global_analysis"
+    DEDUP_ANALYSIS = "dedup_analysis"
+    TOPIC_PROCESS = "topic_process"
+    THREAD_PROCESS = "thread_process"
+    COVER = "cover"
+    SUMMARY = "summary"
+
+
 class PublishMode(StrEnum):
     """发布模式。"""
 
     API = "api"
     MANUAL = "manual"
+
+
+class SecretKey(StrEnum):
+    """密钥配置键名。"""
+
+    X_API_BEARER_TOKEN = "x_api_bearer_token"
+    ANTHROPIC_API_KEY = "anthropic_api_key"
+    GEMINI_API_KEY = "gemini_api_key"
+    WECHAT_APP_ID = "wechat_app_id"
+    WECHAT_APP_SECRET = "wechat_app_secret"

@@ -102,18 +102,9 @@ async def send_alert(title: str, message: str, db: AsyncSession) -> None:
             resp.raise_for_status()
             logger.info("告警发送成功: title=%s", title)
             _consecutive_failures = 0
-    except httpx.HTTPError:
-        _consecutive_failures += 1
-        logger.warning("告警发送失败（不影响主流程）: title=%s", title, exc_info=True)
-        if _consecutive_failures >= _FAILURE_THRESHOLD:
-            logger.critical(
-                "告警系统连续失败 %d 次，请检查 webhook 配置: url=%s",
-                _consecutive_failures,
-                url,
-            )
     except Exception:
         _consecutive_failures += 1
-        logger.warning("告警发送异常（不影响主流程）: title=%s", title, exc_info=True)
+        logger.warning("告警发送失败（不影响主流程）: title=%s", title, exc_info=True)
         if _consecutive_failures >= _FAILURE_THRESHOLD:
             logger.critical(
                 "告警系统连续失败 %d 次，请检查 webhook 配置: url=%s",

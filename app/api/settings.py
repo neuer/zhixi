@@ -21,10 +21,11 @@ from app.config import (
 )
 from app.crypto import encrypt_secret
 from app.database import get_db
+from app.lib.timing import elapsed_ms
 from app.models.config import SystemConfig
 from app.models.job_run import JobRun
 from app.schemas.digest_types import MessageResponse
-from app.schemas.enums import JobStatus, JobType, PublishMode
+from app.schemas.enums import JobStatus, JobType, PublishMode, SecretKey
 from app.schemas.settings_types import (
     ApiStatusItem,
     ApiStatusResponse,
@@ -242,14 +243,11 @@ async def update_secrets(
 
 @router.delete("/secrets/{key}", response_model=MessageResponse)
 async def delete_secret(
-    key: str,
+    key: SecretKey,
     db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
 ) -> MessageResponse:
     """删除 DB 中的密钥配置（恢复 .env fallback）。"""
-    if key not in SECRET_CONFIG_KEYS:
-        raise HTTPException(status_code=422, detail=f"不支持的密钥名: {key}") from None
-
     db_key = f"secret:{key}"
     await db.execute(delete(SystemConfig).where(SystemConfig.key == db_key))
     return MessageResponse(message="密钥已清除，将使用 .env 配置")
@@ -305,9 +303,9 @@ async def _ping_x_api(db: AsyncSession) -> ApiStatusItem:
             resp.raise_for_status()
     except Exception:
         logger.warning("X API ping 失败", exc_info=True)
-        return ApiStatusItem(status="error", latency_ms=_elapsed_ms(start))
+        return ApiStatusItem(status="error", latency_ms=elapsed_ms(start))
 
-    return ApiStatusItem(status="ok", latency_ms=_elapsed_ms(start))
+    return ApiStatusItem(status="ok", latency_ms=elapsed_ms(start))
 
 
 async def _ping_claude_api(db: AsyncSession) -> ApiStatusItem:
@@ -322,9 +320,9 @@ async def _ping_claude_api(db: AsyncSession) -> ApiStatusItem:
         await client.models.list()
     except Exception:
         logger.warning("Claude API ping 失败", exc_info=True)
-        return ApiStatusItem(status="error", latency_ms=_elapsed_ms(start))
+        return ApiStatusItem(status="error", latency_ms=elapsed_ms(start))
 
-    return ApiStatusItem(status="ok", latency_ms=_elapsed_ms(start))
+    return ApiStatusItem(status="ok", latency_ms=elapsed_ms(start))
 
 
 async def _ping_gemini_api(db: AsyncSession) -> ApiStatusItem:
@@ -333,8 +331,3 @@ async def _ping_gemini_api(db: AsyncSession) -> ApiStatusItem:
     if not api_key:
         return ApiStatusItem(status="unconfigured")
     return ApiStatusItem(status="ok", latency_ms=0)
-
-
-def _elapsed_ms(start: float) -> int:
-    """计算耗时毫秒。"""
-    return int((time.monotonic() - start) * 1000)
