@@ -46,7 +46,7 @@ class FetchService:
     """每日推文抓取服务。"""
 
     def __init__(self, db: AsyncSession) -> None:
-        self.db = db
+        self._db = db
 
     async def run_daily_fetch(
         self,
@@ -65,7 +65,7 @@ class FetchService:
 
         # 查询活跃账号
         stmt = select(TwitterAccount).where(TwitterAccount.is_active.is_(True))
-        accounts = (await self.db.execute(stmt)).scalars().all()
+        accounts = (await self._db.execute(stmt)).scalars().all()
 
         total_accounts = len(accounts)
         if total_accounts == 0:
@@ -79,7 +79,7 @@ class FetchService:
         dedup_since = datetime.now(UTC) - timedelta(days=7)
         existing_ids_stmt = select(Tweet.tweet_id).where(Tweet.created_at >= dedup_since)
         existing_tweet_ids: set[str] = {
-            row for row in (await self.db.execute(existing_ids_stmt)).scalars().all()
+            row for row in (await self._db.execute(existing_ids_stmt)).scalars().all()
         }
         seen_ids: set[str] = set()
 
@@ -91,7 +91,7 @@ class FetchService:
         new_tweets_total = 0
         errors: list[dict[str, str]] = []
 
-        async with get_fetcher(await get_secret_config(self.db, "x_api_bearer_token")) as fetcher:
+        async with get_fetcher(await get_secret_config(self._db, "x_api_bearer_token")) as fetcher:
             for idx, account in enumerate(accounts):
                 # 跳过无 twitter_user_id 的账号
                 if not account.twitter_user_id:
@@ -157,8 +157,8 @@ class FetchService:
             started_at=started_at,
             finished_at=finished_at,
         )
-        self.db.add(fetch_log)
-        await self.db.flush()
+        self._db.add(fetch_log)
+        await self._db.flush()
 
         # I-21: 抓取失败时发送告警通知
         if fail_count > 0:
@@ -166,7 +166,7 @@ class FetchService:
                 "推文抓取部分失败",
                 f"日期={digest_date}, 失败={fail_count}/{total_accounts}, "
                 f"新增推文={new_tweets_total}",
-                self.db,
+                self._db,
             )
 
         return FetchResult(
@@ -204,7 +204,7 @@ class FetchService:
             success=True,
             duration_ms=duration_ms,
         )
-        self.db.add(cost_log)
+        self._db.add(cost_log)
 
         # 分类、过滤、去重、入库
         new_count = 0
@@ -216,13 +216,13 @@ class FetchService:
                 continue
 
             tweet = _raw_to_model(raw, account, digest_date, tweet_type)
-            self.db.add(tweet)
+            self._db.add(tweet)
             seen_ids.add(raw.tweet_id)
             new_count += 1
 
         # 更新 last_fetch_at
         account.last_fetch_at = datetime.now(UTC)
-        await self.db.flush()
+        await self._db.flush()
 
         return new_count
 
@@ -254,12 +254,12 @@ class FetchService:
         _handle_from_url, tweet_id = parsed
 
         # 去重检查
-        existing = await self.db.execute(select(Tweet).where(Tweet.tweet_id == tweet_id))
+        existing = await self._db.execute(select(Tweet).where(Tweet.tweet_id == tweet_id))
         if existing.scalar_one_or_none() is not None:
             raise TweetAlreadyExistsError
 
         # X API 抓取
-        async with get_fetcher(await get_secret_config(self.db, "x_api_bearer_token")) as fetcher:
+        async with get_fetcher(await get_secret_config(self._db, "x_api_bearer_token")) as fetcher:
             raw = await fetcher.fetch_single_tweet(tweet_id)
 
         # 记录 API 成本
@@ -269,7 +269,7 @@ class FetchService:
             call_type=CallType.FETCH_SINGLE_TWEET,
             success=True,
         )
-        self.db.add(cost_log)
+        self._db.add(cost_log)
 
         # 查找或创建账号
         account = await self._find_or_create_account(raw.author_id, tweet_url)
@@ -281,8 +281,8 @@ class FetchService:
         tweet = _raw_to_model(raw, account, digest_date, tweet_type)
         tweet.source = TweetSource.MANUAL
         tweet.is_ai_relevant = True
-        self.db.add(tweet)
-        await self.db.flush()
+        self._db.add(tweet)
+        await self._db.flush()
 
         return tweet
 
@@ -294,7 +294,7 @@ class FetchService:
         """通过 author_id 查找已有账号，找不到则创建临时账号。"""
         # 按 twitter_user_id 查找
         stmt = select(TwitterAccount).where(TwitterAccount.twitter_user_id == author_id)
-        result = await self.db.execute(stmt)
+        result = await self._db.execute(stmt)
         account = result.scalar_one_or_none()
         if account:
             return account
@@ -304,7 +304,7 @@ class FetchService:
         handle = parsed[0] if parsed else None
         if handle:
             stmt2 = select(TwitterAccount).where(TwitterAccount.twitter_handle == handle)
-            result2 = await self.db.execute(stmt2)
+            result2 = await self._db.execute(stmt2)
             account2 = result2.scalar_one_or_none()
             if account2:
                 # 补全 twitter_user_id
@@ -320,8 +320,8 @@ class FetchService:
             weight=1.0,
             is_active=False,
         )
-        self.db.add(new_account)
-        await self.db.flush()
+        self._db.add(new_account)
+        await self._db.flush()
         return new_account
 
 
