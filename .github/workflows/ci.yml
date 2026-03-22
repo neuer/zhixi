@@ -20,7 +20,7 @@ jobs:
       run_frontend: ${{ steps.scope.outputs.run_frontend }}
       run_codegen: ${{ steps.scope.outputs.run_codegen }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: scope
         run: |
           if [ -f admin/package.json ]; then
@@ -37,7 +37,7 @@ jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
@@ -59,7 +59,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.run_frontend == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: cd admin && bun install --frozen-lockfile
       - run: cd admin && bunx biome check .
@@ -71,7 +71,7 @@ jobs:
     needs: [changes, backend]
     if: needs.changes.outputs.run_codegen == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
