@@ -37,7 +37,7 @@ export function useApiStatus() {
     }
   }
 
-  function getApiStatus(status: string) {
+  function getApiStatus(status: "ok" | "error" | "unconfigured") {
     return apiStatusMap[status] ?? apiStatusDefault;
   }
 

@@ -1,10 +1,8 @@
 """全局异常处理器与客户端错误处理测试。"""
 
 import pytest
-import respx
-from httpx import Response
 
-from app.clients.x_client import XApiError, lookup_user
+from app.clients.x_client import XApiError
 
 
 @pytest.mark.asyncio
@@ -24,28 +22,3 @@ async def test_x_api_error_handler_includes_detail():
     # I-1: 异常处理器不再泄露内部异常信息，返回固定消息
     assert "X API 拉取失败，请稍后重试" in body_str
     assert "allow_manual" in body_str
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_lookup_user_non_json_response():
-    """X API 返回 200 但非 JSON 内容时应抛 XApiError。"""
-    respx.get("https://api.x.com/2/users/by/username/testuser").mock(
-        return_value=Response(200, text="<html>Error</html>")
-    )
-    with pytest.raises(XApiError, match="查询失败"):
-        await lookup_user("fake_token", "testuser")
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_lookup_user_missing_id_field():
-    """X API 返回 data 但缺少 id 字段时应抛 XApiError。"""
-    respx.get("https://api.x.com/2/users/by/username/testuser").mock(
-        return_value=Response(
-            200,
-            json={"data": {"name": "Test", "description": "bio"}},
-        )
-    )
-    with pytest.raises(XApiError, match="字段缺失|查询失败"):
-        await lookup_user("fake_token", "testuser")

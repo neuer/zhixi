@@ -14,7 +14,13 @@ import { useRoute, useRouter } from "vue-router";
 const route = useRoute();
 const router = useRouter();
 
-const itemType = computed(() => route.params.type as string);
+const VALID_ITEM_TYPES = ["tweet", "topic"] as const;
+type ItemType = (typeof VALID_ITEM_TYPES)[number];
+
+const itemType = computed<ItemType | null>(() => {
+  const raw = route.params.type as string;
+  return VALID_ITEM_TYPES.includes(raw as ItemType) ? (raw as ItemType) : null;
+});
 const itemRefId = computed(() => Number(route.params.id));
 
 const loading = ref(true);
@@ -48,11 +54,11 @@ async function loadItem() {
   error.value = null;
 
   if (
-    !itemType.value ||
+    itemType.value === null ||
     Number.isNaN(itemRefId.value) ||
     itemRefId.value <= 0
   ) {
-    error.value = "无效的条目参数";
+    error.value = "无效的条目参数（type 必须为 tweet 或 topic）";
     loading.value = false;
     return;
   }

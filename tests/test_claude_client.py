@@ -82,6 +82,8 @@ class TestClaudeClient:
 
         await client.complete("测试", system="你是内容编辑")
 
+        # 有意通过 call_args 验证安全前缀注入：这是核心安全机制，
+        # 必须确保每次 API 调用都携带 SAFETY_PREFIX，属于白盒测试的合理场景
         call_kwargs = client._client.messages.create.call_args
         system_arg = call_kwargs.kwargs.get("system") or call_kwargs[1].get("system")
         assert system_arg.startswith(SAFETY_PREFIX)
@@ -94,6 +96,7 @@ class TestClaudeClient:
 
         await client.complete("测试")
 
+        # 同上：验证无 system 参数时安全前缀仍被注入，防止遗漏
         call_kwargs = client._client.messages.create.call_args
         system_arg = call_kwargs.kwargs.get("system") or call_kwargs[1].get("system")
         assert system_arg == SAFETY_PREFIX
@@ -105,6 +108,7 @@ class TestClaudeClient:
 
         await client.complete("我的测试 prompt")
 
+        # 验证 prompt 正确封装为 messages 格式传递给 API
         call_kwargs = client._client.messages.create.call_args
         messages = call_kwargs.kwargs.get("messages") or call_kwargs[1].get("messages")
         assert len(messages) == 1
@@ -117,6 +121,7 @@ class TestClaudeClient:
 
         await client.complete("测试")
 
+        # 验证默认 max_tokens 参数正确传递给 API
         call_kwargs = client._client.messages.create.call_args
         max_tokens = call_kwargs.kwargs.get("max_tokens") or call_kwargs[1].get("max_tokens")
         assert max_tokens == 4096
@@ -127,6 +132,7 @@ class TestClaudeClient:
 
         await client.complete("测试", max_tokens=1024)
 
+        # 验证自定义 max_tokens 正确透传
         call_kwargs = client._client.messages.create.call_args
         max_tokens = call_kwargs.kwargs.get("max_tokens") or call_kwargs[1].get("max_tokens")
         assert max_tokens == 1024

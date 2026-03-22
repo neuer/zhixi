@@ -56,9 +56,14 @@ onMounted(loadDetail);
 
     <AsyncContent :loading="loading" :error="error">
       <template #error-action>
-        <van-button round type="primary" size="small" @click="goBack">
-          返回列表
-        </van-button>
+        <div style="display: flex; gap: 8px; justify-content: center;">
+          <van-button round type="primary" size="small" @click="loadDetail">
+            重新加载
+          </van-button>
+          <van-button round plain size="small" @click="goBack">
+            返回列表
+          </van-button>
+        </div>
       </template>
       <ArticlePreview
         v-if="data"

@@ -70,9 +70,14 @@ export function useExperimentLog(): UseExperimentLogReturn {
   }
 
   function copyRaw(log: ExperimentLog) {
-    navigator.clipboard.writeText(log.rawJson).then(() => {
-      showToast("已复制");
-    });
+    navigator.clipboard
+      .writeText(log.rawJson)
+      .then(() => {
+        showToast("已复制");
+      })
+      .catch(() => {
+        showToast("复制失败");
+      });
   }
 
   function clearLogs() {

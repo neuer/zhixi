@@ -88,6 +88,8 @@ const router = createRouter({
 });
 
 const WHITE_LIST = ["/setup", "/login", "/preview"];
+// 5 分钟 TTL：平衡"避免每次导航都请求 /setup/status"与"及时检测到初始化状态变更"。
+// 用户完成 setup 后会显式调用 resetSetupCache() 立即刷新。
 const SETUP_CACHE_TTL_MS = 5 * 60 * 1000;
 let setupCache: { needSetup: boolean; fetchedAt: number } | null = null;
 
