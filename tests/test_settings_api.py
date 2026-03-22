@@ -233,3 +233,35 @@ async def test_api_status_mock_ping(
     assert data["claude_api"]["status"] == "ok"
     assert data["gemini_api"]["status"] == "unconfigured"
     assert data["wechat_api"]["status"] == "unconfigured"
+
+
+@pytest.mark.asyncio
+async def test_api_status_error_shows_detail(
+    authed_client: AsyncClient,
+) -> None:
+    """API 状态检测失败时应返回具体错误原因。"""
+    import httpx as _httpx
+
+    async def _mock_secret(db: object, key: str) -> str:
+        return {"x_api_bearer_token": "bad-token"}.get(key, "")
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+    mock_resp.request = MagicMock()
+    error = _httpx.HTTPStatusError("Unauthorized", request=mock_resp.request, response=mock_resp)
+
+    mock_httpx_client = AsyncMock()
+    mock_httpx_client.__aenter__ = AsyncMock(return_value=mock_httpx_client)
+    mock_httpx_client.__aexit__ = AsyncMock(return_value=False)
+    mock_httpx_client.get = AsyncMock(side_effect=error)
+
+    with (
+        patch("app.api.settings.get_secret_config", side_effect=_mock_secret),
+        patch("app.api.settings.httpx.AsyncClient", return_value=mock_httpx_client),
+    ):
+        resp = await authed_client.get("/api/settings/api-status")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["x_api"]["status"] == "error"
+    assert data["x_api"]["error_detail"] == "HTTP 401"

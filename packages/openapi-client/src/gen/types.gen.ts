@@ -86,6 +86,7 @@ export type ApiCostsResponse = {
 export type ApiStatusItem = {
     status: 'ok' | 'error' | 'unconfigured';
     latency_ms?: (number | null);
+    error_detail?: (string | null);
 };
 
 export type status = 'ok' | 'error' | 'unconfigured';
