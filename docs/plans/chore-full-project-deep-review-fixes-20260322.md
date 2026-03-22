@@ -478,27 +478,43 @@ git commit -m "refactor: Suggestion 级别优化 — 类型安全 + 性能 + 可
 
 ---
 
-## 执行结果（待回填）
-
-> 以下内容在全部修复完成并创建 PR 后一次性回填。
+## 执行结果
 
 ### 交付物清单
 
-（待回填）
+- 修改 32 个文件（+917 行 / -284 行）
+- 新建 3 个文件：`app/lib/timing.py`、`admin/src/utils/digest.ts`（扩展）、`alembic/versions/337e9caa2833_add_topic_digest_date_index.py`
+- 6 个独立 commit，每轮一个
+- 全部 33 个问题（3C + 20I + 10S）已修复
 
 ### 偏离项表格
 
 | 编号 | 计划 | 实际 | 原因 |
 |------|------|------|------|
+| S-9 | 仅添加 Topic.digest_date 索引 | Alembic autogenerate 同步补齐了 6 个已声明但未迁移的索引 | autogenerate 自动检测，属合理同步 |
+| I-3 | 缓存 Fernet 实例 | 缓存 _derive_key 结果（PBKDF2），Fernet 对象每次新建 | PBKDF2 是主瓶颈，Fernet 构造开销极小，效果等价 |
+| I-12 | 移除 fallback severity | 保留 fallback `severity_map.get(level_str, 20)` | 防御性编程，FastAPI 已在入口校验但函数可被内部调用 |
 
 ### 问题与修复记录
 
-（待回填）
+- I-1 修复后需同步更新 `test_process_service.py` 中 `test_single_process_failure_skips` 测试，改为 `pytest.raises(RuntimeError)`
+- I-11 修复涉及 13 个源文件 + 1 个测试文件，枚举成员替换量最大
+- I-19 `PerspectiveItem` 提取到已有的 `admin/src/utils/digest.ts` 而非新建文件（该文件已存在 `formatDigestDate` 等工具函数）
 
 ### 质量门禁详表
 
-（待回填）
+| 门禁 | 结果 |
+|------|------|
+| ruff check | 通过 |
+| ruff format --check | 145 files formatted |
+| pyright | 0 errors, 0 warnings |
+| pytest | 564 passed, 278 warnings |
+| biome check | 44 files, no fixes |
+| vue-tsc --noEmit | 通过 |
+| bun run build | 通过 (1.01s) |
+| make gen && git diff --exit-code | 生成物一致 |
+| CI (GitHub Actions) | 全绿（backend + frontend + codegen） |
 
 ### PR 链接
 
-（待回填）
+https://github.com/neuer/zhixi/pull/36
