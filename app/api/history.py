@@ -20,6 +20,13 @@ from app.schemas.enums import DigestStatus
 router = APIRouter()
 
 
+def _set_degraded_flag(brief: DigestBriefResponse, digest_summary: str | None) -> None:
+    """设置 summary_degraded 标记：摘要是否为降级默认值。"""
+    from app.digest.summary_prompts import DEFAULT_SUMMARY
+
+    brief.summary_degraded = digest_summary == DEFAULT_SUMMARY
+
+
 @router.get("", response_model=HistoryListResponse)
 async def list_history(
     page: int = Query(default=1, ge=1),
@@ -102,7 +109,10 @@ async def get_history_detail(
     items_result = await db.execute(items_stmt)
     items = list(items_result.scalars().all())
 
+    brief = DigestBriefResponse.model_validate(digest)
+    _set_degraded_flag(brief, digest.summary)
+
     return HistoryDetailResponse(
-        digest=DigestBriefResponse.model_validate(digest),
+        digest=brief,
         items=[DigestItemResponse.model_validate(item) for item in items],
     )

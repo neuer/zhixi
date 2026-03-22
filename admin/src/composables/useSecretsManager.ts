@@ -1,5 +1,8 @@
 import api from "@/api";
-import type { SecretStatusItem } from "@zhixi/openapi-client";
+import type {
+  SecretStatusItem,
+  SecretsStatusResponse,
+} from "@zhixi/openapi-client";
 import { showConfirmDialog, showToast } from "vant";
 import { ref } from "vue";
 
@@ -11,7 +14,7 @@ export function useSecretsManager(onSecretChanged?: () => Promise<void>) {
 
   async function loadSecretsStatus() {
     try {
-      const resp = await api.get<{ items: SecretStatusItem[] }>(
+      const resp = await api.get<SecretsStatusResponse>(
         "/settings/secrets-status",
       );
       secretsStatus.value = resp.data.items;
@@ -52,12 +55,17 @@ export function useSecretsManager(onSecretChanged?: () => Promise<void>) {
         title: "清除密钥",
         message: `确定清除 ${item.label} 的 DB 配置？将恢复使用 .env 中的值（如有）。`,
       });
+    } catch {
+      // 用户取消确认对话框
+      return;
+    }
+    try {
       await api.delete(`/settings/secrets/${item.key}`);
       showToast("密钥已清除");
       await loadSecretsStatus();
       await onSecretChanged?.();
     } catch {
-      // 用户取消或请求失败
+      // 拦截器已处理 API 错误
     }
   }
 

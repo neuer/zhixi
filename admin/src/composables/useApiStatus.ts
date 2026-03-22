@@ -1,6 +1,6 @@
 import api from "@/api";
 import type { ApiStatusResponse } from "@zhixi/openapi-client";
-import { closeToast, showLoadingToast } from "vant";
+import { closeToast, showLoadingToast, showToast } from "vant";
 import { computed, ref } from "vue";
 
 const apiStatusMap: Record<string, { text: string; color: string }> = {
@@ -31,7 +31,7 @@ export function useApiStatus() {
       apiStatus.value = resp.data;
       closeToast();
     } catch {
-      closeToast();
+      showToast("API 状态检测失败");
     } finally {
       checkingApi.value = false;
     }

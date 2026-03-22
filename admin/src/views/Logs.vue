@@ -9,10 +9,12 @@ const router = useRouter();
 const loading = ref(false);
 const refreshing = ref(false);
 const finished = ref(false);
-const logs = ref<LogsResponse["logs"]>([]);
+type LogEntry = LogsResponse["logs"][number] & { _uid: number };
+const logs = ref<LogEntry[]>([]);
 const selectedLevel = ref<"DEBUG" | "INFO" | "WARNING" | "ERROR">("INFO");
 const pageVal = ref(1);
 const pageSize = 50;
+let logIdSeq = 0;
 
 const levelOptions = [
   { text: "DEBUG", value: "DEBUG" },
@@ -49,7 +51,10 @@ async function loadLogs() {
         offset: (pageVal.value - 1) * pageSize,
       },
     });
-    const newLogs = resp.data.logs;
+    const newLogs = resp.data.logs.map((log) => ({
+      ...log,
+      _uid: ++logIdSeq,
+    }));
     if (pageVal.value === 1) {
       logs.value = newLogs;
     } else {
@@ -71,6 +76,7 @@ function resetAndLoad() {
   pageVal.value = 1;
   finished.value = false;
   logs.value = [];
+  logIdSeq = 0;
   refreshing.value = false;
   loadLogs();
 }
@@ -103,8 +109,8 @@ onMounted(loadLogs);
           <van-empty v-if="!logs.length && !loading" description="暂无日志" />
 
           <div
-            v-for="(log, idx) in logs"
-            :key="log.timestamp + '-' + idx"
+            v-for="log in logs"
+            :key="log._uid"
             class="log-entry"
             :style="{
               color: getLevelStyle(log.level).color,

@@ -195,7 +195,7 @@ async def debug_x_tweets(
 
     # 解析推文
     async with XApiFetcher(bearer_token=token) as fetcher:
-        included_tweets, media_url_map = fetcher._build_includes_index(raw_payload)
+        included_tweets, media_url_map = fetcher.build_includes_index(raw_payload)
         tweets = []
         data_list = raw_payload.get("data", [])
         if not isinstance(data_list, list):
@@ -204,7 +204,7 @@ async def debug_x_tweets(
             if not isinstance(raw_tweet, dict):
                 continue
             enrich_tweet_text(raw_tweet)
-            parsed = fetcher._parse_tweet(raw_tweet, included_tweets, media_url_map)
+            parsed = fetcher.parse_tweet(raw_tweet, included_tweets, media_url_map)
             if parsed is not None:
                 tweets.append(parsed)
 
@@ -247,9 +247,9 @@ async def debug_x_tweet(
     from app.fetcher.x_api import XApiFetcher
 
     async with XApiFetcher(bearer_token=token) as fetcher:
-        included_tweets, media_url_map = fetcher._build_includes_index(raw)
+        included_tweets, media_url_map = fetcher.build_includes_index(raw)
         if isinstance(data, dict):
             enrich_tweet_text(data)
-        tweet = fetcher._parse_tweet(data, included_tweets, media_url_map)
+        tweet = fetcher.parse_tweet(data, included_tweets, media_url_map)
 
     return DebugXTweetResponse(tweet=tweet, raw_response=raw, latency_ms=latency)

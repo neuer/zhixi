@@ -73,10 +73,9 @@ async def test_setup_init_with_webhook(client: AsyncClient, seeded_db: AsyncSess
 
 
 async def test_setup_init_weak_password_short(client: AsyncClient, seeded_db: AsyncSession) -> None:
-    """<8位 → 422。"""
+    """<8位 → 422（Pydantic min_length 校验 或 业务层 validate_password_strength）。"""
     resp = await client.post("/api/setup/init", json={"password": "Ab1"})
     assert resp.status_code == 422
-    assert "至少8位" in resp.json()["detail"]
 
 
 async def test_setup_init_weak_password_no_upper(

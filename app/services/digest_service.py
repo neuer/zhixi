@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clients.claude_client import ClaudeClient
 from app.clients.gemini_client import get_gemini_client
+from app.clients.notifier import send_alert
 from app.config import (
     ensure_utc,
     get_system_config,
@@ -163,6 +164,11 @@ class DigestService:
                 digest.cover_image_path = cover_path
                 if cover_path is None:
                     logger.warning("封面图生成失败，日报将无封面 (digest_date=%s)", digest_date)
+                    await send_alert(
+                        "封面图生成失败",
+                        f"日期={digest_date}，日报将使用无封面模式",
+                        self._db,
+                    )
 
         await self._db.flush()
         logger.info(
@@ -627,7 +633,7 @@ class DigestService:
         - normalize 使用当日已有推文的 base_heat_score min/max
         - 超出范围截断到 0 或 100
         """
-        from app.processor.heat_calculator import (
+        from app.lib.heat_calculator import (
             calculate_base_score,
             calculate_heat_score,
             calculate_hours_since_post,
@@ -665,11 +671,15 @@ class DigestService:
         tweet.heat_score = calculate_heat_score(normalized, 50.0)
 
     async def _get_existing_base_scores(self, digest_date: date) -> list[float]:
-        """查询当日已处理推文的 base_heat_score（用于 normalize 参照范围）。"""
+        """查询当日已处理推文的 base_heat_score（用于 normalize 参照范围）。
+
+        过滤掉 base_heat_score 为 None 的记录，避免下游 min/max 计算异常。
+        """
         stmt = select(Tweet.base_heat_score).where(
             Tweet.digest_date == digest_date,
             Tweet.is_ai_relevant.is_(True),
             Tweet.is_processed.is_(True),
+            Tweet.base_heat_score.is_not(None),
         )
         result = await self._db.execute(stmt)
         return list(result.scalars().all())

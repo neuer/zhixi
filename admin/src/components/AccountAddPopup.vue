@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import api from "@/api";
+import axios from "axios";
 import { showToast } from "vant";
 import { ref, watch } from "vue";
 
@@ -59,19 +60,20 @@ async function handleAdd() {
     emit("added");
   } catch (e: unknown) {
     if (
-      typeof e === "object" &&
-      e !== null &&
-      "response" in e &&
-      typeof (e as Record<string, unknown>).response === "object"
+      axios.isAxiosError(e) &&
+      e.response?.status === 502 &&
+      (e.response.data as { allow_manual?: boolean })?.allow_manual
     ) {
-      const resp = (
-        e as { response: { status: number; data: { allow_manual?: boolean } } }
-      ).response;
-      if (resp.status === 502 && resp.data?.allow_manual) {
-        manualMode.value = true;
-        addError.value = "X API 不可用，请手动填写信息";
-        return;
-      }
+      manualMode.value = true;
+      addError.value = "X API 不可用，请手动填写信息";
+      return;
+    }
+    // 非 502 错误：显示错误信息给用户
+    if (axios.isAxiosError(e) && e.response?.data) {
+      const detail = (e.response.data as { detail?: string }).detail;
+      addError.value = detail ?? "添加失败，请重试";
+    } else {
+      addError.value = "添加失败，请重试";
     }
   } finally {
     adding.value = false;

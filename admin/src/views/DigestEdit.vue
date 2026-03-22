@@ -14,6 +14,7 @@ const itemType = computed(() => route.params.type as string);
 const itemRefId = computed(() => Number(route.params.id));
 
 const loading = ref(true);
+const refreshing = ref(false);
 const saving = ref(false);
 const error = ref<string | null>(null);
 const item = ref<DigestItemResponse | null>(null);
@@ -76,6 +77,7 @@ async function loadItem() {
     error.value = "加载失败，下拉刷新重试";
   } finally {
     loading.value = false;
+    refreshing.value = false;
   }
 }
 
@@ -83,21 +85,22 @@ async function handleSave() {
   if (!item.value) return;
   saving.value = true;
   try {
-    const payload: Record<string, string | null> = {};
-    if (form.value.title !== (item.value.snapshot_title ?? "")) {
-      payload.title = form.value.title || null;
-    }
-    if (form.value.translation !== (item.value.snapshot_translation ?? "")) {
-      payload.translation = form.value.translation || null;
-    }
-    if (form.value.summary !== (item.value.snapshot_summary ?? "")) {
-      payload.summary = form.value.summary || null;
-    }
-    if (form.value.perspectives !== (item.value.snapshot_perspectives ?? "")) {
-      payload.perspectives = form.value.perspectives || null;
-    }
-    if (form.value.comment !== (item.value.snapshot_comment ?? "")) {
-      payload.comment = form.value.comment || null;
+    const fieldMap: Array<{
+      key: keyof typeof form.value;
+      snapshot: keyof DigestItemResponse;
+    }> = [
+      { key: "title", snapshot: "snapshot_title" },
+      { key: "translation", snapshot: "snapshot_translation" },
+      { key: "summary", snapshot: "snapshot_summary" },
+      { key: "perspectives", snapshot: "snapshot_perspectives" },
+      { key: "comment", snapshot: "snapshot_comment" },
+    ];
+
+    const payload: Record<string, string> = {};
+    for (const { key, snapshot } of fieldMap) {
+      if (form.value[key] !== ((item.value[snapshot] as string | null) ?? "")) {
+        payload[key] = form.value[key];
+      }
     }
 
     if (Object.keys(payload).length === 0) {
@@ -153,7 +156,7 @@ onMounted(loadItem);
       @click-left="router.back()"
     />
 
-    <van-pull-refresh v-model="loading" @refresh="loadItem">
+    <van-pull-refresh v-model="refreshing" @refresh="loadItem">
       <van-empty v-if="!loading && error" :description="error" image="error" />
 
       <template v-else-if="item">

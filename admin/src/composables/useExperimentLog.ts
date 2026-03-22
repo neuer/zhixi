@@ -60,11 +60,13 @@ export function useExperimentLog(): UseExperimentLogReturn {
   }
 
   function toggleLog(log: ExperimentLog) {
-    log.expanded = !log.expanded;
+    const target = logs.value.find((l) => l.id === log.id);
+    if (target) target.expanded = !target.expanded;
   }
 
   function toggleRaw(log: ExperimentLog) {
-    log.showRaw = !log.showRaw;
+    const target = logs.value.find((l) => l.id === log.id);
+    if (target) target.showRaw = !target.showRaw;
   }
 
   function copyRaw(log: ExperimentLog) {

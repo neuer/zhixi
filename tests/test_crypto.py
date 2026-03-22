@@ -2,7 +2,9 @@
 
 from unittest.mock import patch
 
-from app.crypto import _derive_key, decrypt_secret, encrypt_secret
+import pytest
+
+from app.crypto import SecretDecryptionError, _derive_key, decrypt_secret, encrypt_secret
 
 
 class TestDeriveKey:
@@ -37,16 +39,17 @@ class TestEncryptDecrypt:
         assert decrypt_secret("") == ""
 
     def test_invalid_ciphertext(self) -> None:
-        """无效密文返回空字符串。"""
-        assert decrypt_secret("not-valid-ciphertext") == ""
+        """无效密文抛出 SecretDecryptionError。"""
+        with pytest.raises(SecretDecryptionError):
+            decrypt_secret("not-valid-ciphertext")
 
     def test_different_key_fails(self) -> None:
-        """JWT_SECRET_KEY 变更后解密失败。"""
+        """JWT_SECRET_KEY 变更后解密抛出 SecretDecryptionError。"""
         ciphertext = encrypt_secret("my-api-key")
         with patch("app.crypto.settings") as mock_settings:
             mock_settings.JWT_SECRET_KEY = "a-completely-different-secret-key"
-            result = decrypt_secret(ciphertext)
-            assert result == ""
+            with pytest.raises(SecretDecryptionError):
+                decrypt_secret(ciphertext)
 
     def test_unicode_content(self) -> None:
         """支持 Unicode 内容。"""

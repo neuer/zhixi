@@ -94,7 +94,7 @@ class ProcessService:
         await self._db.flush()
 
         # ── US-021 逐条/逐话题加工 ──
-        processed_count, failed_count = await self._process_all_items(
+        processed_count, failed_count, failed_details = await self._process_all_items(
             analysis,
             tweet_map,
             topics_created,
@@ -145,6 +145,7 @@ class ProcessService:
             filtered_count=filtered_count,
             topic_count=len(topics_created),
             failed_count=failed_count,
+            failed_details=failed_details,
         )
 
     async def process_single_tweet_by_id(self, tweet_id: int) -> None:
@@ -326,6 +327,9 @@ class ProcessService:
         merged_texts: dict[int, str] = {}
 
         # 收集非 single 的 topic_result 与对应 ORM 对象
+        # 注意：TopicResult.type 包含 "single"/"aggregated"/"thread"，
+        # 但 DB 层 TopicType 枚举只有 aggregated/thread。
+        # "single" 类型不创建 Topic 记录，直接作为独立推文处理。
         topic_pairs: list[tuple[Topic, TopicResult]] = []
         for topic_result in analysis.topics:
             if topic_result.type == "single":
@@ -380,10 +384,11 @@ class ProcessService:
         merged_texts: dict[int, str],
         accounts_map: dict[int, TwitterAccount],
         digest_date: date,
-    ) -> tuple[int, int]:
-        """逐条/逐话题加工，返回 (processed_count, failed_count)。"""
+    ) -> tuple[int, int, list[str]]:
+        """逐条/逐话题加工，返回 (processed_count, failed_count, failed_details)。"""
         processed = 0
         failed = 0
+        failed_details: list[str] = []
 
         # 收集 single 推文
         single_tweet_ids = self._get_single_tweet_ids(analysis, tweet_map)
@@ -411,6 +416,7 @@ class ProcessService:
                 processed += 1
             else:
                 failed += 1
+                failed_details.append(f"单条推文加工失败: tweet_id={tid}")
 
         # 按 topic_id 建立倒排索引，避免对每个 topic 遍历全部 tweet_map（O(N*M) → O(N+M)）
         tweets_by_topic: dict[int, list[Tweet]] = {}
@@ -450,8 +456,11 @@ class ProcessService:
                     t.is_processed = True
             else:
                 failed += 1
+                failed_details.append(
+                    f"{topic.type} 话题加工失败: topic_id={topic.id}, label={topic.topic_label}"
+                )
 
-        return processed, failed
+        return processed, failed, failed_details
 
     def _get_single_tweet_ids(
         self,
@@ -501,7 +510,13 @@ class ProcessService:
 
         try:
             return await self._retry_ai_call(_call, _ITEM_MAX_RETRIES, f"单条加工 {tweet.tweet_id}")
-        except (ClaudeAPIError, JsonValidationError):
+        except (ClaudeAPIError, JsonValidationError) as exc:
+            logger.error(
+                "单条推文加工最终失败: tweet_id=%s, error=%s",
+                tweet.tweet_id,
+                exc,
+                exc_info=True,
+            )
             self._record_cost_failure(CallType.SINGLE_PROCESS, digest_date)
             return False
 
@@ -533,7 +548,14 @@ class ProcessService:
 
         try:
             return await self._retry_ai_call(_call, _ITEM_MAX_RETRIES, f"聚合加工 topic {topic.id}")
-        except (ClaudeAPIError, JsonValidationError):
+        except (ClaudeAPIError, JsonValidationError) as exc:
+            logger.error(
+                "聚合话题加工最终失败: topic_id=%s, label=%s, error=%s",
+                topic.id,
+                topic.topic_label,
+                exc,
+                exc_info=True,
+            )
             self._record_cost_failure(CallType.TOPIC_PROCESS, digest_date)
             return False
 
@@ -562,7 +584,14 @@ class ProcessService:
             return await self._retry_ai_call(
                 _call, _ITEM_MAX_RETRIES, f"Thread 加工 topic {topic.id}"
             )
-        except (ClaudeAPIError, JsonValidationError):
+        except (ClaudeAPIError, JsonValidationError) as exc:
+            logger.error(
+                "Thread 加工最终失败: topic_id=%s, label=%s, error=%s",
+                topic.id,
+                topic.topic_label,
+                exc,
+                exc_info=True,
+            )
             self._record_cost_failure(CallType.THREAD_PROCESS, digest_date)
             return False
 

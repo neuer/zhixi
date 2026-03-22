@@ -4,7 +4,7 @@
 - tweet.fields 包含 article / note_tweet / entities 以支持长文、Article、短链展开
 - exclude 同时排除 retweets 和 replies
 - User-Agent 标识便于 X API 调试追踪
-- _enrich_tweet_text 在解析前预处理文本（短链展开 + 长文补全 + Article 正文提取）
+- enrich_tweet_text 在解析前预处理文本（短链展开 + 长文补全 + Article 正文提取）
 """
 
 import asyncio
@@ -34,7 +34,7 @@ _MEDIA_FIELDS = "url,type"
 def enrich_tweet_text(tweet_data: dict[str, object]) -> None:
     """用 note_tweet 补全长推文、entities.urls 展开 t.co 短链、article.plain_text 提取文章正文。
 
-    直接修改 tweet_data["text"]，供后续 _parse_tweet 使用。
+    直接修改 tweet_data["text"]，供后续 parse_tweet 使用。
 
     处理优先级：
     1. note_tweet.text — 长推文（>280 字符）完整文本
@@ -161,7 +161,7 @@ class XApiFetcher(BaseFetcher):
             )
             payload = response.json()
 
-            included_tweets, media_url_map = self._build_includes_index(payload)
+            included_tweets, media_url_map = self.build_includes_index(payload)
 
             # 解析推文列表
             page_data = payload.get("data", [])
@@ -169,7 +169,7 @@ class XApiFetcher(BaseFetcher):
             for raw in page_data:
                 if isinstance(raw, dict):
                     enrich_tweet_text(raw)
-                tweet = self._parse_tweet(raw, included_tweets, media_url_map)
+                tweet = self.parse_tweet(raw, included_tweets, media_url_map)
                 if tweet is not None:
                     results.append(tweet)
                 else:
@@ -199,7 +199,7 @@ class XApiFetcher(BaseFetcher):
 
         return results
 
-    def _build_includes_index(
+    def build_includes_index(
         self,
         payload: dict[str, object],
     ) -> tuple[dict[str, str], dict[str, str]]:
@@ -226,7 +226,7 @@ class XApiFetcher(BaseFetcher):
         }
         return included_tweets, media_url_map
 
-    def _parse_tweet(
+    def parse_tweet(
         self,
         raw: dict[str, object],
         included_tweets: dict[str, str],
@@ -394,11 +394,11 @@ class XApiFetcher(BaseFetcher):
             msg = f"推文不存在: {tweet_id}"
             raise ValueError(msg)
 
-        included_tweets, media_url_map = self._build_includes_index(payload)
+        included_tweets, media_url_map = self.build_includes_index(payload)
 
         if isinstance(data, dict):
             enrich_tweet_text(data)
-        tweet = self._parse_tweet(data, included_tweets, media_url_map)
+        tweet = self.parse_tweet(data, included_tweets, media_url_map)
         if tweet is None:
             msg = f"解析推文失败: {tweet_id}"
             raise ValueError(msg)

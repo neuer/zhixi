@@ -1,6 +1,11 @@
 import api from "@/api";
 import type { AddLogFn } from "@/composables/useExperimentLog";
-import type { RawTweet } from "@zhixi/openapi-client";
+import type {
+  DebugXPingResponse,
+  DebugXTweetResponse,
+  DebugXTweetsResponse,
+  DebugXUserResponse,
+} from "@zhixi/openapi-client";
 import { showToast } from "vant";
 import { ref } from "vue";
 
@@ -34,22 +39,17 @@ export function useXApiDebug(addLog: AddLogFn) {
   async function doPing() {
     pinging.value = true;
     try {
-      const { data } = await api.get("/debug/x/ping");
-      const d = data as {
-        status: string;
-        latency_ms: number | null;
-        raw_response: unknown;
-      };
+      const { data: d } = await api.get<DebugXPingResponse>("/debug/x/ping");
       addLog(
         "PING",
         d.status === "ok" ? "ok" : "error",
-        d.latency_ms,
+        d.latency_ms ?? null,
         d.status === "ok"
           ? "X API 连通正常"
           : d.status === "unconfigured"
             ? "Bearer Token 未配置"
             : "连接失败",
-        d.raw_response,
+        d.raw_response ?? null,
       );
     } catch {
       addLog("PING", "error", null, "请求异常", null);
@@ -66,23 +66,15 @@ export function useXApiDebug(addLog: AddLogFn) {
     }
     queryingUser.value = true;
     try {
-      const { data } = await api.get(`/debug/x/user/${handle}`);
-      const d = data as {
-        user: {
-          display_name: string;
-          followers_count: number;
-          bio: string | null;
-          avatar_url: string | null;
-        } | null;
-        raw_response: unknown;
-        latency_ms: number;
-      };
+      const { data: d } = await api.get<DebugXUserResponse>(
+        `/debug/x/user/${handle}`,
+      );
       if (d.user) {
         addLog(
           "USER",
           "ok",
           d.latency_ms,
-          `${d.user.display_name} · ${d.user.followers_count.toLocaleString()} 粉丝`,
+          `${d.user.display_name} · ${(d.user.followers_count ?? 0).toLocaleString()} 粉丝`,
           d.raw_response,
         );
       } else {
@@ -109,16 +101,13 @@ export function useXApiDebug(addLog: AddLogFn) {
     }
     fetchingTweets.value = true;
     try {
-      const { data } = await api.post("/debug/x/tweets", {
-        handle,
-        hours_back: hoursBack.value,
-      });
-      const d = data as {
-        tweets: RawTweet[];
-        count: number;
-        raw_response: unknown;
-        latency_ms: number;
-      };
+      const { data: d } = await api.post<DebugXTweetsResponse>(
+        "/debug/x/tweets",
+        {
+          handle,
+          hours_back: hoursBack.value,
+        },
+      );
       addLog(
         "TWEETS",
         d.count > 0 ? "ok" : "error",
@@ -142,12 +131,9 @@ export function useXApiDebug(addLog: AddLogFn) {
     }
     queryingTweet.value = true;
     try {
-      const { data } = await api.get(`/debug/x/tweet/${tweetId}`);
-      const d = data as {
-        tweet: RawTweet | null;
-        raw_response: unknown;
-        latency_ms: number;
-      };
+      const { data: d } = await api.get<DebugXTweetResponse>(
+        `/debug/x/tweet/${tweetId}`,
+      );
       if (d.tweet) {
         addLog("TWEET", "ok", d.latency_ms, `推文 ${tweetId}`, d.raw_response, [
           d.tweet,

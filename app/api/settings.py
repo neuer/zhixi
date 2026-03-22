@@ -170,7 +170,7 @@ async def get_secrets_status(
     _admin: str = Depends(get_current_admin),
 ) -> SecretsStatusResponse:
     """获取各密钥配置状态（掩码展示，不返回原文）。"""
-    from app.crypto import decrypt_secret
+    from app.crypto import SecretDecryptionError, decrypt_secret
 
     items: list[SecretStatusItem] = []
     for key in SECRET_CONFIG_KEYS:
@@ -179,7 +179,11 @@ async def get_secrets_status(
         db_value = await _get_raw_config(db, db_key)
 
         if db_value:
-            decrypted = decrypt_secret(db_value)
+            try:
+                decrypted = decrypt_secret(db_value)
+            except SecretDecryptionError:
+                logger.warning("密钥 %s 解密失败，回退到 .env 配置", key)
+                decrypted = ""
             if decrypted:
                 items.append(
                     SecretStatusItem(
@@ -261,11 +265,21 @@ async def get_api_status(
     db: AsyncSession = Depends(get_db),
     _admin: str = Depends(get_current_admin),
 ) -> ApiStatusResponse:
-    """并发 Ping 各 API，检测状态。"""
+    """并发 Ping 各 API，检测状态。
+
+    DB 查询串行执行（避免并发共享 AsyncSession），
+    外部 HTTP 请求并发执行。
+    """
+    # 串行读取密钥，避免并发共享 AsyncSession
+    x_token = await get_secret_config(db, "x_api_bearer_token")
+    claude_key = await get_secret_config(db, "anthropic_api_key")
+    gemini_key = await get_secret_config(db, "gemini_api_key")
+
+    # 并发执行外部 HTTP 请求
     x_status, claude_status, gemini_status = await asyncio.gather(
-        _ping_x_api(db),
-        _ping_claude_api(db),
-        _ping_gemini_api(db),
+        _ping_x_api(x_token),
+        _ping_claude_api(claude_key),
+        _ping_gemini_api(gemini_key),
     )
 
     return ApiStatusResponse(
@@ -283,13 +297,12 @@ async def _get_raw_config(db: AsyncSession, key: str) -> str:
     return config.value if config else ""
 
 
-async def _ping_x_api(db: AsyncSession) -> ApiStatusItem:
+async def _ping_x_api(token: str) -> ApiStatusItem:
     """Ping X API: GET /2/users/by/username/x（Bearer Token App-Only 兼容）。
 
     /2/users/me 需要 OAuth 1.0a/2.0 User Context，Bearer Token 不支持。
     改用查询公开用户信息的端点来验证 Token 有效性。
     """
-    token = await get_secret_config(db, "x_api_bearer_token")
     if not token:
         return ApiStatusItem(status="unconfigured")
 
@@ -326,9 +339,8 @@ async def _ping_x_api(db: AsyncSession) -> ApiStatusItem:
     return ApiStatusItem(status="ok", latency_ms=elapsed_ms(start))
 
 
-async def _ping_claude_api(db: AsyncSession) -> ApiStatusItem:
+async def _ping_claude_api(api_key: str) -> ApiStatusItem:
     """Ping Claude API: models.list()。"""
-    api_key = await get_secret_config(db, "anthropic_api_key")
     if not api_key:
         return ApiStatusItem(status="unconfigured")
 
@@ -347,9 +359,8 @@ async def _ping_claude_api(db: AsyncSession) -> ApiStatusItem:
     return ApiStatusItem(status="ok", latency_ms=elapsed_ms(start))
 
 
-async def _ping_gemini_api(db: AsyncSession) -> ApiStatusItem:
+async def _ping_gemini_api(api_key: str) -> ApiStatusItem:
     """Ping Gemini API。MVP 阶段仅检查 key 是否配置。"""
-    api_key = await get_secret_config(db, "gemini_api_key")
     if not api_key:
         return ApiStatusItem(status="unconfigured")
     return ApiStatusItem(status="ok", latency_ms=0)

@@ -7,7 +7,7 @@ import { ref } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
-const username = ref("admin");
+const username = ref("");
 const password = ref("");
 const submitting = ref(false);
 

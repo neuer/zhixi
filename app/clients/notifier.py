@@ -1,5 +1,6 @@
 """通知服务 — 企业微信 webhook（US-029 实现）。"""
 
+import asyncio
 import ipaddress
 import logging
 from datetime import UTC, datetime
@@ -14,9 +15,13 @@ logger = logging.getLogger(__name__)
 
 WEBHOOK_CONFIG_KEY = "notification_webhook_url"
 
-# I-22: 连续失败计数与阈值
+# 连续失败计数与阈值，通过 asyncio.Lock 保护并发访问
 _consecutive_failures: int = 0
 _FAILURE_THRESHOLD: int = 3
+_failure_lock: asyncio.Lock = asyncio.Lock()
+
+# 告警系统健康状态标志位，供外部（如 Dashboard API）读取
+alert_system_degraded: bool = False
 
 
 def _validate_webhook_url(url: str) -> bool:
@@ -94,20 +99,31 @@ async def send_alert(title: str, message: str, db: AsyncSession) -> None:
         "text": {"content": content},
     }
 
-    global _consecutive_failures  # noqa: PLW0603
+    global _consecutive_failures, alert_system_degraded  # noqa: PLW0603
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(url, json=payload)
             resp.raise_for_status()
             logger.info("告警发送成功: title=%s", title)
-            _consecutive_failures = 0
+            async with _failure_lock:
+                _consecutive_failures = 0
+                alert_system_degraded = False
     except Exception:
-        _consecutive_failures += 1
-        logger.warning("告警发送失败（不影响主流程）: title=%s", title, exc_info=True)
-        if _consecutive_failures >= _FAILURE_THRESHOLD:
+        async with _failure_lock:
+            _consecutive_failures += 1
+            current_failures = _consecutive_failures
+        logger.warning(
+            "告警发送失败（不影响主流程）: title=%s, 连续失败=%d",
+            title,
+            current_failures,
+            exc_info=True,
+        )
+        if current_failures >= _FAILURE_THRESHOLD:
+            async with _failure_lock:
+                alert_system_degraded = True
             logger.critical(
-                "告警系统连续失败 %d 次，请检查 webhook 配置: url=%s",
-                _consecutive_failures,
+                "告警系统连续失败 %d 次，已标记为降级状态，请检查 webhook 配置: url=%s",
+                current_failures,
                 url,
             )

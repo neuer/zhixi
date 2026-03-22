@@ -99,3 +99,5 @@ class ProcessResult(BaseModel):
     filtered_count: int
     topic_count: int
     failed_count: int = 0
+    failed_details: list[str] = []
+    """每条失败的具体描述（含 tweet_id/topic_id 和异常信息）。"""
