@@ -379,21 +379,63 @@ git commit -m "fix: 修复前端静默失败与类型安全问题 (I-2, I-6, I-1
 
 ---
 
-## 执行结果（待回填）
+## 执行结果
 
 ### 交付物清单
-（执行后回填）
+
+| 操作 | 文件 | 说明 |
+|------|------|------|
+| 修改 | app/crypto.py | C-1: SecretDecryptionError 异常类 + decrypt_secret 抛异常 |
+| 修改 | app/config.py | C-1: get_secret_config 捕获 SecretDecryptionError 降级 |
+| 修改 | app/clients/notifier.py | C-2: asyncio.Lock 保护 + alert_system_degraded 标志 |
+| 修改 | app/api/settings.py | C-3: gather 前串行查询 DB + ping 签名改 api_key |
+| 新建 | tests/test_cost_logger.py | C-4: 6 个测试 |
+| 新建 | tests/test_middleware.py | C-4: 3 个测试 |
+| 新建 | tests/test_debug_api.py | C-5: 11 个测试 |
+| 修改 | app/services/process_service.py | I-5: 失败详情日志 + failed_details 字段 |
+| 修改 | app/schemas/processor_types.py | I-5: ProcessResult 添加 failed_details |
+| 修改 | app/api/digest.py | I-1/I-9/I-29: degraded 辅助函数 + 枚举转换 |
+| 修改 | app/api/history.py | I-1: history 路由设置 summary_degraded |
+| 修改 | app/fetcher/x_api.py | I-7/I-14/I-17: 公共方法重命名 + 解析失败计数 |
+| 新建 | app/lib/heat_calculator.py | I-15: 从 processor 移到共享基础设施 |
+| 修改 | app/processor/heat_calculator.py | I-15: 保留兼容层重导出 |
+| 修改 | app/services/digest_service.py | I-15/I-16/I-43: import 路径 + 封面图告警 + None 过滤 |
+| 修改 | app/schemas/auth_types.py | I-19: password min_length=8 |
+| 修改 | app/api/dashboard.py | I-30: 日志分页 total 修正 |
+| 修改 | admin/src/composables/useXApiDebug.ts | I-2: 使用 OpenAPI 生成类型 |
+| 修改 | admin/src/components/AccountAddPopup.vue | I-6: 非 502 错误显示给用户 |
+| 修改 | admin/src/composables/useApiStatus.ts | I-11: 检测失败 toast 提示 |
+| 修改 | admin/src/views/DigestEdit.vue | I-13: fieldMap 驱动 + 空字符串修复 |
+| 修改 | admin/src/composables/useSecretsManager.ts | I-18/I-25: 生成类型 + catch 分离 |
+| 修改 | tests/test_crypto.py, test_api.py, test_setup.py, test_fetcher.py | 同步更新测试 |
 
 ### 偏离项表格
 
 | 编号 | 计划 | 实际 | 原因 |
 |------|------|------|------|
+| I-10 | 改善日志 | 确认已有充分日志，无需修改 | 之前轮次已修复 |
+| I-17 | 增加解析失败计数 | 确认已有实现 | 之前轮次已修复 |
+| I-27 | CLI exit code 修复 | 确认已有实现 | 之前轮次已修复 |
+| C-5 | manual_publisher 测试 | 跳过 | 文件仅含空 docstring，无可测代码 |
 
 ### 问题与修复记录
-（执行后回填）
+
+- I-15 移动 heat_calculator.py 时保留了兼容层重导出，避免破坏其他 import 路径
+- I-19 密码最小长度从无约束改为 8 位后，需同步更新 3 个测试文件中使用短密码的用例
 
 ### 质量门禁详表
-（执行后回填）
+
+| 门禁 | 结果 |
+|------|------|
+| ruff check | All checks passed |
+| ruff format --check | 151 files already formatted |
+| pyright | 0 errors, 0 warnings |
+| pytest | 589 passed (135.76s) |
+| biome check | 通过 |
+| vue-tsc --noEmit | 通过 |
+| bun run build | ok |
+| CI (GitHub Actions) | ✅ 全绿（backend + frontend + codegen） |
 
 ### PR 链接
-（执行后回填）
+
+https://github.com/neuer/zhixi/pull/40
