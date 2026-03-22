@@ -128,15 +128,21 @@ _ENV_ATTR_MAP: dict[str, str] = {
 
 
 async def get_secret_config(db: AsyncSession, key: str) -> str:
-    """读取密钥配置：DB 优先（解密），fallback .env。"""
-    from app.crypto import decrypt_secret
+    """读取密钥配置：DB 优先（解密），fallback .env。
+
+    DB 中密钥解密失败时记录警告并回退到 .env 值。
+    """
+    from app.crypto import SecretDecryptionError, decrypt_secret
 
     db_key = f"secret:{key}"
     db_value = await get_system_config(db, db_key)
     if db_value:
-        decrypted = decrypt_secret(db_value)
-        if decrypted:
-            return decrypted
+        try:
+            decrypted = decrypt_secret(db_value)
+            if decrypted:
+                return decrypted
+        except SecretDecryptionError:
+            logger.warning("DB 密钥 %s 解密失败，回退到 .env 配置", key)
 
     # fallback .env
     env_attr = _ENV_ATTR_MAP.get(key, key.upper())

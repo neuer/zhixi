@@ -12,6 +12,11 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+class SecretDecryptionError(RuntimeError):
+    """密钥解密失败异常 — 通常由 JWT_SECRET_KEY 变更导致。"""
+
+
 _SALT = b"zhixi-secret-config"
 _ITERATIONS = 480_000
 
@@ -45,11 +50,11 @@ def encrypt_secret(plaintext: str) -> str:
 
 
 def decrypt_secret(ciphertext: str) -> str:
-    """解密密文，返回明文。失败返回空字符串并记录错误。"""
+    """解密密文，返回明文。空密文返回空字符串，解密失败抛出 SecretDecryptionError。"""
     if not ciphertext:
         return ""
     try:
         return _get_fernet().decrypt(ciphertext.encode()).decode()
     except InvalidToken:
         logger.error("密钥解密失败，可能 JWT_SECRET_KEY 已变更")
-        return ""
+        raise SecretDecryptionError("密钥解密失败，可能 JWT_SECRET_KEY 已变更") from None
